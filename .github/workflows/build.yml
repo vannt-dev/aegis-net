@@ -2,12 +2,10 @@ name: AegisNet Fast CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref_name || github.ref }}
   cancel-in-progress: true
 
 jobs:
