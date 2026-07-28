@@ -139,11 +139,14 @@ class SettingsScreen extends StatelessWidget {
           width: isSelected ? 1.5 : 1,
         ),
       ),
-      child: ListTile(
-        title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-        subtitle: Text(subtitle, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
-        trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.cyanAccent) : null,
-        onTap: () => vpn.setUpstreamDns(title),
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+          subtitle: Text(subtitle, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+          trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.cyanAccent) : null,
+          onTap: () => vpn.setUpstreamDns(title),
+        ),
       ),
     );
   }

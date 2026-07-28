@@ -184,11 +184,14 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
                           itemCount: vpn.whitelist.length,
                           itemBuilder: (context, index) {
                             final domain = vpn.whitelist[index];
-                            return ListTile(
-                              title: Text(domain, style: const TextStyle(color: Colors.white)),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.grey),
-                                onPressed: () => vpn.removeWhitelistDomain(domain),
+                            return Material(
+                              color: Colors.transparent,
+                              child: ListTile(
+                                title: Text(domain, style: const TextStyle(color: Colors.white)),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.grey),
+                                  onPressed: () => vpn.removeWhitelistDomain(domain),
+                                ),
                               ),
                             );
                           },
@@ -214,12 +217,15 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white12),
       ),
-      child: SwitchListTile(
-        title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        subtitle: Text(description, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
-        value: enabled,
-        activeColor: Colors.cyanAccent,
-        onChanged: (val) {},
+      child: Material(
+        color: Colors.transparent,
+        child: SwitchListTile(
+          title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          subtitle: Text(description, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+          value: enabled,
+          activeColor: Colors.cyanAccent,
+          onChanged: (val) {},
+        ),
       ),
     );
   }
