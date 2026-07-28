@@ -5,6 +5,9 @@ import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/dns_benchmark_service.dart';
 
+const Color emeraldColor = Color(0xFF10B981);
+const Color emeraldDarkColor = Color(0xFF065F46);
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -59,7 +62,7 @@ class SettingsScreen extends StatelessWidget {
                       Text(
                         '${r.latencyMs} ms',
                         style: TextStyle(
-                          color: r.isFastest ? Colors.emeraldAccent : Colors.grey.shade300,
+                          color: r.isFastest ? emeraldColor : Colors.grey.shade300,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -68,10 +71,10 @@ class SettingsScreen extends StatelessWidget {
                           margin: const EdgeInsets.only(left: 8),
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.emerald.withOpacity(0.2),
+                            color: emeraldDarkColor.withOpacity(0.4),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text('FASTEST', style: TextStyle(color: Colors.emeraldAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                          child: const Text('FASTEST', style: TextStyle(color: emeraldColor, fontSize: 9, fontWeight: FontWeight.bold)),
                         ),
                     ],
                   ),
@@ -120,7 +123,7 @@ class SettingsScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildThemeCircle(context, theme, NeonTheme.cyan, Colors.cyanAccent),
-              _buildThemeCircle(context, theme, NeonTheme.emerald, const Color(0xFF10B981)),
+              _buildThemeCircle(context, theme, NeonTheme.emerald, emeraldColor),
               _buildThemeCircle(context, theme, NeonTheme.purple, Colors.purpleAccent.shade100),
               _buildThemeCircle(context, theme, NeonTheme.gold, Colors.amberAccent),
             ],
