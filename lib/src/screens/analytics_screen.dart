@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 
 class AnalyticsScreen extends StatelessWidget {
@@ -96,8 +95,8 @@ class AnalyticsScreen extends StatelessWidget {
             ),
             child: BarChart(
               BarChartData(
-                gridData: FlGridData(show: false),
-                titlesData: FlTitlesData(show: false),
+                gridData: const FlGridData(show: false),
+                titlesData: const FlTitlesData(show: false),
                 borderData: FlBorderData(show: false),
                 barGroups: [
                   BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 12, color: accent)]),

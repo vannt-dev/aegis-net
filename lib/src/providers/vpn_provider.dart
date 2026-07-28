@@ -24,17 +24,14 @@ class VpnProvider extends ChangeNotifier {
   int _activeRulesCount = 128450;
   String _upstreamDns = 'Cloudflare (1.1.1.1)';
 
-  // Pause protection timer
   DateTime? _pausedUntil;
   Timer? _pauseTimer;
 
-  // Category Toggles
   bool _blockAds = true;
   bool _blockTrackers = true;
   bool _blockMalware = true;
   bool _blockAdult = false;
 
-  // App Bypass / Split Tunneling List
   final List<String> _bypassApps = ['com.zing.zalo', 'com.vietcombank.mobile'];
 
   Map<String, dynamic> _stats = {
@@ -67,6 +64,7 @@ class VpnProvider extends ChangeNotifier {
   final List<String> _blacklist = ['bad-tracker.net', 'crypto-miner.org'];
 
   Timer? _simulationTimer;
+  final bool enableSimulation;
 
   bool get isVpnActive => _isVpnActive && !isPaused;
   bool get isConnecting => _isConnecting;
@@ -86,19 +84,21 @@ class VpnProvider extends ChangeNotifier {
   bool get blockMalware => _blockMalware;
   bool get blockAdult => _blockAdult;
 
-  VpnProvider() {
+  VpnProvider({this.enableSimulation = true}) {
     _initPreferences();
     AegisBridge.initEngine();
   }
 
   Future<void> _initPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    _upstreamDns = prefs.getString('upstream_dns') ?? 'Cloudflare (1.1.1.1)';
-    _blockAds = prefs.getBool('block_ads') ?? true;
-    _blockTrackers = prefs.getBool('block_trackers') ?? true;
-    _blockMalware = prefs.getBool('block_malware') ?? true;
-    _blockAdult = prefs.getBool('block_adult') ?? false;
-    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _upstreamDns = prefs.getString('upstream_dns') ?? 'Cloudflare (1.1.1.1)';
+      _blockAds = prefs.getBool('block_ads') ?? true;
+      _blockTrackers = prefs.getBool('block_trackers') ?? true;
+      _blockMalware = prefs.getBool('block_malware') ?? true;
+      _blockAdult = prefs.getBool('block_adult') ?? false;
+      notifyListeners();
+    } catch (_) {}
   }
 
   Future<void> toggleVpn() async {
@@ -107,7 +107,7 @@ class VpnProvider extends ChangeNotifier {
     _pauseTimer?.cancel();
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 600));
+    await Future.delayed(const Duration(milliseconds: 100));
 
     if (_isVpnActive) {
       await AegisBridge.stopVpn();
@@ -116,28 +116,30 @@ class VpnProvider extends ChangeNotifier {
     } else {
       await AegisBridge.startVpn();
       _isVpnActive = true;
-      _startSimulation();
+      if (enableSimulation) {
+        _startSimulation();
+      }
     }
 
     _isConnecting = false;
     notifyListeners();
   }
 
-  /// Pause protection for specified duration
   void pauseProtection(Duration duration) {
     _pausedUntil = DateTime.now().add(duration);
     _pauseTimer?.cancel();
-    _pauseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!isPaused) {
-        _pausedUntil = null;
-        timer.cancel();
-      }
-      notifyListeners();
-    });
+    if (enableSimulation) {
+      _pauseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!isPaused) {
+          _pausedUntil = null;
+          timer.cancel();
+        }
+        notifyListeners();
+      });
+    }
     notifyListeners();
   }
 
-  /// Resume protection immediately
   void resumeProtection() {
     _pausedUntil = null;
     _pauseTimer?.cancel();
@@ -150,19 +152,23 @@ class VpnProvider extends ChangeNotifier {
     if (categoryId == 2) _blockMalware = value;
     if (categoryId == 3) _blockAdult = value;
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('block_ads', _blockAds);
-    await prefs.setBool('block_trackers', _blockTrackers);
-    await prefs.setBool('block_malware', _blockMalware);
-    await prefs.setBool('block_adult', _blockAdult);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('block_ads', _blockAds);
+      await prefs.setBool('block_trackers', _blockTrackers);
+      await prefs.setBool('block_malware', _blockMalware);
+      await prefs.setBool('block_adult', _blockAdult);
+    } catch (_) {}
 
     notifyListeners();
   }
 
   void setUpstreamDns(String provider) async {
     _upstreamDns = provider;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('upstream_dns', provider);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('upstream_dns', provider);
+    } catch (_) {}
     notifyListeners();
   }
 
@@ -210,6 +216,7 @@ class VpnProvider extends ChangeNotifier {
   }
 
   void _startSimulation() {
+    if (!enableSimulation) return;
     _simulationTimer?.cancel();
     final random = Random();
     final sampleDomains = [

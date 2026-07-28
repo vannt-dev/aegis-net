@@ -7,8 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  build-rust:
-    name: Build Rust Core Library
+  test-rust:
+    name: Run Rust Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,16 +16,15 @@ jobs:
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Rust Core Engine
+      - name: Run Cargo Tests
         run: |
           cd rust/aegis_core
           cargo check
-          cargo test --no-run
-          cargo build --release
+          cargo test --verbose
 
-  build-flutter-web:
-    name: Build Flutter Web Bundle
-    needs: build-rust
+  test-flutter:
+    name: Run Flutter Unit Tests & Web Build
+    needs: test-rust
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,12 +37,17 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build Web Bundle
+      - name: Run Flutter Analyze & Tests
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build Web Production Bundle
         run: flutter build web --release
 
   build-flutter-android:
     name: Build Flutter Android APK
-    needs: build-rust
+    needs: test-flutter
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

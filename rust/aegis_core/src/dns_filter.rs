@@ -23,9 +23,7 @@ impl DnsFilterService {
         }
     }
 
-    /// Process a DNS UDP packet payload
     pub fn handle_dns_payload(&self, payload: &[u8], client_addr: SocketAddr) -> Vec<u8> {
-        // Extract query domain from raw DNS packet (RFC 1035)
         let domain_opt = Self::extract_domain_name(payload);
 
         if let Some(domain) = domain_opt {
@@ -38,16 +36,13 @@ impl DnsFilterService {
             } else {
                 info!("ALLOWED DNS Request: {}", domain);
                 self.stats_engine.record_request(&domain, false);
-                // Forward query to upstream DNS
                 return self.forward_to_upstream(payload);
             }
         }
 
-        // Fallback forward if unparseable
         self.forward_to_upstream(payload)
     }
 
-    /// Extract QNAME domain from raw DNS query bytes
     fn extract_domain_name(buffer: &[u8]) -> Option<String> {
         if buffer.len() < 12 {
             return None;
@@ -82,33 +77,27 @@ impl DnsFilterService {
         }
     }
 
-    /// Build a DNS response packet pointing A records to 0.0.0.0 (Sinkhole)
     fn build_blocked_response(request: &[u8]) -> Vec<u8> {
         if request.len() < 12 {
             return vec![];
         }
 
         let mut response = request.to_vec();
-        // Set Flags: QR=1 (Response), RCODE=0 (NoError)
         response[2] = 0x81;
         response[3] = 0x80;
-        // ANCOUNT = 1
         response[6] = 0x00;
         response[7] = 0x01;
 
-        // Append 0.0.0.0 A Record Answer
-        // Name pointer (0xc00c) points to QNAME in header offset 12
-        response.extend_from_slice(&[0xc0, 0x0c]); // Name offset
-        response.extend_from_slice(&[0x00, 0x01]); // Type A
-        response.extend_from_slice(&[0x00, 0x01]); // Class IN
-        response.extend_from_slice(&[0x00, 0x00, 0x01, 0x2c]); // TTL (300s)
-        response.extend_from_slice(&[0x00, 0x04]); // Data length = 4 bytes
-        response.extend_from_slice(&[0, 0, 0, 0]); // IP 0.0.0.0
+        response.extend_from_slice(&[0xc0, 0x0c]);
+        response.extend_from_slice(&[0x00, 0x01]);
+        response.extend_from_slice(&[0x00, 0x01]);
+        response.extend_from_slice(&[0x00, 0x00, 0x01, 0x2c]);
+        response.extend_from_slice(&[0x00, 0x04]);
+        response.extend_from_slice(&[0, 0, 0, 0]);
 
         response
     }
 
-    /// Forward request to public upstream DNS server
     fn forward_to_upstream(&self, payload: &[u8]) -> Vec<u8> {
         let socket = match UdpSocket::bind("0.0.0.0:0") {
             Ok(s) => s,
@@ -127,5 +116,48 @@ impl DnsFilterService {
             Ok((amt, _)) => buf[..amt].to_vec(),
             Err(_) => vec![],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dns_domain_extraction() {
+        // Mock DNS packet header + QNAME for example.com
+        let mut mock_packet = vec![
+            0x12, 0x34, // Transaction ID
+            0x01, 0x00, // Flags
+            0x00, 0x01, // QDCOUNT = 1
+            0x00, 0x00, // ANCOUNT = 0
+            0x00, 0x00, // NSCOUNT = 0
+            0x00, 0x00, // ARCOUNT = 0
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', // label "example"
+            0x03, b'c', b'o', b'm', // label "com"
+            0x00, // null terminator
+            0x00, 0x01, // QTYPE A
+            0x00, 0x01, // QCLASS IN
+        ];
+
+        let domain = DnsFilterService::extract_domain_name(&mock_packet);
+        assert_eq!(domain, Some("example.com".to_string()));
+    }
+
+    #[test]
+    fn test_blocked_response_generation() {
+        let mock_packet = vec![
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x03, b'a', b'd', b's', 0x00, 0x00, 0x01, 0x00, 0x01
+        ];
+
+        let response = DnsFilterService::build_blocked_response(&mock_packet);
+        assert!(!response.is_empty());
+        assert_eq!(response[0], 0x12);
+        assert_eq!(response[1], 0x34);
+        assert_eq!(response[2], 0x81); // QR=1
+        // Last 4 bytes should be 0.0.0.0 IP
+        let len = response.len();
+        assert_eq!(&response[len - 4..], &[0, 0, 0, 0]);
     }
 }

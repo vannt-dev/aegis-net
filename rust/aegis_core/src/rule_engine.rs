@@ -30,7 +30,7 @@ impl RuleEngine {
         enabled.insert(RuleCategory::Trackers);
         enabled.insert(RuleCategory::Malware);
 
-        let mut engine = Self {
+        let engine = Self {
             ads_rules: RwLock::new(HashSet::new()),
             tracker_rules: RwLock::new(HashSet::new()),
             malware_rules: RwLock::new(HashSet::new()),
@@ -40,7 +40,6 @@ impl RuleEngine {
             blocked_exact: RwLock::new(HashSet::new()),
         };
 
-        // Initialize default seed rules
         engine.seed_default_rules();
         engine
     }
@@ -206,5 +205,49 @@ impl RuleEngine {
         self.adult_rules.write().unwrap().clear();
         self.allowed_domains.write().unwrap().clear();
         self.blocked_exact.write().unwrap().clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_seed_rules_blocking() {
+        let engine = RuleEngine::new();
+        assert!(engine.is_blocked("doubleclick.net"));
+        assert!(engine.is_blocked("sub.doubleclick.net"));
+        assert!(engine.is_blocked("graph.facebook.com"));
+        assert!(!engine.is_blocked("google.com"));
+        assert!(!engine.is_blocked("github.com"));
+    }
+
+    #[test]
+    fn test_whitelist_priority() {
+        let engine = RuleEngine::new();
+        assert!(engine.is_blocked("doubleclick.net"));
+
+        engine.add_whitelist("doubleclick.net");
+        assert!(!engine.is_blocked("doubleclick.net"));
+    }
+
+    #[test]
+    fn test_hosts_rule_parsing() {
+        let engine = RuleEngine::new();
+        let hosts_content = "0.0.0.0 adserver.com\n127.0.0.1 tracker.net\n# Comment line";
+        let count = engine.load_rules_text(hosts_content, RuleCategory::Ads);
+        assert_eq!(count, 2);
+        assert!(engine.is_blocked("adserver.com"));
+        assert!(engine.is_blocked("tracker.net"));
+    }
+
+    #[test]
+    fn test_easylist_rule_parsing() {
+        let engine = RuleEngine::new();
+        let easylist_content = "||badad.org^\n||banner.net^";
+        let count = engine.load_rules_text(easylist_content, RuleCategory::Ads);
+        assert_eq!(count, 2);
+        assert!(engine.is_blocked("badad.org"));
+        assert!(engine.is_blocked("banner.net"));
     }
 }
