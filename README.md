@@ -7,20 +7,20 @@
 ## 📐 Architecture Overview
 
 ```text
-               ┌────────────────────────────────────────────────────────┐
-               │                      Flutter UI                        │
+               ┌──────────────────────────────────────────────────────────┐
+               │                      Flutter UI                          │
                │ (Dashboard, Stats, Rules, Live Logs, Analytics, Settings)│
-               └───────────────────────────┬────────────────────────────┘
+               └───────────────────────────┬──────────────────────────────┘
                                            │  Dart FFI / flutter_rust_bridge
                                            ▼
  ┌───────────────────────────────────────────────────────────────────────────────────┐
  │                                Rust Core Engine                                   │
- │  ├── Rule Engine (Trie / Aho-Corasick domain matching, Hosts, EasyList, AdGuard) │
+ │  ├── Rule Engine (Trie / Aho-Corasick domain matching, Hosts, EasyList, AdGuard)  │
  │  ├── DNS Interceptor & DoH Resolver (Sinkhole 0.0.0.0 for Ads, DNS-over-HTTPS)    │
  │  ├── DNS In-Memory Cache (TTL & LRU caching for ultra-low latency)                │
- │  ├── SafeSearch Rewriter (Google, Bing, DuckDuckGo, YouTube enforced search)       │
+ │  ├── SafeSearch Rewriter (Google, Bing, DuckDuckGo, YouTube enforced search)      │
  │  ├── Packet Parsing (smoltcp / lwIP)                                              │
- │  └── Statistics Engine (Real-time counters & ring-buffer query logs)             │
+ │  └── Statistics Engine (Real-time counters & ring-buffer query logs)              │
  └─────────────────────────────────────────▲─────────────────────────────────────────┘
                                            │  File Descriptor / IP Packets
                                            ▼
@@ -99,15 +99,25 @@ For detailed setup, building, testing, and deployment instructions, refer to the
 
 ---
 
-## 🛠️ Getting Started
+## 🛠️ Getting Started (Local Development)
 
 ### Prerequisites
 
 1. **Flutter SDK** (v3.0.0+)
 2. **Rust Toolchain** (`rustup`, `cargo`)
-3. **Android Studio / Xcode** (for platform builds)
+3. **Google Chrome / MS Edge** (for Web local testing) or **Android Studio** / **Visual Studio 2022** (for platform native builds)
 
-### 1. Build Rust Core Engine
+---
+
+### 🚀 Quick Start Steps
+
+#### Step 1: Install Flutter Dependencies
+```bash
+flutter pub get
+```
+
+#### Step 2: Build Rust Core Engine (Optional for Web)
+> **Note**: If Rust is not compiled, AegisNet automatically falls back to its built-in **Pure Dart Engine**, allowing UI testing without native compilation.
 
 ```bash
 cd rust/aegis_core
@@ -115,12 +125,23 @@ cargo build --release
 cd ../..
 ```
 
-### 2. Run Flutter App
+> 💡 **Windows Troubleshooting (`os error 4551`)**:
+> If Windows Smart App Control blocks `cargo.exe`, add an exclusion for `~/.cargo` and `~/.rustup` in **Windows Security > App & browser control**, or switch toolchain to GNU (`rustup default stable-x86_64-pc-windows-gnu`).
 
-```bash
-flutter pub get
-flutter run
-```
+#### Step 3: Run Locally
+
+* **Run Web Debug Mode (Hot Reload)**:
+  ```bash
+  flutter run -d chrome
+  ```
+  *(or `flutter run -d edge`)*
+
+* **Run Web Production Server**:
+  ```bash
+  flutter build web --release
+  npx serve build/web -l 8080
+  ```
+  Then open [http://localhost:8080](http://localhost:8080) in your browser.
 
 ---
 

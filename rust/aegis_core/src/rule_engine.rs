@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::sync::RwLock;
-use log::{info, debug};
+use log::info;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

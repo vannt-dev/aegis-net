@@ -10,6 +10,9 @@ build/
 # Rust
 rust/aegis_core/target/
 Cargo.lock
+*.dll
+*.so
+*.dylib
 
 # Android
 android/.gradle/

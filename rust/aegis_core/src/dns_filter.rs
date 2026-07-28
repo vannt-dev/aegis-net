@@ -28,7 +28,7 @@ impl DnsFilterService {
         }
     }
 
-    pub fn handle_dns_payload(&self, payload: &[u8], client_addr: SocketAddr) -> Vec<u8> {
+    pub fn handle_dns_payload(&self, payload: &[u8], _client_addr: SocketAddr) -> Vec<u8> {
         let domain_opt = Self::extract_domain_name(payload);
 
         if let Some(domain) = domain_opt {
