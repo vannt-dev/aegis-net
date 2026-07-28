@@ -8,8 +8,11 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: FlutterActivity() {
-    private const val CHANNEL = "com.aegisnet/vpn"
-    private const val VPN_REQUEST_CODE = 0xAF1
+
+    companion object {
+        private const val CHANNEL = "com.aegisnet/vpn"
+        private const val VPN_REQUEST_CODE = 0xAF1
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
