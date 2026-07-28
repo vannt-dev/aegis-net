@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/vpn_provider.dart';
 
+const Color emeraldColor = Color(0xFF10B981);
+const Color emeraldDarkColor = Color(0xFF065F46);
+
 class LogsScreen extends StatefulWidget {
   const LogsScreen({super.key});
 
@@ -77,12 +80,12 @@ class _LogsScreenState extends State<LogsScreen> {
                             shape: BoxShape.circle,
                             color: item.isBlocked
                                 ? Colors.red.shade900.withOpacity(0.4)
-                                : Colors.emerald.shade900.withOpacity(0.4),
+                                : emeraldDarkColor.withOpacity(0.4),
                           ),
                           child: Icon(
                             item.isBlocked ? Icons.block : Icons.check_circle_outline,
                             size: 18,
-                            color: item.isBlocked ? Colors.redAccent : Colors.emeraldAccent,
+                            color: item.isBlocked ? Colors.redAccent : emeraldColor,
                           ),
                         ),
                         title: Text(
@@ -100,7 +103,7 @@ class _LogsScreenState extends State<LogsScreen> {
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: item.isBlocked ? Colors.red.withOpacity(0.15) : Colors.emerald.withOpacity(0.15),
+                            color: item.isBlocked ? Colors.red.withOpacity(0.15) : emeraldDarkColor.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -108,7 +111,7 @@ class _LogsScreenState extends State<LogsScreen> {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: item.isBlocked ? Colors.redAccent : Colors.emeraldAccent,
+                              color: item.isBlocked ? Colors.redAccent : emeraldColor,
                             ),
                           ),
                         ),

@@ -25,7 +25,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Aegis Local VPN Service for DNS Filtering -->
         <service
             android:name=".AegisVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"

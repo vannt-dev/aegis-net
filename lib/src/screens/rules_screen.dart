@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import '../providers/vpn_provider.dart';
 import '../services/rule_downloader_service.dart';
 
+const Color emeraldColor = Color(0xFF10B981);
+const Color emeraldDarkColor = Color(0xFF065F46);
+
 class RulesScreen extends StatefulWidget {
   const RulesScreen({super.key});
 
@@ -39,7 +42,7 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
           content: Text(count > 0
               ? 'Successfully synced $count active ad-blocking rules!'
               : 'Synced filter lists with active engine.'),
-          backgroundColor: Colors.emerald.shade800,
+          backgroundColor: emeraldDarkColor,
         ),
       );
     }
@@ -145,7 +148,7 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
                     const SizedBox(width: 8),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.emerald.shade700,
+                        backgroundColor: emeraldDarkColor,
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                       ),
                       onPressed: () {
@@ -171,7 +174,7 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
                 const SizedBox(height: 24),
                 const Text(
                   'Custom Whitelist (Always Allowed)',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.emeraldAccent),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: emeraldColor),
                 ),
                 const SizedBox(height: 8),
                 Expanded(

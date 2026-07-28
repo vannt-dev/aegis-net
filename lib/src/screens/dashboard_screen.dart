@@ -4,6 +4,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../providers/vpn_provider.dart';
 
+const Color emeraldColor = Color(0xFF10B981);
+const Color emeraldDarkColor = Color(0xFF065F46);
+
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
@@ -57,13 +60,13 @@ class DashboardScreen extends StatelessWidget {
                       color: vpn.isPaused
                           ? Colors.amber.shade900.withOpacity(0.3)
                           : (vpn.isVpnActive
-                              ? Colors.emerald.shade900.withOpacity(0.4)
+                              ? emeraldDarkColor.withOpacity(0.4)
                               : Colors.red.shade900.withOpacity(0.3)),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: vpn.isPaused
                             ? Colors.amberAccent
-                            : (vpn.isVpnActive ? Colors.emeraldAccent : Colors.redAccent),
+                            : (vpn.isVpnActive ? emeraldColor : Colors.redAccent),
                         width: 1,
                       ),
                     ),
@@ -77,7 +80,7 @@ class DashboardScreen extends StatelessWidget {
                             shape: BoxShape.circle,
                             color: vpn.isPaused
                                 ? Colors.amberAccent
-                                : (vpn.isVpnActive ? Colors.emeraldAccent : Colors.redAccent),
+                                : (vpn.isVpnActive ? emeraldColor : Colors.redAccent),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -90,7 +93,7 @@ class DashboardScreen extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                             color: vpn.isPaused
                                 ? Colors.amberAccent
-                                : (vpn.isVpnActive ? Colors.emeraldAccent : Colors.redAccent),
+                                : (vpn.isVpnActive ? emeraldColor : Colors.redAccent),
                             letterSpacing: 1.0,
                           ),
                         ),
@@ -182,7 +185,7 @@ class DashboardScreen extends StatelessWidget {
                     title: 'Ads Blocked',
                     value: '$blockedQueries',
                     icon: Icons.shield_outlined,
-                    color: Colors.emeraldAccent,
+                    color: emeraldColor,
                   ),
                   _buildStatCard(
                     title: 'Block Rate',
@@ -369,7 +372,7 @@ class GestureController extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = isPaused
         ? Colors.amberAccent
-        : (isActive ? Colors.emeraldAccent : Colors.cyanAccent);
+        : (isActive ? emeraldColor : Colors.cyanAccent);
 
     return GestureDetector(
       onTap: onTap,
@@ -384,7 +387,7 @@ class GestureController extends StatelessWidget {
               isPaused
                   ? Colors.amber.shade900.withOpacity(0.6)
                   : (isActive
-                      ? Colors.emerald.shade800.withOpacity(0.8)
+                      ? emeraldDarkColor.withOpacity(0.8)
                       : Colors.cyan.shade900.withOpacity(0.6)),
               const Color(0xFF161B22),
             ],
