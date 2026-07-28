@@ -21,11 +21,12 @@ class DnsLogItem {
 class VpnProvider extends ChangeNotifier {
   bool _isVpnActive = false;
   bool _isConnecting = false;
-  int _activeRulesCount = 128450;
-  String _upstreamDns = 'Cloudflare (1.1.1.1)';
+  final int _activeRulesCount = 128450;
+  String _upstreamDns = 'Cloudflare DoH (https://1.1.1.1/dns-query)';
 
   DateTime? _pausedUntil;
   Timer? _pauseTimer;
+  Timer? _autoSyncTimer;
 
   bool _blockAds = true;
   bool _blockTrackers = true;
@@ -89,18 +90,30 @@ class VpnProvider extends ChangeNotifier {
   VpnProvider({this.enableSimulation = true}) {
     _initPreferences();
     AegisBridge.initEngine();
+    _startAutoSyncScheduler();
   }
 
   Future<void> _initPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _upstreamDns = prefs.getString('upstream_dns') ?? 'Cloudflare (1.1.1.1)';
+      _upstreamDns = prefs.getString('upstream_dns') ??
+          'Cloudflare DoH (https://1.1.1.1/dns-query)';
       _blockAds = prefs.getBool('block_ads') ?? true;
       _blockTrackers = prefs.getBool('block_trackers') ?? true;
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
       notifyListeners();
     } catch (_) {}
+  }
+
+  void _startAutoSyncScheduler() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer.periodic(const Duration(hours: 24), (timer) {
+      if (_isVpnActive) {
+        AegisBridge.loadRulesText(
+            '||doubleclick.net^\n||aniview.com^\n||telemetry.applovin.com^');
+      }
+    });
   }
 
   Future<void> toggleVpn() async {
@@ -269,6 +282,7 @@ class VpnProvider extends ChangeNotifier {
   void dispose() {
     _simulationTimer?.cancel();
     _pauseTimer?.cancel();
+    _autoSyncTimer?.cancel();
     super.dispose();
   }
 }
