@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/vpn_provider.dart';
+import '../services/rule_downloader_service.dart';
 
 class RulesScreen extends StatefulWidget {
   const RulesScreen({super.key});
@@ -12,6 +13,7 @@ class RulesScreen extends StatefulWidget {
 class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _domainInputController = TextEditingController();
+  bool _isSyncing = false;
 
   @override
   void initState() {
@@ -24,6 +26,23 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
     _tabController.dispose();
     _domainInputController.dispose();
     super.dispose();
+  }
+
+  Future<void> _syncLiveFilters() async {
+    setState(() => _isSyncing = true);
+    final count = await RuleDownloaderService.syncAllFilters();
+    setState(() => _isSyncing = false);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(count > 0
+              ? 'Successfully synced $count active ad-blocking rules!'
+              : 'Synced filter lists with active engine.'),
+          backgroundColor: Colors.emerald.shade800,
+        ),
+      );
+    }
   }
 
   @override
@@ -39,6 +58,19 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
           'Filter Rules & Engine',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
+        actions: [
+          IconButton(
+            icon: _isSyncing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent),
+                  )
+                : const Icon(Icons.sync_rounded, color: Colors.cyanAccent),
+            tooltip: 'Sync Live Rules',
+            onPressed: _isSyncing ? null : _syncLiveFilters,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.cyanAccent,

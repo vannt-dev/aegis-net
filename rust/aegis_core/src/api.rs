@@ -1,3 +1,5 @@
+use std::ffi::{CStr, CString};
+use std::os::raw::{c_char, c_int};
 use std::sync::Arc;
 use lazy_static::lazy_static;
 use crate::rule_engine::RuleEngine;
@@ -6,7 +8,7 @@ use crate::dns_filter::DnsFilterService;
 
 lazy_static! {
     static ref RULE_ENGINE: Arc<RuleEngine> = Arc::new(RuleEngine::new());
-    static ref STATS_ENGINE: Arc<StatisticsEngine> = Arc::new(StatisticsEngine::new(500));
+    static ref STATS_ENGINE: Arc<StatisticsEngine> = Arc::new(StatisticsEngine::new(1000));
     static ref DNS_FILTER: Arc<DnsFilterService> = Arc::new(DnsFilterService::new(
         RULE_ENGINE.clone(),
         STATS_ENGINE.clone(),
@@ -15,66 +17,105 @@ lazy_static! {
 }
 
 /// Initialize Aegis Core Engine
-pub fn init_engine() -> bool {
+#[no_mangle]
+pub extern "C" fn aegis_init() -> c_int {
     env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
-    log::info!("Aegis Core Engine Initialized Successfully");
-    true
+    log::info!("Aegis Core Engine Initialized");
+    1
 }
 
 /// Load filter rules text into engine (Returns count of rules added)
-pub fn load_rules(rules_text: String) -> u32 {
-    RULE_ENGINE.load_rules_text(&rules_text) as u32
+#[no_mangle]
+pub extern "C" fn aegis_load_rules(rules_text_ptr: *const c_char) -> u32 {
+    if rules_text_ptr.is_null() {
+        return 0;
+    }
+    let c_str = unsafe { CStr::from_ptr(rules_text_ptr) };
+    if let Ok(rules_str) = c_str.to_str() {
+        RULE_ENGINE.load_rules_text(rules_str) as u32
+    } else {
+        0
+    }
 }
 
 /// Add domain to Whitelist
-pub fn add_whitelist(domain: String) {
-    RULE_ENGINE.add_whitelist(&domain);
+#[no_mangle]
+pub extern "C" fn aegis_add_whitelist(domain_ptr: *const c_char) {
+    if domain_ptr.is_null() { return; }
+    if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
+        RULE_ENGINE.add_whitelist(domain);
+    }
 }
 
 /// Add domain to Blacklist
-pub fn add_blacklist(domain: String) {
-    RULE_ENGINE.add_blacklist(&domain);
+#[no_mangle]
+pub extern "C" fn aegis_add_blacklist(domain_ptr: *const c_char) {
+    if domain_ptr.is_null() { return; }
+    if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
+        RULE_ENGINE.add_blacklist(domain);
+    }
 }
 
-/// Remove domain from Whitelist
-pub fn remove_whitelist(domain: String) {
-    RULE_ENGINE.remove_whitelist(&domain);
+/// Check if domain is blocked
+#[no_mangle]
+pub extern "C" fn aegis_is_domain_blocked(domain_ptr: *const c_char) -> c_int {
+    if domain_ptr.is_null() { return 0; }
+    if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
+        if RULE_ENGINE.is_blocked(domain) { 1 } else { 0 }
+    } else {
+        0
+    }
 }
 
-/// Remove domain from Blacklist
-pub fn remove_blacklist(domain: String) {
-    RULE_ENGINE.remove_blacklist(&domain);
-}
+/// Process a DNS raw packet payload (Input buffer -> Returns output response buffer length)
+#[no_mangle]
+pub extern "C" fn aegis_handle_dns_packet(
+    in_buf: *const u8,
+    in_len: usize,
+    out_buf: *mut u8,
+    out_max_len: usize,
+) -> usize {
+    if in_buf.is_null() || out_buf.is_null() || in_len == 0 {
+        return 0;
+    }
 
-/// Check if a domain is blocked by current active rules
-pub fn is_domain_blocked(domain: String) -> bool {
-    RULE_ENGINE.is_blocked(&domain)
-}
-
-/// Process a raw DNS UDP payload (used by Android VpnService & iOS PacketTunnelProvider)
-pub fn handle_dns_packet(payload: Vec<u8>) -> Vec<u8> {
+    let input_slice = unsafe { std::slice::from_raw_parts(in_buf, in_len) };
     let dummy_client: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
-    DNS_FILTER.handle_dns_payload(&payload, dummy_client)
+    let response = DNS_FILTER.handle_dns_payload(input_slice, dummy_client);
+
+    if response.is_empty() || response.len() > out_max_len {
+        return 0;
+    }
+
+    unsafe {
+        std::ptr::copy_nonoverlapping(response.as_ptr(), out_buf, response.len());
+    }
+
+    response.len()
 }
 
-/// Get current filtering statistics as JSON string
-pub fn get_stats_json() -> String {
+/// Get current statistics as JSON string (Caller must free returned pointer)
+#[no_mangle]
+pub extern "C" fn aegis_get_stats_json() -> *mut c_char {
     let summary = STATS_ENGINE.get_summary();
-    serde_json::to_string(&summary).unwrap_or_else(|_| "{}".to_string())
+    let json = serde_json::to_string(&summary).unwrap_or_else(|_| "{}".to_string());
+    CString::new(json).unwrap().into_raw()
 }
 
-/// Get recent query logs as JSON string
-pub fn get_logs_json(limit: u32) -> String {
+/// Get recent query logs as JSON string (Caller must free returned pointer)
+#[no_mangle]
+pub extern "C" fn aegis_get_logs_json(limit: u32) -> *mut c_char {
     let logs = STATS_ENGINE.get_recent_logs(limit as usize);
-    serde_json::to_string(&logs).unwrap_or_else(|_| "[]".to_string())
+    let json = serde_json::to_string(&logs).unwrap_or_else(|_| "[]".to_string());
+    CString::new(json).unwrap().into_raw()
 }
 
-/// Reset statistics and logs
-pub fn reset_stats() {
-    STATS_ENGINE.reset();
-}
-
-/// Clear all filter rules
-pub fn clear_rules() {
-    RULE_ENGINE.clear();
+/// Free string allocated by Rust
+#[no_mangle]
+pub extern "C" fn aegis_free_string(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        unsafe {
+            let _ = CString::from_raw(ptr);
+        }
+    }
 }
