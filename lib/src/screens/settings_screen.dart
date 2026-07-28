@@ -8,6 +8,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vpn = context.watch<VpnProvider>();
+    final TextEditingController bypassController = TextEditingController();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
@@ -15,7 +16,7 @@ class SettingsScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF161B22),
         elevation: 0,
         title: const Text(
-          'Settings & Upstream DNS',
+          'Settings & Split Tunneling',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
@@ -23,7 +24,7 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            'Upstream DNS Provider',
+            'Upstream DNS Resolver',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.cyanAccent),
           ),
           const SizedBox(height: 8),
@@ -31,6 +32,77 @@ class SettingsScreen extends StatelessWidget {
           _buildDnsTile(context, vpn, 'Google (8.8.8.8)', 'High reliability global resolver'),
           _buildDnsTile(context, vpn, 'AdGuard DNS (94.140.14.14)', 'Upstream ad-blocking DNS'),
           _buildDnsTile(context, vpn, 'Quad9 (9.9.9.9)', 'Malware protection & threat blocking'),
+
+          const SizedBox(height: 24),
+          const Text(
+            'App-by-App Split Tunneling (Bypass VPN)',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.amberAccent),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Selected apps will bypass Aegis Local VPN and connect directly.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: bypassController,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Package name (e.g. com.zing.zalo)',
+                    hintStyle: TextStyle(color: Colors.grey.shade600),
+                    filled: true,
+                    fillColor: const Color(0xFF161B22),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Colors.white24),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber.shade800,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+                onPressed: () {
+                  vpn.addBypassApp(bypassController.text);
+                  bypassController.clear();
+                },
+                child: const Text('ADD', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Column(
+            children: vpn.bypassApps
+                .map(
+                  (pkg) => Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161B22),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(pkg, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.grey, size: 18),
+                          onPressed: () => vpn.removeBypassApp(pkg),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
 
           const SizedBox(height: 24),
           const Text(

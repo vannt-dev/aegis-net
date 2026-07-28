@@ -20,17 +20,18 @@ class AegisVpnService : VpnService(), Runnable {
     private var vpnThread: Thread? = null
     @Volatile private var isRunning = false
 
-    override fn onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         if (action == ACTION_START) {
-            startVpn()
+            val bypassApps = intent.getStringArrayListExtra("bypassApps") ?: arrayListOf()
+            startVpn(bypassApps)
         } else if (action == ACTION_STOP) {
             stopVpn()
         }
         return START_STICKY
     }
 
-    private fun startVpn() {
+    private fun startVpn(bypassApps: ArrayList<String>) {
         if (isRunning) return
         try {
             val builder = Builder()
@@ -39,12 +40,22 @@ class AegisVpnService : VpnService(), Runnable {
                 .addDnsServer("1.1.1.1")
                 .addRoute("0.0.0.0", 0)
 
+            // Add disallowed apps for Split Tunneling
+            for (pkg in bypassApps) {
+                try {
+                    builder.addDisallowedApplication(pkg)
+                    Log.i(TAG, "Added bypass application: $pkg")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Package $pkg not installed on device", e)
+                }
+            }
+
             vpnInterface = builder.establish()
             isRunning = true
 
             vpnThread = Thread(this, "AegisVpnThread")
             vpnThread?.start()
-            Log.i(TAG, "Aegis Local VPN Started Successfully")
+            Log.i(TAG, "Aegis Local VPN Started Successfully with Split Tunneling")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start Aegis VPN", e)
         }
@@ -74,13 +85,8 @@ class AegisVpnService : VpnService(), Runnable {
             try {
                 val length = inputStream.read(buffer.array())
                 if (length > 0) {
-                    // Packet received from OS TUN interface.
-                    // Pass to Rust Core engine via FFI handle_dns_packet
                     buffer.limit(length)
                     buffer.rewind()
-                    
-                    // Note: Here Rust handle_dns_packet processes DNS payload
-                    // and outputStream.write(...) sends response back to OS
                     buffer.clear()
                 }
             } catch (e: Exception) {

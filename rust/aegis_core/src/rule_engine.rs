@@ -1,27 +1,89 @@
 use std::collections::HashSet;
 use std::sync::RwLock;
 use log::{info, debug};
+use serde::{Deserialize, Serialize};
 
-/// High-performance Domain Rule Matcher for AegisNet
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RuleCategory {
+    Ads,
+    Trackers,
+    Malware,
+    Adult,
+}
+
+/// High-performance Domain Rule Matcher for AegisNet with Categories
 pub struct RuleEngine {
-    blocked_domains: RwLock<HashSet<String>>,
+    ads_rules: RwLock<HashSet<String>>,
+    tracker_rules: RwLock<HashSet<String>>,
+    malware_rules: RwLock<HashSet<String>>,
+    adult_rules: RwLock<HashSet<String>>,
+
+    enabled_categories: RwLock<HashSet<RuleCategory>>,
     allowed_domains: RwLock<HashSet<String>>,
     blocked_exact: RwLock<HashSet<String>>,
 }
 
 impl RuleEngine {
     pub fn new() -> Self {
-        Self {
-            blocked_domains: RwLock::new(HashSet::new()),
+        let mut enabled = HashSet::new();
+        enabled.insert(RuleCategory::Ads);
+        enabled.insert(RuleCategory::Trackers);
+        enabled.insert(RuleCategory::Malware);
+
+        let mut engine = Self {
+            ads_rules: RwLock::new(HashSet::new()),
+            tracker_rules: RwLock::new(HashSet::new()),
+            malware_rules: RwLock::new(HashSet::new()),
+            adult_rules: RwLock::new(HashSet::new()),
+            enabled_categories: RwLock::new(enabled),
             allowed_domains: RwLock::new(HashSet::new()),
             blocked_exact: RwLock::new(HashSet::new()),
+        };
+
+        // Initialize default seed rules
+        engine.seed_default_rules();
+        engine
+    }
+
+    fn seed_default_rules(&self) {
+        let mut ads = self.ads_rules.write().unwrap();
+        ads.insert("doubleclick.net".to_string());
+        ads.insert("googleadservices.com".to_string());
+        ads.insert("pagead2.googlesyndication.com".to_string());
+        ads.insert("aniview.com".to_string());
+        ads.insert("adnxs.com".to_string());
+
+        let mut trackers = self.tracker_rules.write().unwrap();
+        trackers.insert("graph.facebook.com".to_string());
+        trackers.insert("telemetry.applovin.com".to_string());
+        trackers.insert("tracking.vungle.com".to_string());
+        trackers.insert("analytics.google.com".to_string());
+
+        let mut malware = self.malware_rules.write().unwrap();
+        malware.insert("crypto-miner.org".to_string());
+        malware.insert("bad-malware-site.net".to_string());
+        malware.insert("phishing-login.com".to_string());
+    }
+
+    pub fn set_category_enabled(&self, category: RuleCategory, enabled: bool) {
+        let mut categories = self.enabled_categories.write().unwrap();
+        if enabled {
+            categories.insert(category);
+        } else {
+            categories.remove(&category);
         }
     }
 
-    /// Load raw rules text (Hosts format, EasyList DNS format, or plain list)
-    pub fn load_rules_text(&self, content: &str) -> usize {
+    pub fn load_rules_text(&self, content: &str, category: RuleCategory) -> usize {
         let mut count = 0;
-        let mut blocked = self.blocked_domains.write().unwrap();
+        let target_set = match category {
+            RuleCategory::Ads => &self.ads_rules,
+            RuleCategory::Trackers => &self.tracker_rules,
+            RuleCategory::Malware => &self.malware_rules,
+            RuleCategory::Adult => &self.adult_rules,
+        };
+
+        let mut rules = target_set.write().unwrap();
 
         for line in content.lines() {
             let line = line.trim();
@@ -30,18 +92,16 @@ impl RuleEngine {
             }
 
             if let Some(domain) = Self::parse_rule_line(line) {
-                blocked.insert(domain);
+                rules.insert(domain);
                 count += 1;
             }
         }
 
-        info!("Loaded {} rules into Rule Engine", count);
+        info!("Loaded {} rules into category {:?}", count, category);
         count
     }
 
-    /// Parse a single line from hosts or filter list
     fn parse_rule_line(line: &str) -> Option<String> {
-        // Handle hosts format: 0.0.0.0 domain.com or 127.0.0.1 domain.com
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() >= 2 && (parts[0] == "0.0.0.0" || parts[0] == "127.0.0.1") {
             let domain = parts[1].to_lowercase();
@@ -50,13 +110,11 @@ impl RuleEngine {
             }
         }
 
-        // Handle AdGuard / EasyList DNS format: ||example.com^
         if line.starts_with("||") && line.ends_with('^') {
             let domain = &line[2..line.len() - 1];
             return Some(domain.to_lowercase());
         }
 
-        // Handle plain domain format: example.com
         if !line.contains(' ') && line.contains('.') {
             return Some(line.to_lowercase());
         }
@@ -64,44 +122,38 @@ impl RuleEngine {
         None
     }
 
-    /// Add custom domain to Whitelist
     pub fn add_whitelist(&self, domain: &str) {
         let mut allowed = self.allowed_domains.write().unwrap();
         allowed.insert(domain.to_lowercase());
     }
 
-    /// Add custom domain to Blacklist
     pub fn add_blacklist(&self, domain: &str) {
         let mut blocked = self.blocked_exact.write().unwrap();
         blocked.insert(domain.to_lowercase());
     }
 
-    /// Remove custom domain from Whitelist
     pub fn remove_whitelist(&self, domain: &str) {
         let mut allowed = self.allowed_domains.write().unwrap();
         allowed.remove(&domain.to_lowercase());
     }
 
-    /// Remove custom domain from Blacklist
     pub fn remove_blacklist(&self, domain: &str) {
         let mut blocked = self.blocked_exact.write().unwrap();
         blocked.remove(&domain.to_lowercase());
     }
 
-    /// Check if a domain should be blocked
     pub fn is_blocked(&self, domain: &str) -> bool {
         let clean_domain = domain.trim_end_matches('.').to_lowercase();
 
-        // 1. Check Whitelist first
+        // 1. Check Whitelist
         {
             let allowed = self.allowed_domains.read().unwrap();
             if allowed.contains(&clean_domain) {
-                debug!("Domain {} is whitelisted", clean_domain);
                 return false;
             }
         }
 
-        // 2. Check Custom Blacklist
+        // 2. Check Blacklist
         {
             let exact = self.blocked_exact.read().unwrap();
             if exact.contains(&clean_domain) {
@@ -109,27 +161,49 @@ impl RuleEngine {
             }
         }
 
-        // 3. Check Main Filter Rules (Exact & Subdomain matches)
-        let blocked = self.blocked_domains.read().unwrap();
-        if blocked.contains(&clean_domain) {
+        // 3. Check Enabled Categories
+        let enabled = self.enabled_categories.read().unwrap();
+
+        if enabled.contains(&RuleCategory::Ads) && self.matches_set(&self.ads_rules, &clean_domain) {
             return true;
         }
 
-        // Check parent domains (e.g. ad.doubleclick.net -> doubleclick.net)
-        let parts: Vec<&str> = clean_domain.split('.').collect();
-        for i in 1..parts.len().saturating_sub(1) {
-            let parent_domain = parts[i..].join(".");
-            if blocked.contains(&parent_domain) {
-                return true;
-            }
+        if enabled.contains(&RuleCategory::Trackers) && self.matches_set(&self.tracker_rules, &clean_domain) {
+            return true;
+        }
+
+        if enabled.contains(&RuleCategory::Malware) && self.matches_set(&self.malware_rules, &clean_domain) {
+            return true;
+        }
+
+        if enabled.contains(&RuleCategory::Adult) && self.matches_set(&self.adult_rules, &clean_domain) {
+            return true;
         }
 
         false
     }
 
-    /// Clear all rules
+    fn matches_set(&self, set: &RwLock<HashSet<String>>, domain: &str) -> bool {
+        let rules = set.read().unwrap();
+        if rules.contains(domain) {
+            return true;
+        }
+
+        let parts: Vec<&str> = domain.split('.').collect();
+        for i in 1..parts.len().saturating_sub(1) {
+            let parent = parts[i..].join(".");
+            if rules.contains(&parent) {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn clear(&self) {
-        self.blocked_domains.write().unwrap().clear();
+        self.ads_rules.write().unwrap().clear();
+        self.tracker_rules.write().unwrap().clear();
+        self.malware_rules.write().unwrap().clear();
+        self.adult_rules.write().unwrap().clear();
         self.allowed_domains.write().unwrap().clear();
         self.blocked_exact.write().unwrap().clear();
     }

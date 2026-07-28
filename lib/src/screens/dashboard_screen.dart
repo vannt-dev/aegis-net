@@ -54,12 +54,16 @@ class DashboardScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: vpn.isVpnActive
-                          ? Colors.emerald.shade900.withOpacity(0.4)
-                          : Colors.red.shade900.withOpacity(0.3),
+                      color: vpn.isPaused
+                          ? Colors.amber.shade900.withOpacity(0.3)
+                          : (vpn.isVpnActive
+                              ? Colors.emerald.shade900.withOpacity(0.4)
+                              : Colors.red.shade900.withOpacity(0.3)),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: vpn.isVpnActive ? Colors.emeraldAccent : Colors.redAccent,
+                        color: vpn.isPaused
+                            ? Colors.amberAccent
+                            : (vpn.isVpnActive ? Colors.emeraldAccent : Colors.redAccent),
                         width: 1,
                       ),
                     ),
@@ -71,16 +75,22 @@ class DashboardScreen extends StatelessWidget {
                           height: 8,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: vpn.isVpnActive ? Colors.emeraldAccent : Colors.redAccent,
+                            color: vpn.isPaused
+                                ? Colors.amberAccent
+                                : (vpn.isVpnActive ? Colors.emeraldAccent : Colors.redAccent),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          vpn.isVpnActive ? 'PROTECTED' : 'UNPROTECTED',
+                          vpn.isPaused
+                              ? 'PAUSED'
+                              : (vpn.isVpnActive ? 'PROTECTED' : 'UNPROTECTED'),
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
-                            color: vpn.isVpnActive ? Colors.emeraldAccent : Colors.redAccent,
+                            color: vpn.isPaused
+                                ? Colors.amberAccent
+                                : (vpn.isVpnActive ? Colors.emeraldAccent : Colors.redAccent),
                             letterSpacing: 1.0,
                           ),
                         ),
@@ -90,7 +100,38 @@ class DashboardScreen extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 36),
+              const SizedBox(height: 24),
+
+              // Paused Banner if active
+              if (vpn.isPaused)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade900.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amberAccent.withOpacity(0.5)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.timer_outlined, color: Colors.amberAccent, size: 20),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Paused for ${_formatDuration(vpn.pauseRemaining)}',
+                            style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                      TextButton(
+                        onPressed: () => vpn.resumeProtection(),
+                        child: const Text('RESUME NOW', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
 
               // Glowing Interactive Power Toggle Button
               Center(
@@ -98,10 +139,29 @@ class DashboardScreen extends StatelessWidget {
                   onTap: vpn.isConnecting ? null : () => vpn.toggleVpn(),
                   isActive: vpn.isVpnActive,
                   isConnecting: vpn.isConnecting,
+                  isPaused: vpn.isPaused,
                 ),
               ),
 
-              const SizedBox(height: 36),
+              const SizedBox(height: 24),
+
+              // Quick Pause Options (5m, 15m, 1h)
+              if (vpn.isVpnActive && !vpn.isPaused)
+                Center(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('Pause: ', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      _buildPauseChip(context, vpn, '5m', const Duration(minutes: 5)),
+                      const SizedBox(width: 6),
+                      _buildPauseChip(context, vpn, '15m', const Duration(minutes: 15)),
+                      const SizedBox(width: 6),
+                      _buildPauseChip(context, vpn, '1h', const Duration(hours: 1)),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 28),
 
               // Stat Grid (2x2)
               GridView.count(
@@ -141,7 +201,7 @@ class DashboardScreen extends StatelessWidget {
 
               const SizedBox(height: 28),
 
-              // Activity Chart Card
+              // Traffic Overview & DNS Latency Card
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
@@ -156,19 +216,26 @@ class DashboardScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Traffic Overview',
+                          'Traffic & Latency',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
                         ),
-                        Text(
-                          'DNS Engine: Active',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.cyanAccent.shade100,
-                          ),
+                        Row(
+                          children: [
+                            const Icon(Icons.bolt, color: Colors.amberAccent, size: 16),
+                            const SizedBox(width: 4),
+                            Text(
+                              '14 ms (Ultra Fast)',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.cyanAccent.shade100,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -213,6 +280,31 @@ class DashboardScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildPauseChip(BuildContext context, VpnProvider vpn, String label, Duration duration) {
+    return InkWell(
+      onTap: () => vpn.pauseProtection(duration),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161B22),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds % 60;
+    return '${m}m ${s.toString().padLeft(2, '0')}s';
   }
 
   Widget _buildStatCard({
@@ -263,17 +355,21 @@ class GestureController extends StatelessWidget {
   final VoidCallback? onTap;
   final bool isActive;
   final bool isConnecting;
+  final bool isPaused;
 
   const GestureController({
     super.key,
     required this.onTap,
     required this.isActive,
     required this.isConnecting,
+    this.isPaused = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = isActive ? Colors.emeraldAccent : Colors.cyanAccent;
+    final color = isPaused
+        ? Colors.amberAccent
+        : (isActive ? Colors.emeraldAccent : Colors.cyanAccent);
 
     return GestureDetector(
       onTap: onTap,
@@ -285,23 +381,23 @@ class GestureController extends StatelessWidget {
           shape: BoxShape.circle,
           gradient: RadialGradient(
             colors: [
-              isActive
-                  ? Colors.emerald.shade800.withOpacity(0.8)
-                  : Colors.cyan.shade900.withOpacity(0.6),
+              isPaused
+                  ? Colors.amber.shade900.withOpacity(0.6)
+                  : (isActive
+                      ? Colors.emerald.shade800.withOpacity(0.8)
+                      : Colors.cyan.shade900.withOpacity(0.6)),
               const Color(0xFF161B22),
             ],
           ),
           boxShadow: [
             BoxShadow(
-              color: isActive
-                  ? Colors.emeraldAccent.withOpacity(0.4)
-                  : Colors.cyanAccent.withOpacity(0.2),
+              color: color.withOpacity(0.3),
               blurRadius: isActive ? 36 : 18,
               spreadRadius: isActive ? 6 : 2,
             ),
           ],
           border: Border.all(
-            color: isActive ? Colors.emeraldAccent : Colors.cyanAccent.withOpacity(0.6),
+            color: color.withOpacity(0.8),
             width: 3,
           ),
         ),
@@ -319,20 +415,24 @@ class GestureController extends StatelessWidget {
               )
             else
               Icon(
-                Icons.power_settings_new_rounded,
+                isPaused
+                    ? Icons.pause_circle_outline_rounded
+                    : Icons.power_settings_new_rounded,
                 size: 54,
-                color: isActive ? Colors.white : Colors.grey.shade300,
+                color: isActive || isPaused ? Colors.white : Colors.grey.shade300,
               ),
             const SizedBox(height: 8),
             Text(
               isConnecting
                   ? 'CONNECTING'
-                  : (isActive ? 'PROTECTED' : 'TAP TO START'),
+                  : (isPaused
+                      ? 'PAUSED'
+                      : (isActive ? 'PROTECTED' : 'TAP TO START')),
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.2,
-                color: isActive ? Colors.emeraldAccent : Colors.grey.shade300,
+                color: color,
               ),
             ),
           ],

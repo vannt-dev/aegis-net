@@ -2,7 +2,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::sync::Arc;
 use lazy_static::lazy_static;
-use crate::rule_engine::RuleEngine;
+use crate::rule_engine::{RuleEngine, RuleCategory};
 use crate::statistics::StatisticsEngine;
 use crate::dns_filter::DnsFilterService;
 
@@ -24,15 +24,35 @@ pub extern "C" fn aegis_init() -> c_int {
     1
 }
 
-/// Load filter rules text into engine (Returns count of rules added)
+/// Enable or disable a rule category (0: Ads, 1: Trackers, 2: Malware, 3: Adult)
 #[no_mangle]
-pub extern "C" fn aegis_load_rules(rules_text_ptr: *const c_char) -> u32 {
+pub extern "C" fn aegis_set_category(category_id: c_int, enabled: c_int) {
+    let cat = match category_id {
+        0 => RuleCategory::Ads,
+        1 => RuleCategory::Trackers,
+        2 => RuleCategory::Malware,
+        3 => RuleCategory::Adult,
+        _ => return,
+    };
+    RULE_ENGINE.set_category_enabled(cat, enabled != 0);
+}
+
+/// Load filter rules text into engine
+#[no_mangle]
+pub extern "C" fn aegis_load_rules(rules_text_ptr: *const c_char, category_id: c_int) -> u32 {
     if rules_text_ptr.is_null() {
         return 0;
     }
+    let cat = match category_id {
+        0 => RuleCategory::Ads,
+        1 => RuleCategory::Trackers,
+        2 => RuleCategory::Malware,
+        3 => RuleCategory::Adult,
+        _ => RuleCategory::Ads,
+    };
     let c_str = unsafe { CStr::from_ptr(rules_text_ptr) };
     if let Ok(rules_str) = c_str.to_str() {
-        RULE_ENGINE.load_rules_text(rules_str) as u32
+        RULE_ENGINE.load_rules_text(rules_str, cat) as u32
     } else {
         0
     }
@@ -67,7 +87,7 @@ pub extern "C" fn aegis_is_domain_blocked(domain_ptr: *const c_char) -> c_int {
     }
 }
 
-/// Process a DNS raw packet payload (Input buffer -> Returns output response buffer length)
+/// Process a DNS raw packet payload
 #[no_mangle]
 pub extern "C" fn aegis_handle_dns_packet(
     in_buf: *const u8,
@@ -94,19 +114,11 @@ pub extern "C" fn aegis_handle_dns_packet(
     response.len()
 }
 
-/// Get current statistics as JSON string (Caller must free returned pointer)
+/// Get current statistics as JSON string
 #[no_mangle]
 pub extern "C" fn aegis_get_stats_json() -> *mut c_char {
     let summary = STATS_ENGINE.get_summary();
     let json = serde_json::to_string(&summary).unwrap_or_else(|_| "{}".to_string());
-    CString::new(json).unwrap().into_raw()
-}
-
-/// Get recent query logs as JSON string (Caller must free returned pointer)
-#[no_mangle]
-pub extern "C" fn aegis_get_logs_json(limit: u32) -> *mut c_char {
-    let logs = STATS_ENGINE.get_recent_logs(limit as usize);
-    let json = serde_json::to_string(&logs).unwrap_or_else(|_| "[]".to_string());
     CString::new(json).unwrap().into_raw()
 }
 

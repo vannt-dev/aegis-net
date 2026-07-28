@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
 
 class DnsLogItem {
@@ -22,6 +23,19 @@ class VpnProvider extends ChangeNotifier {
   bool _isConnecting = false;
   int _activeRulesCount = 128450;
   String _upstreamDns = 'Cloudflare (1.1.1.1)';
+
+  // Pause protection timer
+  DateTime? _pausedUntil;
+  Timer? _pauseTimer;
+
+  // Category Toggles
+  bool _blockAds = true;
+  bool _blockTrackers = true;
+  bool _blockMalware = true;
+  bool _blockAdult = false;
+
+  // App Bypass / Split Tunneling List
+  final List<String> _bypassApps = ['com.zing.zalo', 'com.vietcombank.mobile'];
 
   Map<String, dynamic> _stats = {
     'total_queries': 1420,
@@ -47,16 +61,6 @@ class VpnProvider extends ChangeNotifier {
         domain: 'graph.facebook.com',
         isBlocked: true,
         timestamp: DateTime.now().subtract(const Duration(seconds: 20))),
-    DnsLogItem(
-        id: '4',
-        domain: 'clients3.google.com',
-        isBlocked: false,
-        timestamp: DateTime.now().subtract(const Duration(seconds: 35))),
-    DnsLogItem(
-        id: '5',
-        domain: 'adservice.google.com',
-        isBlocked: true,
-        timestamp: DateTime.now().subtract(const Duration(seconds: 50))),
   ];
 
   final List<String> _whitelist = ['mybank.com', 'workplace.com'];
@@ -64,24 +68,46 @@ class VpnProvider extends ChangeNotifier {
 
   Timer? _simulationTimer;
 
-  bool get isVpnActive => _isVpnActive;
+  bool get isVpnActive => _isVpnActive && !isPaused;
   bool get isConnecting => _isConnecting;
+  bool get isPaused => _pausedUntil != null && DateTime.now().isBefore(_pausedUntil!);
+  Duration get pauseRemaining => isPaused ? _pausedUntil!.difference(DateTime.now()) : Duration.zero;
+
   int get activeRulesCount => _activeRulesCount;
   String get upstreamDns => _upstreamDns;
   Map<String, dynamic> get stats => _stats;
   List<DnsLogItem> get logs => List.unmodifiable(_logs);
   List<String> get whitelist => List.unmodifiable(_whitelist);
   List<String> get blacklist => List.unmodifiable(_blacklist);
+  List<String> get bypassApps => List.unmodifiable(_bypassApps);
+
+  bool get blockAds => _blockAds;
+  bool get blockTrackers => _blockTrackers;
+  bool get blockMalware => _blockMalware;
+  bool get blockAdult => _blockAdult;
 
   VpnProvider() {
+    _initPreferences();
     AegisBridge.initEngine();
+  }
+
+  Future<void> _initPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    _upstreamDns = prefs.getString('upstream_dns') ?? 'Cloudflare (1.1.1.1)';
+    _blockAds = prefs.getBool('block_ads') ?? true;
+    _blockTrackers = prefs.getBool('block_trackers') ?? true;
+    _blockMalware = prefs.getBool('block_malware') ?? true;
+    _blockAdult = prefs.getBool('block_adult') ?? false;
+    notifyListeners();
   }
 
   Future<void> toggleVpn() async {
     _isConnecting = true;
+    _pausedUntil = null;
+    _pauseTimer?.cancel();
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 800));
+    await Future.delayed(const Duration(milliseconds: 600));
 
     if (_isVpnActive) {
       await AegisBridge.stopVpn();
@@ -97,8 +123,46 @@ class VpnProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setUpstreamDns(String provider) {
+  /// Pause protection for specified duration
+  void pauseProtection(Duration duration) {
+    _pausedUntil = DateTime.now().add(duration);
+    _pauseTimer?.cancel();
+    _pauseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!isPaused) {
+        _pausedUntil = null;
+        timer.cancel();
+      }
+      notifyListeners();
+    });
+    notifyListeners();
+  }
+
+  /// Resume protection immediately
+  void resumeProtection() {
+    _pausedUntil = null;
+    _pauseTimer?.cancel();
+    notifyListeners();
+  }
+
+  void toggleCategory(int categoryId, bool value) async {
+    if (categoryId == 0) _blockAds = value;
+    if (categoryId == 1) _blockTrackers = value;
+    if (categoryId == 2) _blockMalware = value;
+    if (categoryId == 3) _blockAdult = value;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('block_ads', _blockAds);
+    await prefs.setBool('block_trackers', _blockTrackers);
+    await prefs.setBool('block_malware', _blockMalware);
+    await prefs.setBool('block_adult', _blockAdult);
+
+    notifyListeners();
+  }
+
+  void setUpstreamDns(String provider) async {
     _upstreamDns = provider;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('upstream_dns', provider);
     notifyListeners();
   }
 
@@ -132,6 +196,19 @@ class VpnProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void addBypassApp(String packageName) {
+    if (packageName.trim().isEmpty) return;
+    if (!_bypassApps.contains(packageName.trim())) {
+      _bypassApps.add(packageName.trim());
+      notifyListeners();
+    }
+  }
+
+  void removeBypassApp(String packageName) {
+    _bypassApps.remove(packageName);
+    notifyListeners();
+  }
+
   void _startSimulation() {
     _simulationTimer?.cancel();
     final random = Random();
@@ -149,7 +226,7 @@ class VpnProvider extends ChangeNotifier {
     ];
 
     _simulationTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (!_isVpnActive) return;
+      if (!isVpnActive) return;
 
       final domain = sampleDomains[random.nextInt(sampleDomains.length)];
       final isBlocked = AegisBridge.isDomainBlocked(domain);
@@ -182,6 +259,7 @@ class VpnProvider extends ChangeNotifier {
   @override
   void dispose() {
     _simulationTimer?.cancel();
+    _pauseTimer?.cancel();
     super.dispose();
   }
 }
