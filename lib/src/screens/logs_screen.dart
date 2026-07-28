@@ -19,7 +19,10 @@ class _LogsScreenState extends State<LogsScreen> {
   @override
   Widget build(BuildContext context) {
     final vpn = context.watch<VpnProvider>();
-    final logs = vpn.logs.where((log) => log.domain.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+    final logs = vpn.logs
+        .where((log) =>
+            log.domain.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
@@ -28,7 +31,8 @@ class _LogsScreenState extends State<LogsScreen> {
         elevation: 0,
         title: const Text(
           'Live Query Logs',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(
+              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
       body: Column(
@@ -45,7 +49,8 @@ class _LogsScreenState extends State<LogsScreen> {
                 prefixIcon: const Icon(Icons.search, color: Colors.grey),
                 filled: true,
                 fillColor: const Color(0xFF161B22),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: const BorderSide(color: Colors.white24),
@@ -64,16 +69,20 @@ class _LogsScreenState extends State<LogsScreen> {
                     ),
                   )
                 : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     itemCount: logs.length,
-                    separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
+                    separatorBuilder: (context, index) =>
+                        const Divider(color: Colors.white10, height: 1),
                     itemBuilder: (context, index) {
                       final item = logs[index];
-                      final timeStr = DateFormat('HH:mm:ss').format(item.timestamp);
+                      final timeStr =
+                          DateFormat('HH:mm:ss').format(item.timestamp);
 
                       return ListTile(
                         dense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         leading: Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
@@ -83,9 +92,13 @@ class _LogsScreenState extends State<LogsScreen> {
                                 : emeraldDarkColor.withOpacity(0.4),
                           ),
                           child: Icon(
-                            item.isBlocked ? Icons.block : Icons.check_circle_outline,
+                            item.isBlocked
+                                ? Icons.block
+                                : Icons.check_circle_outline,
                             size: 18,
-                            color: item.isBlocked ? Colors.redAccent : emeraldColor,
+                            color: item.isBlocked
+                                ? Colors.redAccent
+                                : emeraldColor,
                           ),
                         ),
                         title: Text(
@@ -98,12 +111,16 @@ class _LogsScreenState extends State<LogsScreen> {
                         ),
                         subtitle: Text(
                           timeStr,
-                          style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                          style: TextStyle(
+                              color: Colors.grey.shade500, fontSize: 11),
                         ),
                         trailing: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: item.isBlocked ? Colors.red.withOpacity(0.15) : emeraldDarkColor.withOpacity(0.3),
+                            color: item.isBlocked
+                                ? Colors.red.withOpacity(0.15)
+                                : emeraldDarkColor.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -111,7 +128,9 @@ class _LogsScreenState extends State<LogsScreen> {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: item.isBlocked ? Colors.redAccent : emeraldColor,
+                              color: item.isBlocked
+                                  ? Colors.redAccent
+                                  : emeraldColor,
                             ),
                           ),
                         ),

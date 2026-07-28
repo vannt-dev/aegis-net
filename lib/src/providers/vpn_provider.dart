@@ -68,8 +68,10 @@ class VpnProvider extends ChangeNotifier {
 
   bool get isVpnActive => _isVpnActive && !isPaused;
   bool get isConnecting => _isConnecting;
-  bool get isPaused => _pausedUntil != null && DateTime.now().isBefore(_pausedUntil!);
-  Duration get pauseRemaining => isPaused ? _pausedUntil!.difference(DateTime.now()) : Duration.zero;
+  bool get isPaused =>
+      _pausedUntil != null && DateTime.now().isBefore(_pausedUntil!);
+  Duration get pauseRemaining =>
+      isPaused ? _pausedUntil!.difference(DateTime.now()) : Duration.zero;
 
   int get activeRulesCount => _activeRulesCount;
   String get upstreamDns => _upstreamDns;

@@ -1,29 +1,37 @@
 #!/bin/sh
-echo "🔍 [PRE-COMMIT HOOK] Checking code quality..."
+echo "🔍 [PRE-COMMIT HOOK] Enforcing code standards & quality..."
 
 export PATH="$PATH:/c/flutter/bin:/c/src/flutter/bin"
 
-if command -v flutter >/dev/null 2>&1; then
-  echo "1/2 Running Flutter analyze..."
-  flutter analyze --no-fatal-infos --no-fatal-warnings
+if command -v dart >/dev/null 2>&1; then
+  echo "1/3 Checking Dart Code Formatting (dart format)..."
+  dart format --set-exit-if-changed . >/dev/null 2>&1
   if [ $? -ne 0 ]; then
-    echo "❌ Flutter analyze errors found. Please fix errors before committing."
+    echo "❌ Code formatting issues found! Run 'dart format .' to format your code before committing."
     exit 1
   fi
-else
-  echo "1/2 [SKIP] Flutter CLI not found in Git shell PATH."
+  echo "  ✓ Dart code formatting OK"
+fi
+
+if command -v flutter >/dev/null 2>&1; then
+  echo "2/3 Running Static Code Analysis (flutter analyze)..."
+  flutter analyze --no-fatal-infos --no-fatal-warnings
+  if [ $? -ne 0 ]; then
+    echo "❌ Flutter analyze errors found. Please fix all errors before committing."
+    exit 1
+  fi
+  echo "  ✓ Static code analysis OK"
 fi
 
 if command -v cargo >/dev/null 2>&1; then
-  echo "2/2 Checking Rust Core Crate..."
+  echo "3/3 Checking Rust Core Compilation (cargo check)..."
   cargo check --manifest-path rust/aegis_core/Cargo.toml
   if [ $? -ne 0 ]; then
     echo "❌ Rust compilation check failed."
     exit 1
   fi
-else
-  echo "2/2 [SKIP] Cargo CLI not found in Git shell PATH."
+  echo "  ✓ Rust compilation OK"
 fi
 
-echo "✅ Pre-commit checks completed!"
+echo "✅ [PRE-COMMIT HOOK] All pre-commit checks passed!"
 exit 0

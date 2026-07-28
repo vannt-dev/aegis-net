@@ -1,29 +1,33 @@
 #!/bin/sh
-echo "🧪 [PRE-PUSH HOOK] Running automated unit tests..."
+echo "🧪 [PRE-PUSH HOOK] Running mandatory test suite before push..."
 
 export PATH="$PATH:/c/flutter/bin:/c/src/flutter/bin"
 
+# Condition 1: Flutter Unit & Widget Tests
 if command -v flutter >/dev/null 2>&1; then
-  echo "1/2 Running Flutter Unit Tests..."
+  echo "1/2 Running Flutter Unit & Widget Tests..."
   flutter test
   if [ $? -ne 0 ]; then
-    echo "❌ Flutter unit tests failed. Aborting push."
+    echo "❌ [PUSH ABORTED] Flutter unit/widget tests failed! Fix failing tests before pushing."
     exit 1
   fi
+  echo "  ✓ Flutter tests passed!"
 else
-  echo "1/2 [SKIP] Flutter CLI not found in Git shell PATH."
+  echo "1/2 [SKIP] Flutter CLI not found in shell PATH."
 fi
 
+# Condition 2: Rust Core Engine Unit Tests
 if command -v cargo >/dev/null 2>&1; then
   echo "2/2 Running Rust Core Unit Tests..."
   cargo test --manifest-path rust/aegis_core/Cargo.toml
   if [ $? -ne 0 ]; then
-    echo "❌ Rust unit tests failed. Aborting push."
+    echo "❌ [PUSH ABORTED] Rust Core unit tests failed! Fix failing tests before pushing."
     exit 1
   fi
+  echo "  ✓ Rust tests passed!"
 else
-  echo "2/2 [SKIP] Cargo CLI not found in Git shell PATH."
+  echo "2/2 [SKIP] Cargo CLI not found in shell PATH."
 fi
 
-echo "✅ Pre-push checks completed!"
+echo "🚀 [PRE-PUSH HOOK] All conditions satisfied! Pushing code..."
 exit 0

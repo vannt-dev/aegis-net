@@ -26,7 +26,8 @@ class DnsBenchmarkService {
 
   /// Benchmark latency to all DNS providers in parallel
   static Future<List<DnsPingResult>> benchmarkAll() async {
-    final List<Future<DnsPingResult>> futures = dnsProviders.map((provider) async {
+    final List<Future<DnsPingResult>> futures =
+        dnsProviders.map((provider) async {
       final name = provider['name']!;
       final ip = provider['ip']!;
       final latency = await measurePing(ip);
@@ -55,7 +56,8 @@ class DnsBenchmarkService {
   static Future<int> measurePing(String ip) async {
     final stopwatch = Stopwatch()..start();
     try {
-      final socket = await Socket.connect(ip, 53, timeout: const Duration(seconds: 2));
+      final socket =
+          await Socket.connect(ip, 53, timeout: const Duration(seconds: 2));
       socket.destroy();
       stopwatch.stop();
       return stopwatch.elapsedMilliseconds;

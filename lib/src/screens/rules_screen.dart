@@ -13,7 +13,8 @@ class RulesScreen extends StatefulWidget {
   State<RulesScreen> createState() => _RulesScreenState();
 }
 
-class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStateMixin {
+class _RulesScreenState extends State<RulesScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _domainInputController = TextEditingController();
   bool _isSyncing = false;
@@ -59,7 +60,8 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
         elevation: 0,
         title: const Text(
           'Filter Rules & Engine',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(
+              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         actions: [
           IconButton(
@@ -67,7 +69,8 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.cyanAccent),
                   )
                 : const Icon(Icons.sync_rounded, color: Colors.cyanAccent),
             tooltip: 'Sync Live Rules',
@@ -99,7 +102,8 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
               ),
               _buildPresetTile(
                 title: 'EasyList DNS',
-                description: 'Primary ad-blocking list for app banners & popups',
+                description:
+                    'Primary ad-blocking list for app banners & popups',
                 enabled: true,
               ),
               _buildPresetTile(
@@ -109,7 +113,8 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
               ),
               _buildPresetTile(
                 title: 'NoCoin & Crypto-Miner Block',
-                description: 'Protects device battery from background mining scripts',
+                description:
+                    'Protects device battery from background mining scripts',
                 enabled: true,
               ),
             ],
@@ -123,7 +128,10 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
               children: [
                 const Text(
                   'Add Custom Domain Rule',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -137,7 +145,8 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
                           hintStyle: TextStyle(color: Colors.grey.shade600),
                           filled: true,
                           fillColor: const Color(0xFF161B22),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                             borderSide: const BorderSide(color: Colors.white24),
@@ -149,37 +158,46 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: emeraldDarkColor,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 14),
                       ),
                       onPressed: () {
                         vpn.addWhitelistDomain(_domainInputController.text);
                         _domainInputController.clear();
                       },
-                      child: const Text('ALLOW', style: TextStyle(color: Colors.white, fontSize: 11)),
+                      child: const Text('ALLOW',
+                          style: TextStyle(color: Colors.white, fontSize: 11)),
                     ),
                     const SizedBox(width: 6),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red.shade700,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 14),
                       ),
                       onPressed: () {
                         vpn.addBlacklistDomain(_domainInputController.text);
                         _domainInputController.clear();
                       },
-                      child: const Text('BLOCK', style: TextStyle(color: Colors.white, fontSize: 11)),
+                      child: const Text('BLOCK',
+                          style: TextStyle(color: Colors.white, fontSize: 11)),
                     ),
                   ],
                 ),
                 const SizedBox(height: 24),
                 const Text(
                   'Custom Whitelist (Always Allowed)',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: emeraldColor),
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: emeraldColor),
                 ),
                 const SizedBox(height: 8),
                 Expanded(
                   child: vpn.whitelist.isEmpty
-                      ? Center(child: Text('No custom whitelisted domains', style: TextStyle(color: Colors.grey.shade500)))
+                      ? Center(
+                          child: Text('No custom whitelisted domains',
+                              style: TextStyle(color: Colors.grey.shade500)))
                       : ListView.builder(
                           itemCount: vpn.whitelist.length,
                           itemBuilder: (context, index) {
@@ -187,10 +205,14 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
                             return Material(
                               color: Colors.transparent,
                               child: ListTile(
-                                title: Text(domain, style: const TextStyle(color: Colors.white)),
+                                title: Text(domain,
+                                    style:
+                                        const TextStyle(color: Colors.white)),
                                 trailing: IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.grey),
-                                  onPressed: () => vpn.removeWhitelistDomain(domain),
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.grey),
+                                  onPressed: () =>
+                                      vpn.removeWhitelistDomain(domain),
                                 ),
                               ),
                             );
@@ -220,8 +242,11 @@ class _RulesScreenState extends State<RulesScreen> with SingleTickerProviderStat
       child: Material(
         color: Colors.transparent,
         child: SwitchListTile(
-          title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          subtitle: Text(description, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+          title: Text(title,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold)),
+          subtitle: Text(description,
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
           value: enabled,
           activeColor: Colors.cyanAccent,
           onChanged: (val) {},

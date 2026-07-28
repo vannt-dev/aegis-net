@@ -11,7 +11,8 @@ This document provides detailed instructions for setting up the environment, com
 4. [Building & Packaging Android (APK / AAB)](#4-building--packaging-android-apk--aab)
 5. [Building & Packaging iOS (IPA / TestFlight)](#5-building--packaging-ios-ipa--testflight)
 6. [Building & Serving Web Bundle](#6-building--serving-web-bundle)
-7. [Automated CI/CD with GitHub Actions](#7-automated-cicd-with-github-actions)
+7. [Automated Code Quality & Git Hooks Policy](#7-automated-code-quality--git-hooks-policy)
+8. [Automated CI/CD with GitHub Actions](#8-automated-cicd-with-github-actions)
 
 ---
 
@@ -42,6 +43,7 @@ This document provides detailed instructions for setting up the environment, com
 
 ```text
 aegis-net/
+├── .githooks/         # Git quality enforcement hooks (commit-msg, pre-commit, pre-push)
 ├── rust/aegis_core/   # Rust Core Engine (Trie, DNS Sinkhole, C-FFI exports)
 ├── android/           # Native Android Project (VpnService)
 ├── ios/               # Native iOS Project (NEPacketTunnelProvider)
@@ -119,6 +121,22 @@ cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../android/app/src/main/jn
 
 ---
 
-## 7. Automated CI/CD with GitHub Actions
+## 7. Automated Code Quality & Git Hooks Policy
 
-The repository includes `.github/workflows/build.yml` which automatically runs syntax checks, Rust builds, and Flutter Web/Android APK builds on every push to `main`.
+AegisNet enforces strict pre-commit, pre-push, and commit message quality controls using `.githooks/`:
+
+### Enable Git Hooks locally:
+```bash
+git config core.hooksPath .githooks
+```
+
+### Enforced Rules:
+1. **Commit Message Format (`.githooks/commit-msg`)**: Must follow Conventional Commits format (`feat: ...`, `fix: ...`, `docs: ...`, `test: ...`, `chore: ...`).
+2. **Code Formatting (`.githooks/pre-commit`)**: All Dart code must be formatted (`dart format .`).
+3. **Pre-push Quality Gate (`.githooks/pre-push`)**: All Flutter & Rust unit tests (`flutter test`, `cargo test`) MUST pass before allowing a `git push`.
+
+---
+
+## 8. Automated CI/CD with GitHub Actions
+
+The repository includes `.github/workflows/build.yml` which automatically runs syntax checks, Rust builds, unit test suites, and Flutter Web/Android APK builds on every push to `main`.

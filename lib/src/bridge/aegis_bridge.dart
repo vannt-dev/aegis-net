@@ -63,7 +63,9 @@ class AegisBridge {
       int added = 0;
       for (final line in content.split('\n')) {
         final trimmed = line.trim();
-        if (trimmed.isNotEmpty && !trimmed.startsWith('#') && !trimmed.startsWith('!')) {
+        if (trimmed.isNotEmpty &&
+            !trimmed.startsWith('#') &&
+            !trimmed.startsWith('!')) {
           _loadedRules.add(trimmed.toLowerCase());
           added++;
         }

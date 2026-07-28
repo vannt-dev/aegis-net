@@ -7,7 +7,8 @@ import 'package:aegis_net/src/providers/theme_provider.dart';
 import 'package:aegis_net/src/screens/main_navigation_screen.dart';
 
 void main() {
-  testWidgets('AegisApp smoke test & widget rendering', (WidgetTester tester) async {
+  testWidgets('AegisApp smoke test & widget rendering',
+      (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
 
     final vpnProvider = VpnProvider(enableSimulation: false);

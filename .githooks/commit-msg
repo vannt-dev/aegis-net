@@ -1,0 +1,37 @@
+#!/bin/sh
+# Git commit-msg hook to enforce Conventional Commits specification
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Regular expression for Conventional Commits format
+# Example valid messages:
+#   feat: add DNS speed test feature
+#   fix(rust): resolve memory leak in dns_filter
+#   docs: update user guide
+PATTERN="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_-]+\))?!?: .+"
+
+if ! echo "$COMMIT_MSG" | grep -iqE "$PATTERN"; then
+  echo "❌ [COMMIT REJECTED] Invalid commit message format!"
+  echo ""
+  echo "Commit message: \"$COMMIT_MSG\""
+  echo ""
+  echo "Please follow the Conventional Commits specification:"
+  echo "  <type>(<scope>): <short description>"
+  echo ""
+  echo "Allowed types:"
+  echo "  feat     : A new feature"
+  echo "  fix      : A bug fix"
+  echo "  docs     : Documentation changes"
+  echo "  style    : Code style & formatting changes"
+  echo "  refactor : Code change that neither fixes a bug nor adds a feature"
+  echo "  test     : Adding or updating tests"
+  echo "  ci       : CI/CD workflow changes"
+  echo "  chore    : Maintenance or dependency updates"
+  echo ""
+  echo "Example: git commit -m \"feat(dns): add smart resolver benchmark\""
+  exit 1
+fi
+
+echo "✅ [COMMIT-MSG HOOK] Valid Conventional Commit format!"
+exit 0

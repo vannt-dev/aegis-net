@@ -26,7 +26,8 @@ class AnalyticsScreen extends StatelessWidget {
         elevation: 0,
         title: const Text(
           'Detailed Analytics & Reports',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(
+              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
       body: ListView(
@@ -35,7 +36,8 @@ class AnalyticsScreen extends StatelessWidget {
           // Top Blocked Domains Header
           Text(
             'Top Blocked Ad Networks',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: accent),
+            style: TextStyle(
+                fontSize: 15, fontWeight: FontWeight.bold, color: accent),
           ),
           const SizedBox(height: 12),
           Column(
@@ -44,7 +46,8 @@ class AnalyticsScreen extends StatelessWidget {
               final count = item['count'] as int;
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFF161B22),
                   borderRadius: BorderRadius.circular(12),
@@ -55,20 +58,29 @@ class AnalyticsScreen extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.shield_rounded, color: Colors.redAccent.shade200, size: 18),
+                        Icon(Icons.shield_rounded,
+                            color: Colors.redAccent.shade200, size: 18),
                         const SizedBox(width: 10),
-                        Text(domain, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+                        Text(domain,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13)),
                       ],
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: Colors.red.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
                         '$count blocked',
-                        style: TextStyle(color: Colors.redAccent.shade200, fontWeight: FontWeight.bold, fontSize: 11),
+                        style: TextStyle(
+                            color: Colors.redAccent.shade200,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11),
                       ),
                     ),
                   ],
@@ -82,7 +94,8 @@ class AnalyticsScreen extends StatelessWidget {
           // Hourly Activity Heatmap / Bar Chart
           Text(
             'Hourly Query Distribution',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: accent),
+            style: TextStyle(
+                fontSize: 15, fontWeight: FontWeight.bold, color: accent),
           ),
           const SizedBox(height: 12),
           Container(
@@ -99,13 +112,20 @@ class AnalyticsScreen extends StatelessWidget {
                 titlesData: const FlTitlesData(show: false),
                 borderData: FlBorderData(show: false),
                 barGroups: [
-                  BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 12, color: accent)]),
-                  BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 25, color: accent)]),
-                  BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 18, color: accent)]),
-                  BarChartGroupData(x: 3, barRods: [BarChartRodData(toY: 42, color: accent)]),
-                  BarChartGroupData(x: 4, barRods: [BarChartRodData(toY: 68, color: accent)]),
-                  BarChartGroupData(x: 5, barRods: [BarChartRodData(toY: 55, color: accent)]),
-                  BarChartGroupData(x: 6, barRods: [BarChartRodData(toY: 84, color: accent)]),
+                  BarChartGroupData(
+                      x: 0, barRods: [BarChartRodData(toY: 12, color: accent)]),
+                  BarChartGroupData(
+                      x: 1, barRods: [BarChartRodData(toY: 25, color: accent)]),
+                  BarChartGroupData(
+                      x: 2, barRods: [BarChartRodData(toY: 18, color: accent)]),
+                  BarChartGroupData(
+                      x: 3, barRods: [BarChartRodData(toY: 42, color: accent)]),
+                  BarChartGroupData(
+                      x: 4, barRods: [BarChartRodData(toY: 68, color: accent)]),
+                  BarChartGroupData(
+                      x: 5, barRods: [BarChartRodData(toY: 55, color: accent)]),
+                  BarChartGroupData(
+                      x: 6, barRods: [BarChartRodData(toY: 84, color: accent)]),
                 ],
               ),
             ),

@@ -50,12 +50,22 @@ class AegisNativeBindings {
 
       if (_lib != null) {
         _init = _lib!.lookupFunction<AegisInitC, AegisInitDart>('aegis_init');
-        _loadRules = _lib!.lookupFunction<AegisLoadRulesC, AegisLoadRulesDart>('aegis_load_rules');
-        _addWhitelist = _lib!.lookupFunction<AegisAddDomainC, AegisAddDomainDart>('aegis_add_whitelist');
-        _addBlacklist = _lib!.lookupFunction<AegisAddDomainC, AegisAddDomainDart>('aegis_add_blacklist');
-        _isDomainBlocked = _lib!.lookupFunction<AegisIsBlockedC, AegisIsBlockedDart>('aegis_is_domain_blocked');
-        _getStatsJson = _lib!.lookupFunction<AegisGetStatsC, AegisGetStatsDart>('aegis_get_stats_json');
-        _freeString = _lib!.lookupFunction<AegisFreeStringC, AegisFreeStringDart>('aegis_free_string');
+        _loadRules = _lib!.lookupFunction<AegisLoadRulesC, AegisLoadRulesDart>(
+            'aegis_load_rules');
+        _addWhitelist = _lib!
+            .lookupFunction<AegisAddDomainC, AegisAddDomainDart>(
+                'aegis_add_whitelist');
+        _addBlacklist = _lib!
+            .lookupFunction<AegisAddDomainC, AegisAddDomainDart>(
+                'aegis_add_blacklist');
+        _isDomainBlocked = _lib!
+            .lookupFunction<AegisIsBlockedC, AegisIsBlockedDart>(
+                'aegis_is_domain_blocked');
+        _getStatsJson = _lib!.lookupFunction<AegisGetStatsC, AegisGetStatsDart>(
+            'aegis_get_stats_json');
+        _freeString = _lib!
+            .lookupFunction<AegisFreeStringC, AegisFreeStringDart>(
+                'aegis_free_string');
 
         _init?.call();
         _isLoaded = true;

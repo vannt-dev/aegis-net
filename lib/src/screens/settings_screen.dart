@@ -21,7 +21,8 @@ class SettingsScreen extends StatelessWidget {
           children: [
             CircularProgressIndicator(color: Colors.cyanAccent),
             SizedBox(width: 20),
-            Text('Measuring DNS Latency...', style: TextStyle(color: Colors.white)),
+            Text('Measuring DNS Latency...',
+                style: TextStyle(color: Colors.white)),
           ],
         ),
       ),
@@ -34,11 +35,13 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
-  void _showBenchmarkResults(BuildContext context, VpnProvider vpn, List<DnsPingResult> results) {
+  void _showBenchmarkResults(
+      BuildContext context, VpnProvider vpn, List<DnsPingResult> results) {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF161B22),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
           padding: const EdgeInsets.all(20),
@@ -48,33 +51,45 @@ class SettingsScreen extends StatelessWidget {
             children: [
               const Text(
                 '⚡ DNS Benchmark Results',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white),
               ),
               const SizedBox(height: 12),
               ...results.map(
                 (r) => ListTile(
                   dense: true,
-                  title: Text(r.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  subtitle: Text(r.ip, style: TextStyle(color: Colors.grey.shade400)),
+                  title: Text(r.name,
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)),
+                  subtitle:
+                      Text(r.ip, style: TextStyle(color: Colors.grey.shade400)),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         '${r.latencyMs} ms',
                         style: TextStyle(
-                          color: r.isFastest ? emeraldColor : Colors.grey.shade300,
+                          color:
+                              r.isFastest ? emeraldColor : Colors.grey.shade300,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       if (r.isFastest)
                         Container(
                           margin: const EdgeInsets.only(left: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: emeraldDarkColor.withOpacity(0.4),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text('FASTEST', style: TextStyle(color: emeraldColor, fontSize: 9, fontWeight: FontWeight.bold)),
+                          child: const Text('FASTEST',
+                              style: TextStyle(
+                                  color: emeraldColor,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold)),
                         ),
                     ],
                   ),
@@ -107,7 +122,8 @@ class SettingsScreen extends StatelessWidget {
         elevation: 0,
         title: const Text(
           'Settings & Extensions',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(
+              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
       body: ListView(
@@ -116,16 +132,21 @@ class SettingsScreen extends StatelessWidget {
           // Cyberpunk Neon Theme Selector
           Text(
             'Cyberpunk Accent Color',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: accent),
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.bold, color: accent),
           ),
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildThemeCircle(context, theme, NeonTheme.cyan, Colors.cyanAccent),
-              _buildThemeCircle(context, theme, NeonTheme.emerald, emeraldColor),
-              _buildThemeCircle(context, theme, NeonTheme.purple, Colors.purpleAccent.shade100),
-              _buildThemeCircle(context, theme, NeonTheme.gold, Colors.amberAccent),
+              _buildThemeCircle(
+                  context, theme, NeonTheme.cyan, Colors.cyanAccent),
+              _buildThemeCircle(
+                  context, theme, NeonTheme.emerald, emeraldColor),
+              _buildThemeCircle(context, theme, NeonTheme.purple,
+                  Colors.purpleAccent.shade100),
+              _buildThemeCircle(
+                  context, theme, NeonTheme.gold, Colors.amberAccent),
             ],
           ),
 
@@ -137,25 +158,35 @@ class SettingsScreen extends StatelessWidget {
             children: [
               Text(
                 'Upstream DNS Resolver',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: accent),
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.bold, color: accent),
               ),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF161B22),
                   side: BorderSide(color: accent),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 ),
                 icon: Icon(Icons.flash_on, size: 14, color: accent),
-                label: Text('SPEED TEST', style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.bold)),
+                label: Text('SPEED TEST',
+                    style: TextStyle(
+                        color: accent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold)),
                 onPressed: () => _runDnsBenchmark(context, vpn),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          _buildDnsTile(context, vpn, 'Cloudflare (1.1.1.1)', 'Fastest privacy-focused resolver'),
-          _buildDnsTile(context, vpn, 'Google (8.8.8.8)', 'High reliability global resolver'),
-          _buildDnsTile(context, vpn, 'AdGuard DNS (94.140.14.14)', 'Upstream ad-blocking DNS'),
-          _buildDnsTile(context, vpn, 'Quad9 (9.9.9.9)', 'Malware protection & threat blocking'),
+          _buildDnsTile(context, vpn, 'Cloudflare (1.1.1.1)',
+              'Fastest privacy-focused resolver'),
+          _buildDnsTile(context, vpn, 'Google (8.8.8.8)',
+              'High reliability global resolver'),
+          _buildDnsTile(context, vpn, 'AdGuard DNS (94.140.14.14)',
+              'Upstream ad-blocking DNS'),
+          _buildDnsTile(context, vpn, 'Quad9 (9.9.9.9)',
+              'Malware protection & threat blocking'),
 
           const SizedBox(height: 16),
           // Custom DoH / DoT Field
@@ -167,7 +198,8 @@ class SettingsScreen extends StatelessWidget {
               hintStyle: TextStyle(color: Colors.grey.shade600),
               filled: true,
               fillColor: const Color(0xFF161B22),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide: const BorderSide(color: Colors.white24),
@@ -180,7 +212,10 @@ class SettingsScreen extends StatelessWidget {
           // App-by-App Split Tunneling
           Text(
             'App-by-App Split Tunneling (Bypass VPN)',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.amberAccent),
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.amberAccent),
           ),
           const SizedBox(height: 6),
           Text(
@@ -199,7 +234,8 @@ class SettingsScreen extends StatelessWidget {
                     hintStyle: TextStyle(color: Colors.grey.shade600),
                     filled: true,
                     fillColor: const Color(0xFF161B22),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: const BorderSide(color: Colors.white24),
@@ -211,13 +247,18 @@ class SettingsScreen extends StatelessWidget {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.amber.shade800,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
                 onPressed: () {
                   vpn.addBypassApp(bypassController.text);
                   bypassController.clear();
                 },
-                child: const Text('ADD', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                child: const Text('ADD',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -227,7 +268,8 @@ class SettingsScreen extends StatelessWidget {
                 .map(
                   (pkg) => Container(
                     margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: const Color(0xFF161B22),
                       borderRadius: BorderRadius.circular(10),
@@ -236,9 +278,12 @@ class SettingsScreen extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(pkg, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        Text(pkg,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 13)),
                         IconButton(
-                          icon: const Icon(Icons.close, color: Colors.grey, size: 18),
+                          icon: const Icon(Icons.close,
+                              color: Colors.grey, size: 18),
                           onPressed: () => vpn.removeBypassApp(pkg),
                         ),
                       ],
@@ -253,16 +298,22 @@ class SettingsScreen extends StatelessWidget {
           // Backup & Restore
           Text(
             'Export / Import Configuration',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: accent),
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.bold, color: accent),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(side: BorderSide(color: accent)),
+                  style:
+                      OutlinedButton.styleFrom(side: BorderSide(color: accent)),
                   icon: Icon(Icons.download, size: 16, color: accent),
-                  label: Text('EXPORT JSON', style: TextStyle(color: accent, fontSize: 11, fontWeight: FontWeight.bold)),
+                  label: Text('EXPORT JSON',
+                      style: TextStyle(
+                          color: accent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold)),
                   onPressed: () {
                     final backup = jsonEncode({
                       'whitelist': vpn.whitelist,
@@ -271,7 +322,9 @@ class SettingsScreen extends StatelessWidget {
                       'upstreamDns': vpn.upstreamDns,
                     });
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Config exported successfully: ${backup.length} bytes')),
+                      SnackBar(
+                          content: Text(
+                              'Config exported successfully: ${backup.length} bytes')),
                     );
                   },
                 ),
@@ -291,7 +344,8 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildThemeCircle(BuildContext context, ThemeProvider theme, NeonTheme nTheme, Color color) {
+  Widget _buildThemeCircle(BuildContext context, ThemeProvider theme,
+      NeonTheme nTheme, Color color) {
     final isSelected = theme.currentTheme == nTheme;
     return GestureDetector(
       onTap: () => theme.setTheme(nTheme),
@@ -310,7 +364,8 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDnsTile(BuildContext context, VpnProvider vpn, String title, String subtitle) {
+  Widget _buildDnsTile(
+      BuildContext context, VpnProvider vpn, String title, String subtitle) {
     final isSelected = vpn.upstreamDns == title;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -325,9 +380,16 @@ class SettingsScreen extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: ListTile(
-          title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-          subtitle: Text(subtitle, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
-          trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.cyanAccent) : null,
+          title: Text(title,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14)),
+          subtitle: Text(subtitle,
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+          trailing: isSelected
+              ? const Icon(Icons.check_circle, color: Colors.cyanAccent)
+              : null,
           onTap: () => vpn.setUpstreamDns(title),
         ),
       ),

@@ -17,8 +17,11 @@ class DashboardScreen extends StatelessWidget {
 
     final int totalQueries = stats['total_queries'] ?? 0;
     final int blockedQueries = stats['blocked_queries'] ?? 0;
-    final double blockRate = (stats['block_rate_percentage'] as num?)?.toDouble() ?? 0.0;
-    final double dataSavedMb = ((stats['estimated_data_saved_bytes'] as num?)?.toDouble() ?? 0.0) / (1024 * 1024);
+    final double blockRate =
+        (stats['block_rate_percentage'] as num?)?.toDouble() ?? 0.0;
+    final double dataSavedMb =
+        ((stats['estimated_data_saved_bytes'] as num?)?.toDouble() ?? 0.0) /
+            (1024 * 1024);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
@@ -55,7 +58,8 @@ class DashboardScreen extends StatelessWidget {
                     ],
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: vpn.isPaused
                           ? Colors.amber.shade900.withOpacity(0.3)
@@ -66,7 +70,9 @@ class DashboardScreen extends StatelessWidget {
                       border: Border.all(
                         color: vpn.isPaused
                             ? Colors.amberAccent
-                            : (vpn.isVpnActive ? emeraldColor : Colors.redAccent),
+                            : (vpn.isVpnActive
+                                ? emeraldColor
+                                : Colors.redAccent),
                         width: 1,
                       ),
                     ),
@@ -80,7 +86,9 @@ class DashboardScreen extends StatelessWidget {
                             shape: BoxShape.circle,
                             color: vpn.isPaused
                                 ? Colors.amberAccent
-                                : (vpn.isVpnActive ? emeraldColor : Colors.redAccent),
+                                : (vpn.isVpnActive
+                                    ? emeraldColor
+                                    : Colors.redAccent),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -93,7 +101,9 @@ class DashboardScreen extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                             color: vpn.isPaused
                                 ? Colors.amberAccent
-                                : (vpn.isVpnActive ? emeraldColor : Colors.redAccent),
+                                : (vpn.isVpnActive
+                                    ? emeraldColor
+                                    : Colors.redAccent),
                             letterSpacing: 1.0,
                           ),
                         ),
@@ -109,28 +119,38 @@ class DashboardScreen extends StatelessWidget {
               if (vpn.isPaused)
                 Container(
                   margin: const EdgeInsets.only(bottom: 20),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.amber.shade900.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.amberAccent.withOpacity(0.5)),
+                    border:
+                        Border.all(color: Colors.amberAccent.withOpacity(0.5)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.timer_outlined, color: Colors.amberAccent, size: 20),
+                          const Icon(Icons.timer_outlined,
+                              color: Colors.amberAccent, size: 20),
                           const SizedBox(width: 10),
                           Text(
                             'Paused for ${_formatDuration(vpn.pauseRemaining)}',
-                            style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                            style: const TextStyle(
+                                color: Colors.amberAccent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13),
                           ),
                         ],
                       ),
                       TextButton(
                         onPressed: () => vpn.resumeProtection(),
-                        child: const Text('RESUME NOW', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        child: const Text('RESUME NOW',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold)),
                       ),
                     ],
                   ),
@@ -154,12 +174,16 @@ class DashboardScreen extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('Pause: ', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      _buildPauseChip(context, vpn, '5m', const Duration(minutes: 5)),
+                      const Text('Pause: ',
+                          style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      _buildPauseChip(
+                          context, vpn, '5m', const Duration(minutes: 5)),
                       const SizedBox(width: 6),
-                      _buildPauseChip(context, vpn, '15m', const Duration(minutes: 15)),
+                      _buildPauseChip(
+                          context, vpn, '15m', const Duration(minutes: 15)),
                       const SizedBox(width: 6),
-                      _buildPauseChip(context, vpn, '1h', const Duration(hours: 1)),
+                      _buildPauseChip(
+                          context, vpn, '1h', const Duration(hours: 1)),
                     ],
                   ),
                 ),
@@ -228,7 +252,8 @@ class DashboardScreen extends StatelessWidget {
                         ),
                         Row(
                           children: [
-                            const Icon(Icons.bolt, color: Colors.amberAccent, size: 16),
+                            const Icon(Icons.bolt,
+                                color: Colors.amberAccent, size: 16),
                             const SizedBox(width: 4),
                             Text(
                               '14 ms (Ultra Fast)',
@@ -285,7 +310,8 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPauseChip(BuildContext context, VpnProvider vpn, String label, Duration duration) {
+  Widget _buildPauseChip(
+      BuildContext context, VpnProvider vpn, String label, Duration duration) {
     return InkWell(
       onTap: () => vpn.pauseProtection(duration),
       borderRadius: BorderRadius.circular(12),
@@ -298,7 +324,8 @@ class DashboardScreen extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+              color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -422,7 +449,8 @@ class GestureController extends StatelessWidget {
                     ? Icons.pause_circle_outline_rounded
                     : Icons.power_settings_new_rounded,
                 size: 54,
-                color: isActive || isPaused ? Colors.white : Colors.grey.shade300,
+                color:
+                    isActive || isPaused ? Colors.white : Colors.grey.shade300,
               ),
             const SizedBox(height: 8),
             Text(
