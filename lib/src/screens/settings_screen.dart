@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/dns_benchmark_service.dart';
+import '../i18n/app_strings.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
 const Color emeraldDarkColor = Color(0xFF065F46);
@@ -30,7 +31,7 @@ class SettingsScreen extends StatelessWidget {
 
     final results = await DnsBenchmarkService.benchmarkAll();
     if (context.mounted) {
-      Navigator.pop(context); // Close loading dialog
+      Navigator.pop(context);
       _showBenchmarkResults(context, vpn, results);
     }
   }
@@ -120,18 +121,37 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: const Color(0xFF161B22),
         elevation: 0,
-        title: const Text(
-          'Settings & Extensions',
-          style: TextStyle(
+        title: Text(
+          AppStrings.get('settings_title'),
+          style: const TextStyle(
               fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // App Language Selector (EN, VI, KO, JA)
+          Text(
+            AppStrings.get('language_title'),
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.bold, color: accent),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildLangChip(context, theme, 'en', '🇺🇸 English'),
+              _buildLangChip(context, theme, 'vi', '🇻🇳 Tiếng Việt'),
+              _buildLangChip(context, theme, 'ko', '🇰🇷 한국어'),
+              _buildLangChip(context, theme, 'ja', '🇯🇵 日本語'),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
           // Cyberpunk Neon Theme Selector
           Text(
-            'Cyberpunk Accent Color',
+            AppStrings.get('theme_title'),
             style: TextStyle(
                 fontSize: 14, fontWeight: FontWeight.bold, color: accent),
           ),
@@ -169,7 +189,7 @@ class SettingsScreen extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 ),
                 icon: Icon(Icons.flash_on, size: 14, color: accent),
-                label: Text('SPEED TEST',
+                label: Text(AppStrings.get('speed_test'),
                     style: TextStyle(
                         color: accent,
                         fontSize: 10,
@@ -210,7 +230,7 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 24),
 
           // App-by-App Split Tunneling
-          Text(
+          const Text(
             'App-by-App Split Tunneling (Bypass VPN)',
             style: TextStyle(
                 fontSize: 14,
@@ -309,7 +329,7 @@ class SettingsScreen extends StatelessWidget {
                   style:
                       OutlinedButton.styleFrom(side: BorderSide(color: accent)),
                   icon: Icon(Icons.download, size: 16, color: accent),
-                  label: Text('EXPORT JSON',
+                  label: Text(AppStrings.get('export_json'),
                       style: TextStyle(
                           color: accent,
                           fontSize: 11,
@@ -340,6 +360,34 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLangChip(
+      BuildContext context, ThemeProvider theme, String code, String name) {
+    final isSelected = theme.currentLanguage == code;
+    return InkWell(
+      onTap: () => theme.setLanguage(code),
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? theme.primaryDarkAccent.withOpacity(0.5)
+              : const Color(0xFF161B22),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+              color: isSelected ? theme.primaryAccent : Colors.white10),
+        ),
+        child: Text(
+          name,
+          style: TextStyle(
+            color: isSelected ? theme.primaryAccent : Colors.grey.shade300,
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }

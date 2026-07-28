@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../i18n/app_strings.dart';
 
 enum NeonTheme {
   cyan,
@@ -10,8 +11,10 @@ enum NeonTheme {
 
 class ThemeProvider extends ChangeNotifier {
   NeonTheme _currentTheme = NeonTheme.cyan;
+  String _currentLanguage = 'en';
 
   NeonTheme get currentTheme => _currentTheme;
+  String get currentLanguage => _currentLanguage;
 
   Color get primaryAccent {
     switch (_currentTheme) {
@@ -53,22 +56,39 @@ class ThemeProvider extends ChangeNotifier {
   }
 
   ThemeProvider() {
-    _loadTheme();
+    _loadPreferences();
   }
 
-  Future<void> _loadTheme() async {
-    final prefs = await SharedPreferences.getInstance();
-    final index = prefs.getInt('neon_theme_idx') ?? 0;
-    if (index >= 0 && index < NeonTheme.values.length) {
-      _currentTheme = NeonTheme.values[index];
+  Future<void> _loadPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final index = prefs.getInt('neon_theme_idx') ?? 0;
+      _currentLanguage = prefs.getString('app_language') ?? 'en';
+      AppStrings.lang = _currentLanguage;
+
+      if (index >= 0 && index < NeonTheme.values.length) {
+        _currentTheme = NeonTheme.values[index];
+      }
       notifyListeners();
-    }
+    } catch (_) {}
   }
 
   void setTheme(NeonTheme theme) async {
     _currentTheme = theme;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('neon_theme_idx', theme.index);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('neon_theme_idx', theme.index);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  void setLanguage(String langCode) async {
+    _currentLanguage = langCode;
+    AppStrings.lang = langCode;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('app_language', langCode);
+    } catch (_) {}
     notifyListeners();
   }
 }

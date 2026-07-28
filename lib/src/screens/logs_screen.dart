@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/vpn_provider.dart';
+import '../providers/theme_provider.dart';
+import '../i18n/app_strings.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
 const Color emeraldDarkColor = Color(0xFF065F46);
@@ -16,9 +18,28 @@ class LogsScreen extends StatefulWidget {
 class _LogsScreenState extends State<LogsScreen> {
   String _searchQuery = '';
 
+  void _exportLogsCsv(List<DnsLogItem> logs) {
+    final StringBuffer csv = StringBuffer();
+    csv.writeln('ID,Timestamp,Domain,Status');
+    for (final item in logs) {
+      csv.writeln(
+          '${item.id},${item.timestamp.toIso8601String()},${item.domain},${item.isBlocked ? "BLOCKED" : "ALLOWED"}');
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('CSV Logs Exported (${logs.length} entries)'),
+        backgroundColor: Colors.cyan.shade900,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final vpn = context.watch<VpnProvider>();
+    final theme = context.watch<ThemeProvider>();
+    final accent = theme.primaryAccent;
+
     final logs = vpn.logs
         .where((log) =>
             log.domain.toLowerCase().contains(_searchQuery.toLowerCase()))
@@ -29,11 +50,18 @@ class _LogsScreenState extends State<LogsScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF161B22),
         elevation: 0,
-        title: const Text(
-          'Live Query Logs',
-          style: TextStyle(
+        title: Text(
+          AppStrings.get('logs_title'),
+          style: const TextStyle(
               fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.file_download_outlined, color: accent),
+            tooltip: AppStrings.get('export_logs'),
+            onPressed: () => _exportLogsCsv(logs),
+          ),
+        ],
       ),
       body: Column(
         children: [

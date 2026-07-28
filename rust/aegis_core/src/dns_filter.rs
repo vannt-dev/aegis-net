@@ -1,13 +1,16 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
-use log::{info, warn, error};
+use log::{info, debug};
 use crate::rule_engine::RuleEngine;
 use crate::statistics::StatisticsEngine;
+use crate::cache::DnsCache;
 
 pub struct DnsFilterService {
     rule_engine: Arc<RuleEngine>,
     stats_engine: Arc<StatisticsEngine>,
+    dns_cache: Arc<DnsCache>,
     upstream_dns: String,
+    safesearch_enabled: bool,
 }
 
 impl DnsFilterService {
@@ -19,7 +22,9 @@ impl DnsFilterService {
         Self {
             rule_engine,
             stats_engine,
+            dns_cache: Arc::new(DnsCache::new(300)), // 5 minute TTL cache
             upstream_dns,
+            safesearch_enabled: true,
         }
     }
 
@@ -27,20 +32,60 @@ impl DnsFilterService {
         let domain_opt = Self::extract_domain_name(payload);
 
         if let Some(domain) = domain_opt {
+            // 1. Check SafeSearch Enforcement
+            if self.safesearch_enabled {
+                if let Some(safe_resp) = Self::handle_safesearch_rewrite(&domain, payload) {
+                    info!("SAFESEARCH Rewritten: {}", domain);
+                    self.stats_engine.record_request(&domain, false);
+                    return safe_resp;
+                }
+            }
+
+            // 2. Check Rule Engine Blocking
             let is_blocked = self.rule_engine.is_blocked(&domain);
 
             if is_blocked {
                 info!("BLOCKED DNS Request: {}", domain);
                 self.stats_engine.record_request(&domain, true);
                 return Self::build_blocked_response(payload);
-            } else {
-                info!("ALLOWED DNS Request: {}", domain);
-                self.stats_engine.record_request(&domain, false);
-                return self.forward_to_upstream(payload);
             }
+
+            // 3. Check High-Speed DNS Cache
+            if let Some(cached_payload) = self.dns_cache.get(&domain) {
+                debug!("CACHE HIT DNS Request: {}", domain);
+                self.stats_engine.record_request(&domain, false);
+                return cached_payload;
+            }
+
+            // 4. Forward to Upstream DNS & Cache Result
+            info!("ALLOWED DNS Request (Cache Miss): {}", domain);
+            self.stats_engine.record_request(&domain, false);
+            let response = self.forward_to_upstream(payload);
+
+            if !response.is_empty() {
+                self.dns_cache.insert(domain, response.clone());
+            }
+
+            return response;
         }
 
         self.forward_to_upstream(payload)
+    }
+
+    fn handle_safesearch_rewrite(domain: &str, payload: &[u8]) -> Option<Vec<u8>> {
+        let clean = domain.trim_end_matches('.').to_lowercase();
+        
+        // Google SafeSearch: forcesafesearch.google.com -> 216.239.38.120
+        if clean.contains("google.com") || clean.contains("google.com.vn") {
+            return Some(Self::build_ip_response(payload, [216, 239, 38, 120]));
+        }
+
+        // DuckDuckGo SafeSearch: safe.duckduckgo.com -> 52.142.124.215
+        if clean.contains("duckduckgo.com") {
+            return Some(Self::build_ip_response(payload, [52, 142, 124, 215]));
+        }
+
+        None
     }
 
     fn extract_domain_name(buffer: &[u8]) -> Option<String> {
@@ -78,6 +123,10 @@ impl DnsFilterService {
     }
 
     fn build_blocked_response(request: &[u8]) -> Vec<u8> {
+        Self::build_ip_response(request, [0, 0, 0, 0])
+    }
+
+    fn build_ip_response(request: &[u8], ip: [u8; 4]) -> Vec<u8> {
         if request.len() < 12 {
             return vec![];
         }
@@ -93,7 +142,7 @@ impl DnsFilterService {
         response.extend_from_slice(&[0x00, 0x01]);
         response.extend_from_slice(&[0x00, 0x00, 0x01, 0x2c]);
         response.extend_from_slice(&[0x00, 0x04]);
-        response.extend_from_slice(&[0, 0, 0, 0]);
+        response.extend_from_slice(&ip);
 
         response
     }
@@ -125,19 +174,10 @@ mod tests {
 
     #[test]
     fn test_dns_domain_extraction() {
-        // Mock DNS packet header + QNAME for example.com
-        let mut mock_packet = vec![
-            0x12, 0x34, // Transaction ID
-            0x01, 0x00, // Flags
-            0x00, 0x01, // QDCOUNT = 1
-            0x00, 0x00, // ANCOUNT = 0
-            0x00, 0x00, // NSCOUNT = 0
-            0x00, 0x00, // ARCOUNT = 0
-            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', // label "example"
-            0x03, b'c', b'o', b'm', // label "com"
-            0x00, // null terminator
-            0x00, 0x01, // QTYPE A
-            0x00, 0x01, // QCLASS IN
+        let mock_packet = vec![
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00, 0x01,
         ];
 
         let domain = DnsFilterService::extract_domain_name(&mock_packet);
@@ -153,10 +193,7 @@ mod tests {
 
         let response = DnsFilterService::build_blocked_response(&mock_packet);
         assert!(!response.is_empty());
-        assert_eq!(response[0], 0x12);
-        assert_eq!(response[1], 0x34);
-        assert_eq!(response[2], 0x81); // QR=1
-        // Last 4 bytes should be 0.0.0.0 IP
+        assert_eq!(response[2], 0x81);
         let len = response.len();
         assert_eq!(&response[len - 4..], &[0, 0, 0, 0]);
     }

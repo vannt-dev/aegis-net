@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../providers/vpn_provider.dart';
+import '../providers/theme_provider.dart';
+import '../i18n/app_strings.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
 const Color emeraldDarkColor = Color(0xFF065F46);
@@ -13,6 +15,8 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vpn = context.watch<VpnProvider>();
+    final theme = context.watch<ThemeProvider>();
+    final accent = theme.primaryAccent;
     final stats = vpn.stats;
 
     final int totalQueries = stats['total_queries'] ?? 0;
@@ -39,17 +43,17 @@ class DashboardScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'AEGIS NET',
+                        AppStrings.get('app_title'),
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 2.0,
-                          color: Colors.cyanAccent.shade200,
+                          color: accent,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Rust-Powered Privacy Guard',
+                        AppStrings.get('app_subtitle'),
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade400,
@@ -94,8 +98,10 @@ class DashboardScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(
                           vpn.isPaused
-                              ? 'PAUSED'
-                              : (vpn.isVpnActive ? 'PROTECTED' : 'UNPROTECTED'),
+                              ? AppStrings.get('paused')
+                              : (vpn.isVpnActive
+                                  ? AppStrings.get('protected')
+                                  : AppStrings.get('unprotected')),
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
@@ -136,7 +142,7 @@ class DashboardScreen extends StatelessWidget {
                               color: Colors.amberAccent, size: 20),
                           const SizedBox(width: 10),
                           Text(
-                            'Paused for ${_formatDuration(vpn.pauseRemaining)}',
+                            '${AppStrings.get("paused")} (${_formatDuration(vpn.pauseRemaining)})',
                             style: const TextStyle(
                                 color: Colors.amberAccent,
                                 fontWeight: FontWeight.bold,
@@ -146,8 +152,8 @@ class DashboardScreen extends StatelessWidget {
                       ),
                       TextButton(
                         onPressed: () => vpn.resumeProtection(),
-                        child: const Text('RESUME NOW',
-                            style: TextStyle(
+                        child: Text(AppStrings.get('resume_now'),
+                            style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold)),
@@ -163,6 +169,7 @@ class DashboardScreen extends StatelessWidget {
                   isActive: vpn.isVpnActive,
                   isConnecting: vpn.isConnecting,
                   isPaused: vpn.isPaused,
+                  accentColor: accent,
                 ),
               ),
 
@@ -174,8 +181,9 @@ class DashboardScreen extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('Pause: ',
-                          style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text('${AppStrings.get("pause")}: ',
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 12)),
                       _buildPauseChip(
                           context, vpn, '5m', const Duration(minutes: 5)),
                       const SizedBox(width: 6),
@@ -200,25 +208,25 @@ class DashboardScreen extends StatelessWidget {
                 childAspectRatio: 1.45,
                 children: [
                   _buildStatCard(
-                    title: 'Total Queries',
+                    title: AppStrings.get('total_queries'),
                     value: '$totalQueries',
                     icon: Icons.swap_vert_rounded,
-                    color: Colors.cyanAccent,
+                    color: accent,
                   ),
                   _buildStatCard(
-                    title: 'Ads Blocked',
+                    title: AppStrings.get('ads_blocked'),
                     value: '$blockedQueries',
                     icon: Icons.shield_outlined,
                     color: emeraldColor,
                   ),
                   _buildStatCard(
-                    title: 'Block Rate',
+                    title: AppStrings.get('block_rate'),
                     value: '${blockRate.toStringAsFixed(1)}%',
                     icon: Icons.pie_chart_outline_rounded,
                     color: Colors.purpleAccent.shade100,
                   ),
                   _buildStatCard(
-                    title: 'Data Saved',
+                    title: AppStrings.get('data_saved'),
                     value: '${dataSavedMb.toStringAsFixed(1)} MB',
                     icon: Icons.data_saver_on_rounded,
                     color: Colors.amberAccent,
@@ -228,7 +236,7 @@ class DashboardScreen extends StatelessWidget {
 
               const SizedBox(height: 28),
 
-              // Traffic Overview & DNS Latency Card
+              // Traffic Overview Card
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
@@ -242,9 +250,9 @@ class DashboardScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Traffic & Latency',
-                          style: TextStyle(
+                        Text(
+                          AppStrings.get('traffic_overview'),
+                          style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
@@ -260,7 +268,7 @@ class DashboardScreen extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.cyanAccent.shade100,
+                                color: accent,
                               ),
                             ),
                           ],
@@ -272,8 +280,8 @@ class DashboardScreen extends StatelessWidget {
                       height: 140,
                       child: LineChart(
                         LineChartData(
-                          gridData: FlGridData(show: false),
-                          titlesData: FlTitlesData(show: false),
+                          gridData: const FlGridData(show: false),
+                          titlesData: const FlTitlesData(show: false),
                           borderData: FlBorderData(show: false),
                           lineBarsData: [
                             LineChartBarData(
@@ -287,13 +295,13 @@ class DashboardScreen extends StatelessWidget {
                                 FlSpot(6, 62),
                               ],
                               isCurved: true,
-                              color: Colors.cyanAccent,
+                              color: accent,
                               barWidth: 3,
                               isStrokeCapRound: true,
-                              dotData: FlDotData(show: false),
+                              dotData: const FlDotData(show: false),
                               belowBarData: BarAreaData(
                                 show: true,
-                                color: Colors.cyanAccent.withOpacity(0.12),
+                                color: accent.withOpacity(0.12),
                               ),
                             ),
                           ],
@@ -386,6 +394,7 @@ class GestureController extends StatelessWidget {
   final bool isActive;
   final bool isConnecting;
   final bool isPaused;
+  final Color accentColor;
 
   const GestureController({
     super.key,
@@ -393,13 +402,13 @@ class GestureController extends StatelessWidget {
     required this.isActive,
     required this.isConnecting,
     this.isPaused = false,
+    required this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = isPaused
-        ? Colors.amberAccent
-        : (isActive ? emeraldColor : Colors.cyanAccent);
+    final color =
+        isPaused ? Colors.amberAccent : (isActive ? emeraldColor : accentColor);
 
     return GestureDetector(
       onTap: onTap,
@@ -415,7 +424,7 @@ class GestureController extends StatelessWidget {
                   ? Colors.amber.shade900.withOpacity(0.6)
                   : (isActive
                       ? emeraldDarkColor.withOpacity(0.8)
-                      : Colors.cyan.shade900.withOpacity(0.6)),
+                      : accentColor.withOpacity(0.2)),
               const Color(0xFF161B22),
             ],
           ),
@@ -455,10 +464,12 @@ class GestureController extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               isConnecting
-                  ? 'CONNECTING'
+                  ? AppStrings.get('connecting')
                   : (isPaused
-                      ? 'PAUSED'
-                      : (isActive ? 'PROTECTED' : 'TAP TO START')),
+                      ? AppStrings.get('paused')
+                      : (isActive
+                          ? AppStrings.get('protected')
+                          : AppStrings.get('tap_to_start'))),
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
