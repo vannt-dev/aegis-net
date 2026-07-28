@@ -15,13 +15,31 @@ jobs:
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android, x86_64-linux-android
 
-      - name: Build Rust Crate
+      - name: Build Rust Core Engine
         run: |
           cd rust/aegis_core
+          cargo check
+          cargo test --no-run
           cargo build --release
+
+  build-flutter-web:
+    name: Build Flutter Web Bundle
+    needs: build-rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build Web Bundle
+        run: flutter build web --release
 
   build-flutter-android:
     name: Build Flutter Android APK
@@ -36,6 +54,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -44,5 +65,5 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build APK
-        run: flutter build apk --split-per-abi --no-pub
+      - name: Build Android APK
+        run: flutter build apk --debug

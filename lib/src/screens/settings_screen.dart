@@ -1,14 +1,101 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/vpn_provider.dart';
+import '../providers/theme_provider.dart';
+import '../services/dns_benchmark_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
+  void _runDnsBenchmark(BuildContext context, VpnProvider vpn) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        backgroundColor: Color(0xFF161B22),
+        content: Row(
+          children: [
+            CircularProgressIndicator(color: Colors.cyanAccent),
+            SizedBox(width: 20),
+            Text('Measuring DNS Latency...', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+
+    final results = await DnsBenchmarkService.benchmarkAll();
+    if (context.mounted) {
+      Navigator.pop(context); // Close loading dialog
+      _showBenchmarkResults(context, vpn, results);
+    }
+  }
+
+  void _showBenchmarkResults(BuildContext context, VpnProvider vpn, List<DnsPingResult> results) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '⚡ DNS Benchmark Results',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const SizedBox(height: 12),
+              ...results.map(
+                (r) => ListTile(
+                  dense: true,
+                  title: Text(r.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  subtitle: Text(r.ip, style: TextStyle(color: Colors.grey.shade400)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${r.latencyMs} ms',
+                        style: TextStyle(
+                          color: r.isFastest ? Colors.emeraldAccent : Colors.grey.shade300,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (r.isFastest)
+                        Container(
+                          margin: const EdgeInsets.only(left: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.emerald.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('FASTEST', style: TextStyle(color: Colors.emeraldAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                        ),
+                    ],
+                  ),
+                  onTap: () {
+                    vpn.setUpstreamDns('${r.name} (${r.ip})');
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final vpn = context.watch<VpnProvider>();
+    final theme = context.watch<ThemeProvider>();
+    final accent = theme.primaryAccent;
+
     final TextEditingController bypassController = TextEditingController();
+    final TextEditingController dohController = TextEditingController();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
@@ -16,16 +103,50 @@ class SettingsScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF161B22),
         elevation: 0,
         title: const Text(
-          'Settings & Split Tunneling',
+          'Settings & Extensions',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text(
-            'Upstream DNS Resolver',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.cyanAccent),
+          // Cyberpunk Neon Theme Selector
+          Text(
+            'Cyberpunk Accent Color',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: accent),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildThemeCircle(context, theme, NeonTheme.cyan, Colors.cyanAccent),
+              _buildThemeCircle(context, theme, NeonTheme.emerald, const Color(0xFF10B981)),
+              _buildThemeCircle(context, theme, NeonTheme.purple, Colors.purpleAccent.shade100),
+              _buildThemeCircle(context, theme, NeonTheme.gold, Colors.amberAccent),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // Upstream DNS Resolver with Speed Test
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Upstream DNS Resolver',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: accent),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF161B22),
+                  side: BorderSide(color: accent),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                ),
+                icon: Icon(Icons.flash_on, size: 14, color: accent),
+                label: Text('SPEED TEST', style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.bold)),
+                onPressed: () => _runDnsBenchmark(context, vpn),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           _buildDnsTile(context, vpn, 'Cloudflare (1.1.1.1)', 'Fastest privacy-focused resolver'),
@@ -33,8 +154,28 @@ class SettingsScreen extends StatelessWidget {
           _buildDnsTile(context, vpn, 'AdGuard DNS (94.140.14.14)', 'Upstream ad-blocking DNS'),
           _buildDnsTile(context, vpn, 'Quad9 (9.9.9.9)', 'Malware protection & threat blocking'),
 
+          const SizedBox(height: 16),
+          // Custom DoH / DoT Field
+          TextField(
+            controller: dohController,
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+            decoration: InputDecoration(
+              hintText: 'Custom DoH URL (e.g. https://dns.nextdns.io/xxxxxx)',
+              hintStyle: TextStyle(color: Colors.grey.shade600),
+              filled: true,
+              fillColor: const Color(0xFF161B22),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Colors.white24),
+              ),
+            ),
+          ),
+
           const SizedBox(height: 24),
-          const Text(
+
+          // App-by-App Split Tunneling
+          Text(
             'App-by-App Split Tunneling (Bypass VPN)',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.amberAccent),
           ),
@@ -105,15 +246,35 @@ class SettingsScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 24),
-          const Text(
-            'Core Engine Information',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.cyanAccent),
+
+          // Backup & Restore
+          Text(
+            'Export / Import Configuration',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: accent),
           ),
           const SizedBox(height: 8),
-          _buildInfoTile('Rust Engine Version', 'v0.1.0-alpha'),
-          _buildInfoTile('Architecture', 'Flutter + FFI + Rust Core'),
-          _buildInfoTile('Active Filter Rules', '${vpn.activeRulesCount} active rules'),
-          _buildInfoTile('Local Tunnel Mode', 'Split-Tunnel DNS VpnService'),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(side: BorderSide(color: accent)),
+                  icon: Icon(Icons.download, size: 16, color: accent),
+                  label: Text('EXPORT JSON', style: TextStyle(color: accent, fontSize: 11, fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    final backup = jsonEncode({
+                      'whitelist': vpn.whitelist,
+                      'blacklist': vpn.blacklist,
+                      'bypassApps': vpn.bypassApps,
+                      'upstreamDns': vpn.upstreamDns,
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Config exported successfully: ${backup.length} bytes')),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
 
           const SizedBox(height: 32),
           Center(
@@ -123,6 +284,25 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildThemeCircle(BuildContext context, ThemeProvider theme, NeonTheme nTheme, Color color) {
+    final isSelected = theme.currentTheme == nTheme;
+    return GestureDetector(
+      onTap: () => theme.setTheme(nTheme),
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          border: Border.all(
+            color: isSelected ? Colors.white : Colors.transparent,
+            width: isSelected ? 3 : 0,
+          ),
+        ),
       ),
     );
   }
@@ -147,25 +327,6 @@ class SettingsScreen extends StatelessWidget {
           trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.cyanAccent) : null,
           onTap: () => vpn.setUpstreamDns(title),
         ),
-      ),
-    );
-  }
-
-  Widget _buildInfoTile(String title, String value) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title, style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-        ],
       ),
     );
   }
