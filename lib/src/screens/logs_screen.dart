@@ -116,8 +116,8 @@ class _LogsScreenState extends State<LogsScreen> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: item.isBlocked
-                                ? Colors.red.shade900.withOpacity(0.4)
-                                : emeraldDarkColor.withOpacity(0.4),
+                                ? Colors.red.shade900.withValues(alpha: 0.4)
+                                : emeraldDarkColor.withValues(alpha: 0.4),
                           ),
                           child: Icon(
                             item.isBlocked
@@ -147,8 +147,8 @@ class _LogsScreenState extends State<LogsScreen> {
                               horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: item.isBlocked
-                                ? Colors.red.withOpacity(0.15)
-                                : emeraldDarkColor.withOpacity(0.3),
+                                ? Colors.red.withValues(alpha: 0.15)
+                                : emeraldDarkColor.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(

@@ -22,6 +22,27 @@ void main() {
       expect(AegisBridge.isDomainBlocked('google.com'), isTrue);
     });
 
+    test('AegisBridge whitelist removal restores blocking', () {
+      expect(AegisBridge.isDomainBlocked('aniview.com'), isTrue);
+
+      AegisBridge.addWhitelist('aniview.com');
+      expect(AegisBridge.isDomainBlocked('aniview.com'), isFalse);
+
+      AegisBridge.removeWhitelist('aniview.com');
+      expect(AegisBridge.isDomainBlocked('aniview.com'), isTrue);
+    });
+
+    test('AegisBridge fallback matches domains and subdomains, not substrings',
+        () {
+      // adnxs.com is a seeded fallback rule.
+      expect(AegisBridge.isDomainBlocked('adnxs.com'), isTrue);
+      expect(AegisBridge.isDomainBlocked('sub.adnxs.com'), isTrue);
+
+      // 'myadnxs.com' merely CONTAINS the rule as a substring; it is a different
+      // registrable domain and must NOT be blocked.
+      expect(AegisBridge.isDomainBlocked('myadnxs.com'), isFalse);
+    });
+
     test('VpnProvider state management & toggle', () async {
       final provider = VpnProvider(enableSimulation: false);
       expect(provider.isVpnActive, isFalse);

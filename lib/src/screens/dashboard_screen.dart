@@ -66,10 +66,10 @@ class DashboardScreen extends StatelessWidget {
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: vpn.isPaused
-                          ? Colors.amber.shade900.withOpacity(0.3)
+                          ? Colors.amber.shade900.withValues(alpha: 0.3)
                           : (vpn.isVpnActive
-                              ? emeraldDarkColor.withOpacity(0.4)
-                              : Colors.red.shade900.withOpacity(0.3)),
+                              ? emeraldDarkColor.withValues(alpha: 0.4)
+                              : Colors.red.shade900.withValues(alpha: 0.3)),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: vpn.isPaused
@@ -128,10 +128,10 @@ class DashboardScreen extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.amber.shade900.withOpacity(0.2),
+                    color: Colors.amber.shade900.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: Colors.amberAccent.withOpacity(0.5)),
+                    border: Border.all(
+                        color: Colors.amberAccent.withValues(alpha: 0.5)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -301,7 +301,7 @@ class DashboardScreen extends StatelessWidget {
                               dotData: const FlDotData(show: false),
                               belowBarData: BarAreaData(
                                 show: true,
-                                color: accent.withOpacity(0.12),
+                                color: accent.withValues(alpha: 0.12),
                               ),
                             ),
                           ],
@@ -356,7 +356,7 @@ class DashboardScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF161B22),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -421,22 +421,22 @@ class GestureController extends StatelessWidget {
           gradient: RadialGradient(
             colors: [
               isPaused
-                  ? Colors.amber.shade900.withOpacity(0.6)
+                  ? Colors.amber.shade900.withValues(alpha: 0.6)
                   : (isActive
-                      ? emeraldDarkColor.withOpacity(0.8)
-                      : accentColor.withOpacity(0.2)),
+                      ? emeraldDarkColor.withValues(alpha: 0.8)
+                      : accentColor.withValues(alpha: 0.2)),
               const Color(0xFF161B22),
             ],
           ),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.3),
+              color: color.withValues(alpha: 0.3),
               blurRadius: isActive ? 36 : 18,
               spreadRadius: isActive ? 6 : 2,
             ),
           ],
           border: Border.all(
-            color: color.withOpacity(0.8),
+            color: color.withValues(alpha: 0.8),
             width: 3,
           ),
         ),

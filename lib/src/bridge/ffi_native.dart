@@ -29,6 +29,8 @@ class AegisNativeBindings {
   static AegisLoadRulesDart? _loadRules;
   static AegisAddDomainDart? _addWhitelist;
   static AegisAddDomainDart? _addBlacklist;
+  static AegisAddDomainDart? _removeWhitelist;
+  static AegisAddDomainDart? _removeBlacklist;
   static AegisIsBlockedDart? _isDomainBlocked;
   static AegisGetStatsDart? _getStatsJson;
   static AegisFreeStringDart? _freeString;
@@ -58,6 +60,12 @@ class AegisNativeBindings {
         _addBlacklist = _lib!
             .lookupFunction<AegisAddDomainC, AegisAddDomainDart>(
                 'aegis_add_blacklist');
+        _removeWhitelist = _lib!
+            .lookupFunction<AegisAddDomainC, AegisAddDomainDart>(
+                'aegis_remove_whitelist');
+        _removeBlacklist = _lib!
+            .lookupFunction<AegisAddDomainC, AegisAddDomainDart>(
+                'aegis_remove_blacklist');
         _isDomainBlocked = _lib!
             .lookupFunction<AegisIsBlockedC, AegisIsBlockedDart>(
                 'aegis_is_domain_blocked');
@@ -96,6 +104,20 @@ class AegisNativeBindings {
     if (!_isLoaded || _addBlacklist == null) return;
     final ptr = domain.toNativeUtf8();
     _addBlacklist!(ptr);
+    malloc.free(ptr);
+  }
+
+  static void removeWhitelist(String domain) {
+    if (!_isLoaded || _removeWhitelist == null) return;
+    final ptr = domain.toNativeUtf8();
+    _removeWhitelist!(ptr);
+    malloc.free(ptr);
+  }
+
+  static void removeBlacklist(String domain) {
+    if (!_isLoaded || _removeBlacklist == null) return;
+    final ptr = domain.toNativeUtf8();
+    _removeBlacklist!(ptr);
     malloc.free(ptr);
   }
 
