@@ -14,10 +14,21 @@ class AegisVpnService : VpnService(), Runnable {
         const val ACTION_STOP = "com.aegisnet.app.STOP"
         private const val TAG = "AegisVpnService"
 
+        /// True when libaegis_core.so (the Rust DNS engine) is present. Built
+        /// per-ABI via cargo-ndk; absent in UI-only builds. Loading must never
+        /// crash the service, mirroring the graceful fallback on the Dart side.
+        @Volatile
+        var nativeAvailable: Boolean = false
+            private set
+
         init {
-            // Rust DNS engine (libaegis_core.so). Bundled via the Android
-            // jniLibs / cargo-ndk build for each ABI.
-            System.loadLibrary("aegis_core")
+            nativeAvailable = try {
+                System.loadLibrary("aegis_core")
+                true
+            } catch (e: UnsatisfiedLinkError) {
+                Log.w(TAG, "libaegis_core.so not bundled; DNS filtering disabled", e)
+                false
+            }
         }
     }
 
@@ -96,8 +107,10 @@ class AegisVpnService : VpnService(), Runnable {
                 val length = inputStream.read(buffer)
                 if (length <= 0) continue
 
-                // Hand the raw IPv4 packet to the Rust engine.
-                val reply = nativeProcessPacket(buffer.copyOf(length))
+                // Hand the raw IPv4 packet to the Rust engine (when present).
+                val reply =
+                    if (nativeAvailable) nativeProcessPacket(buffer.copyOf(length))
+                    else ByteArray(0)
 
                 if (reply.isNotEmpty()) {
                     // A synthesized DNS reply (blocked / SafeSearch / cached) —
