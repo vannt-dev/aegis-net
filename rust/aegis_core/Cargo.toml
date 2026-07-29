@@ -9,16 +9,14 @@ description = "High-performance Rust engine for AegisNet DNS Filtering and Rule 
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
-tokio = { version = "1.38", features = ["full"] }
-aho-corasick = "1.1"
-regex = "1.10"
-parking_lot = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 log = "0.4"
 env_logger = "0.11"
 lazy_static = "1.4"
 dashmap = "5.5"
+jni = "0.21"
+ureq = "2.10"
 
 [profile.release]
 opt-level = 3

@@ -1,4 +1,4 @@
-use std::net::{SocketAddr, UdpSocket};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use log::{info, debug};
 use crate::rule_engine::RuleEngine;
@@ -29,9 +29,9 @@ impl DnsFilterService {
     }
 
     pub fn handle_dns_payload(&self, payload: &[u8], _client_addr: SocketAddr) -> Vec<u8> {
-        let domain_opt = Self::extract_domain_name(payload);
+        let question = Self::extract_question(payload);
 
-        if let Some(domain) = domain_opt {
+        if let Some((domain, qtype)) = question {
             // 1. Check SafeSearch Enforcement
             if self.safesearch_enabled {
                 if let Some(safe_resp) = Self::handle_safesearch_rewrite(&domain, payload) {
@@ -50,11 +50,17 @@ impl DnsFilterService {
                 return Self::build_blocked_response(payload);
             }
 
+            // Cache is keyed by (domain, qtype): an A-record answer must never be
+            // served for an AAAA/TXT query.
+            let cache_key = format!("{}|{}", domain, qtype);
+
             // 3. Check High-Speed DNS Cache
-            if let Some(cached_payload) = self.dns_cache.get(&domain) {
+            if let Some(cached_payload) = self.dns_cache.get(&cache_key) {
                 debug!("CACHE HIT DNS Request: {}", domain);
                 self.stats_engine.record_request(&domain, false);
-                return cached_payload;
+                // Stamp the cached answer with THIS request's transaction id,
+                // otherwise the resolver client rejects the mismatched id.
+                return Self::adapt_cached_response(&cached_payload, payload);
             }
 
             // 4. Forward to Upstream DNS & Cache Result
@@ -63,7 +69,7 @@ impl DnsFilterService {
             let response = self.forward_to_upstream(payload);
 
             if !response.is_empty() {
-                self.dns_cache.insert(domain, response.clone());
+                self.dns_cache.insert(cache_key, response.clone());
             }
 
             return response;
@@ -72,23 +78,53 @@ impl DnsFilterService {
         self.forward_to_upstream(payload)
     }
 
-    fn handle_safesearch_rewrite(domain: &str, payload: &[u8]) -> Option<Vec<u8>> {
-        let clean = domain.trim_end_matches('.').to_lowercase();
-        
-        // Google SafeSearch: forcesafesearch.google.com -> 216.239.38.120
-        if clean.contains("google.com") || clean.contains("google.com.vn") {
-            return Some(Self::build_ip_response(payload, [216, 239, 38, 120]));
+    /// Copy the incoming request's transaction id (first two bytes) into a
+    /// cached response so the resolving client accepts it.
+    fn adapt_cached_response(cached: &[u8], request: &[u8]) -> Vec<u8> {
+        let mut resp = cached.to_vec();
+        if resp.len() >= 2 && request.len() >= 2 {
+            resp[0] = request[0];
+            resp[1] = request[1];
         }
+        resp
+    }
+
+    fn handle_safesearch_rewrite(domain: &str, payload: &[u8]) -> Option<Vec<u8>> {
+        let host = domain.trim_end_matches('.').to_lowercase();
+
+        // Only exact search-frontend hostnames are rewritten. Matching broad
+        // substrings (e.g. "google.com") would wrongly capture unrelated services
+        // such as mail.google.com / drive.google.com and look-alike domains like
+        // google.com.attacker.net, breaking them or enabling spoofing.
+
+        // Google SafeSearch: forcesafesearch.google.com -> 216.239.38.120
+        const GOOGLE_SAFE_IP: [u8; 4] = [216, 239, 38, 120];
+        const GOOGLE_HOSTS: &[&str] = &[
+            "google.com",
+            "www.google.com",
+            "google.com.vn",
+            "www.google.com.vn",
+            "google.co.uk",
+            "www.google.co.uk",
+        ];
 
         // DuckDuckGo SafeSearch: safe.duckduckgo.com -> 52.142.124.215
-        if clean.contains("duckduckgo.com") {
-            return Some(Self::build_ip_response(payload, [52, 142, 124, 215]));
+        const DDG_SAFE_IP: [u8; 4] = [52, 142, 124, 215];
+        const DDG_HOSTS: &[&str] = &["duckduckgo.com", "www.duckduckgo.com"];
+
+        if GOOGLE_HOSTS.contains(&host.as_str()) {
+            return Some(Self::build_ip_response(payload, GOOGLE_SAFE_IP));
+        }
+
+        if DDG_HOSTS.contains(&host.as_str()) {
+            return Some(Self::build_ip_response(payload, DDG_SAFE_IP));
         }
 
         None
     }
 
-    fn extract_domain_name(buffer: &[u8]) -> Option<String> {
+    /// Parse the first DNS question, returning the queried domain and its QTYPE.
+    fn extract_question(buffer: &[u8]) -> Option<(String, u16)> {
         if buffer.len() < 12 {
             return None;
         }
@@ -116,10 +152,17 @@ impl DnsFilterService {
         }
 
         if domain_parts.is_empty() {
-            None
-        } else {
-            Some(domain_parts.join("."))
+            return None;
         }
+
+        // `offset` points at the zero-length root label; QTYPE follows it.
+        let qtype = if offset + 2 < buffer.len() {
+            u16::from_be_bytes([buffer[offset + 1], buffer[offset + 2]])
+        } else {
+            0
+        };
+
+        Some((domain_parts.join("."), qtype))
     }
 
     fn build_blocked_response(request: &[u8]) -> Vec<u8> {
@@ -147,22 +190,40 @@ impl DnsFilterService {
         response
     }
 
-    fn forward_to_upstream(&self, payload: &[u8]) -> Vec<u8> {
-        let socket = match UdpSocket::bind("0.0.0.0:0") {
-            Ok(s) => s,
-            Err(_) => return vec![],
-        };
-
-        socket.set_read_timeout(Some(std::time::Duration::from_secs(3))).ok();
-        
-        let upstream_target = format!("{}:53", self.upstream_dns);
-        if socket.send_to(payload, &upstream_target).is_err() {
-            return vec![];
+    /// Resolve the configured upstream into a full DoH endpoint URL. A bare
+    /// host/IP is wrapped as `https://<host>/dns-query`; an explicit URL is
+    /// used unchanged.
+    fn doh_endpoint(upstream: &str) -> String {
+        if upstream.starts_with("http://") || upstream.starts_with("https://") {
+            upstream.to_string()
+        } else {
+            format!("https://{}/dns-query", upstream)
         }
+    }
 
-        let mut buf = [0u8; 512];
-        match socket.recv_from(&mut buf) {
-            Ok((amt, _)) => buf[..amt].to_vec(),
+    /// Forward a DNS query over DNS-over-HTTPS (RFC 8484): the raw DNS wire
+    /// message is POSTed with `application/dns-message` and the response body is
+    /// the DNS wire answer. Replaces the previous cleartext UDP/53 transport.
+    fn forward_to_upstream(&self, payload: &[u8]) -> Vec<u8> {
+        use std::io::Read;
+
+        let endpoint = Self::doh_endpoint(&self.upstream_dns);
+
+        let response = ureq::post(&endpoint)
+            .set("Content-Type", "application/dns-message")
+            .set("Accept", "application/dns-message")
+            .timeout(std::time::Duration::from_secs(5))
+            .send_bytes(payload);
+
+        match response {
+            Ok(resp) => {
+                let mut buf = Vec::new();
+                if resp.into_reader().take(65_535).read_to_end(&mut buf).is_ok() {
+                    buf
+                } else {
+                    vec![]
+                }
+            }
             Err(_) => vec![],
         }
     }
@@ -180,8 +241,83 @@ mod tests {
             0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00, 0x01,
         ];
 
-        let domain = DnsFilterService::extract_domain_name(&mock_packet);
-        assert_eq!(domain, Some("example.com".to_string()));
+        let question = DnsFilterService::extract_question(&mock_packet);
+        assert_eq!(question, Some(("example.com".to_string(), 1)));
+    }
+
+    #[test]
+    fn test_safesearch_rewrites_search_host_only() {
+        // Minimal valid DNS header (>=12 bytes) is enough for response building.
+        let query = vec![
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        // Search frontends SHOULD be rewritten to the SafeSearch IP.
+        assert!(DnsFilterService::handle_safesearch_rewrite("www.google.com", &query).is_some());
+        assert!(DnsFilterService::handle_safesearch_rewrite("google.com", &query).is_some());
+        assert!(DnsFilterService::handle_safesearch_rewrite("duckduckgo.com", &query).is_some());
+
+        // Non-search Google subdomains must NOT be rewritten (would break Gmail/Drive).
+        assert!(DnsFilterService::handle_safesearch_rewrite("mail.google.com", &query).is_none());
+        assert!(DnsFilterService::handle_safesearch_rewrite("drive.google.com", &query).is_none());
+
+        // Look-alike / attacker domains must NOT be rewritten.
+        assert!(DnsFilterService::handle_safesearch_rewrite("evilgoogle.com", &query).is_none());
+        assert!(
+            DnsFilterService::handle_safesearch_rewrite("google.com.attacker.net", &query).is_none()
+        );
+    }
+
+    #[test]
+    fn test_extract_question_returns_domain_and_qtype() {
+        let packet = vec![
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00, 0x01,
+        ];
+
+        let (domain, qtype) = DnsFilterService::extract_question(&packet).unwrap();
+        assert_eq!(domain, "example.com");
+        assert_eq!(qtype, 1); // A record
+    }
+
+    #[test]
+    fn test_cached_response_adopts_current_transaction_id() {
+        // A cached answer still carries the OLD transaction id 0xAAAA.
+        let cached = vec![
+            0xAA, 0xAA, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        ];
+        // The new incoming request uses transaction id 0x1234.
+        let request = vec![
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        let served = DnsFilterService::adapt_cached_response(&cached, &request);
+
+        // Transaction id must match the new request, or the client rejects it.
+        assert_eq!(served[0], 0x12);
+        assert_eq!(served[1], 0x34);
+        // The rest of the cached answer must be preserved.
+        assert_eq!(served[2], 0x81);
+        assert_eq!(served[3], 0x80);
+    }
+
+    #[test]
+    fn test_doh_endpoint_normalization() {
+        // A bare IP/host is turned into a full DoH URL.
+        assert_eq!(
+            DnsFilterService::doh_endpoint("1.1.1.1"),
+            "https://1.1.1.1/dns-query"
+        );
+        assert_eq!(
+            DnsFilterService::doh_endpoint("dns.google"),
+            "https://dns.google/dns-query"
+        );
+        // An explicit URL is used verbatim.
+        assert_eq!(
+            DnsFilterService::doh_endpoint("https://cloudflare-dns.com/dns-query"),
+            "https://cloudflare-dns.com/dns-query"
+        );
     }
 
     #[test]
