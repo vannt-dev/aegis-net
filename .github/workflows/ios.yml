@@ -2,6 +2,7 @@ name: AegisNet iOS Build Verification
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
