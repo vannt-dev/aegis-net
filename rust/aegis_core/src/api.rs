@@ -9,10 +9,14 @@ use crate::dns_filter::DnsFilterService;
 lazy_static! {
     static ref RULE_ENGINE: Arc<RuleEngine> = Arc::new(RuleEngine::new());
     static ref STATS_ENGINE: Arc<StatisticsEngine> = Arc::new(StatisticsEngine::new(1000));
+    // IP-literal DoH endpoint on purpose: when this engine runs behind a
+    // DNS-capturing VPN, resolving a hostname here would recurse back into our
+    // own resolver and deadlock. Cloudflare's certificate carries a 1.1.1.1 IP
+    // SAN, so TLS verification still succeeds without any prior DNS lookup.
     static ref DNS_FILTER: Arc<DnsFilterService> = Arc::new(DnsFilterService::new(
         RULE_ENGINE.clone(),
         STATS_ENGINE.clone(),
-        "https://cloudflare-dns.com/dns-query".to_string()
+        "https://1.1.1.1/dns-query".to_string()
     ));
 }
 

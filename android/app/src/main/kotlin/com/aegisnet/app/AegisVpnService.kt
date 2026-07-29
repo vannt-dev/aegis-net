@@ -14,6 +14,10 @@ class AegisVpnService : VpnService(), Runnable {
         const val ACTION_STOP = "com.aegisnet.app.STOP"
         private const val TAG = "AegisVpnService"
 
+        // Virtual DNS server the OS sends queries to; only this address is
+        // routed into the TUN.
+        private const val TUN_DNS_SERVER = "10.0.0.3"
+
         /// True when libaegis_core.so (the Rust DNS engine) is present. Built
         /// per-ABI via cargo-ndk; absent in UI-only builds. Loading must never
         /// crash the service, mirroring the graceful fallback on the Dart side.
@@ -55,11 +59,17 @@ class AegisVpnService : VpnService(), Runnable {
     private fun startVpn(bypassApps: ArrayList<String>) {
         if (isRunning) return
         try {
+            // DNS-only tunnel: advertise a private DNS server and route ONLY
+            // its address into the TUN. Every other packet (including the Rust
+            // engine's own upstream DoH lookups for allowed queries) stays on
+            // the real network, so nothing loops and non-DNS traffic is
+            // untouched. This also removes the need to protect() upstream
+            // sockets.
             val builder = Builder()
                 .setSession("AegisNet Shield")
-                .addAddress("10.0.0.1", 32)
-                .addDnsServer("1.1.1.1")
-                .addRoute("0.0.0.0", 0)
+                .addAddress("10.0.0.2", 24)
+                .addDnsServer(TUN_DNS_SERVER)
+                .addRoute(TUN_DNS_SERVER, 32)
 
             // Add disallowed apps for Split Tunneling
             for (pkg in bypassApps) {
