@@ -1,0 +1,68 @@
+name: AegisNet iOS Build Verification
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ios-${{ github.ref_name || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-ios-core:
+    name: 🦀 Rust Core — iOS cross-compile
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain + iOS targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "rust/aegis_core"
+
+      - name: Build libaegis_core.a (device + simulator)
+        run: |
+          cd rust/aegis_core
+          cargo build --release --target aarch64-apple-ios
+          cargo build --release --target aarch64-apple-ios-sim
+          cargo build --release --target x86_64-apple-ios
+
+      - name: Upload iOS static libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: libaegis_core-ios
+          path: |
+            rust/aegis_core/target/aarch64-apple-ios/release/libaegis_core.a
+            rust/aegis_core/target/aarch64-apple-ios-sim/release/libaegis_core.a
+            rust/aegis_core/target/x86_64-apple-ios/release/libaegis_core.a
+          if-no-files-found: error
+
+  flutter-ios-app:
+    name: 📱 Flutter iOS shell build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Generate iOS project (config only)
+        run: flutter build ios --config-only --no-codesign
+
+      # Full compile+link. Expected to fail until libaegis_core.a is linked and
+      # the NetworkExtension target is wired (see CHANGELOG.md "Known
+      # follow-ups"); kept non-blocking so progress is visible in CI.
+      - name: Attempt full iOS build (non-blocking, WIP)
+        continue-on-error: true
+        run: flutter build ios --no-codesign
