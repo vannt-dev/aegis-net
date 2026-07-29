@@ -144,10 +144,10 @@ impl RuleEngine {
     pub fn is_blocked(&self, domain: &str) -> bool {
         let clean_domain = domain.trim_end_matches('.').to_lowercase();
 
-        // 1. Check Whitelist
+        // 1. Check Whitelist (covers the domain and any of its subdomains)
         {
             let allowed = self.allowed_domains.read().unwrap();
-            if allowed.contains(&clean_domain) {
+            if Self::set_matches_domain(&allowed, &clean_domain) {
                 return false;
             }
         }
@@ -184,6 +184,11 @@ impl RuleEngine {
 
     fn matches_set(&self, set: &RwLock<HashSet<String>>, domain: &str) -> bool {
         let rules = set.read().unwrap();
+        Self::set_matches_domain(&rules, domain)
+    }
+
+    /// Returns true if `domain` equals a rule in `rules`, or is a subdomain of one.
+    fn set_matches_domain(rules: &HashSet<String>, domain: &str) -> bool {
         if rules.contains(domain) {
             return true;
         }
@@ -229,6 +234,28 @@ mod tests {
 
         engine.add_whitelist("doubleclick.net");
         assert!(!engine.is_blocked("doubleclick.net"));
+    }
+
+    #[test]
+    fn test_whitelist_covers_subdomains() {
+        let engine = RuleEngine::new();
+        // graph.facebook.com is a seeded tracker rule
+        assert!(engine.is_blocked("graph.facebook.com"));
+
+        // Whitelisting the parent domain should allow all its subdomains
+        engine.add_whitelist("facebook.com");
+        assert!(!engine.is_blocked("graph.facebook.com"));
+        assert!(!engine.is_blocked("facebook.com"));
+    }
+
+    #[test]
+    fn test_remove_whitelist_restores_blocking() {
+        let engine = RuleEngine::new();
+        engine.add_whitelist("doubleclick.net");
+        assert!(!engine.is_blocked("doubleclick.net"));
+
+        engine.remove_whitelist("doubleclick.net");
+        assert!(engine.is_blocked("doubleclick.net"));
     }
 
     #[test]

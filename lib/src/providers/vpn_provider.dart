@@ -89,8 +89,20 @@ class VpnProvider extends ChangeNotifier {
 
   VpnProvider({this.enableSimulation = true}) {
     _initPreferences();
-    AegisBridge.initEngine();
+    _bootstrapEngine();
     _startAutoSyncScheduler();
+  }
+
+  /// Initialize the core engine, then push the persisted allow/deny lists into
+  /// it so the UI and the rule engine agree on state from the first query.
+  Future<void> _bootstrapEngine() async {
+    await AegisBridge.initEngine();
+    for (final domain in _whitelist) {
+      AegisBridge.addWhitelist(domain);
+    }
+    for (final domain in _blacklist) {
+      AegisBridge.addBlacklist(domain);
+    }
   }
 
   Future<void> _initPreferences() async {
@@ -199,6 +211,7 @@ class VpnProvider extends ChangeNotifier {
 
   void removeWhitelistDomain(String domain) {
     _whitelist.remove(domain);
+    AegisBridge.removeWhitelist(domain);
     notifyListeners();
   }
 
@@ -214,6 +227,7 @@ class VpnProvider extends ChangeNotifier {
 
   void removeBlacklistDomain(String domain) {
     _blacklist.remove(domain);
+    AegisBridge.removeBlacklist(domain);
     notifyListeners();
   }
 

@@ -83,7 +83,7 @@ class SettingsScreen extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: emeraldDarkColor.withOpacity(0.4),
+                            color: emeraldDarkColor.withValues(alpha: 0.4),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text('FASTEST',
@@ -374,7 +374,7 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected
-              ? theme.primaryDarkAccent.withOpacity(0.5)
+              ? theme.primaryDarkAccent.withValues(alpha: 0.5)
               : const Color(0xFF161B22),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(

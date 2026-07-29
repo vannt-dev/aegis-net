@@ -12,7 +12,7 @@ lazy_static! {
     static ref DNS_FILTER: Arc<DnsFilterService> = Arc::new(DnsFilterService::new(
         RULE_ENGINE.clone(),
         STATS_ENGINE.clone(),
-        "1.1.1.1".to_string()
+        "https://cloudflare-dns.com/dns-query".to_string()
     ));
 }
 
@@ -76,6 +76,24 @@ pub extern "C" fn aegis_add_blacklist(domain_ptr: *const c_char) {
     }
 }
 
+/// Remove domain from Whitelist
+#[no_mangle]
+pub extern "C" fn aegis_remove_whitelist(domain_ptr: *const c_char) {
+    if domain_ptr.is_null() { return; }
+    if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
+        RULE_ENGINE.remove_whitelist(domain);
+    }
+}
+
+/// Remove domain from Blacklist
+#[no_mangle]
+pub extern "C" fn aegis_remove_blacklist(domain_ptr: *const c_char) {
+    if domain_ptr.is_null() { return; }
+    if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
+        RULE_ENGINE.remove_blacklist(domain);
+    }
+}
+
 /// Check if domain is blocked
 #[no_mangle]
 pub extern "C" fn aegis_is_domain_blocked(domain_ptr: *const c_char) -> c_int {
@@ -112,6 +130,52 @@ pub extern "C" fn aegis_handle_dns_packet(
     }
 
     response.len()
+}
+
+/// Process a raw IPv4 packet coming off the VPN TUN interface.
+///
+/// If the packet is a UDP/53 DNS query, it is filtered by the engine and a
+/// fully-formed IPv4/UDP reply packet is written to `out_buf`; the reply length
+/// is returned. Returns 0 when the packet is not a DNS query, is malformed, or
+/// the reply would not fit in `out_max_len` (caller should then drop/forward it).
+#[no_mangle]
+pub extern "C" fn aegis_process_ip_packet(
+    in_buf: *const u8,
+    in_len: usize,
+    out_buf: *mut u8,
+    out_max_len: usize,
+) -> usize {
+    if in_buf.is_null() || out_buf.is_null() || in_len == 0 {
+        return 0;
+    }
+
+    let packet = unsafe { std::slice::from_raw_parts(in_buf, in_len) };
+
+    // Only DNS (UDP port 53) queries are handled here.
+    let parsed = match crate::packet::parse_ipv4_udp(packet) {
+        Some(p) if p.dst_port == 53 => p,
+        _ => return 0,
+    };
+
+    let dummy_client: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
+    let dns_response = DNS_FILTER.handle_dns_payload(parsed.payload, dummy_client);
+    if dns_response.is_empty() {
+        return 0;
+    }
+
+    let reply = match crate::packet::build_ipv4_udp_response(packet, &dns_response) {
+        Some(r) => r,
+        None => return 0,
+    };
+
+    if reply.len() > out_max_len {
+        return 0;
+    }
+
+    unsafe {
+        std::ptr::copy_nonoverlapping(reply.as_ptr(), out_buf, reply.len());
+    }
+    reply.len()
 }
 
 /// Get current statistics as JSON string

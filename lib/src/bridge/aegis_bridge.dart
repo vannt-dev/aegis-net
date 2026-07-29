@@ -80,10 +80,18 @@ class AegisBridge {
     if (_useNativeFfi) {
       return AegisNativeBindings.isDomainBlocked(clean);
     } else {
-      if (_whitelistedDomains.contains(clean)) return false;
-      if (_blacklistedDomains.contains(clean)) return true;
-      return _loadedRules.any((rule) => clean.contains(rule));
+      if (_matchesRuleSet(_whitelistedDomains, clean)) return false;
+      if (_matchesRuleSet(_blacklistedDomains, clean)) return true;
+      return _matchesRuleSet(_loadedRules, clean);
     }
+  }
+
+  /// Returns true when [domain] equals a rule in [rules] or is a subdomain of
+  /// one. Substring matching is deliberately avoided so that `myadnxs.com` is
+  /// not caught by the rule `adnxs.com`.
+  static bool _matchesRuleSet(Set<String> rules, String domain) {
+    if (rules.contains(domain)) return true;
+    return rules.any((rule) => domain.endsWith('.$rule'));
   }
 
   /// Add domain to Whitelist
@@ -104,6 +112,24 @@ class AegisBridge {
     }
     _blacklistedDomains.add(clean);
     _whitelistedDomains.remove(clean);
+  }
+
+  /// Remove domain from Whitelist
+  static void removeWhitelist(String domain) {
+    final clean = domain.trim().toLowerCase();
+    if (_useNativeFfi) {
+      AegisNativeBindings.removeWhitelist(clean);
+    }
+    _whitelistedDomains.remove(clean);
+  }
+
+  /// Remove domain from Blacklist
+  static void removeBlacklist(String domain) {
+    final clean = domain.trim().toLowerCase();
+    if (_useNativeFfi) {
+      AegisNativeBindings.removeBlacklist(clean);
+    }
+    _blacklistedDomains.remove(clean);
   }
 
   /// Get live filtering statistics summary

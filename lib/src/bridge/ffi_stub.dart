@@ -4,6 +4,8 @@ class AegisNativeBindings {
   static int loadRules(String rulesText) => 0;
   static void addWhitelist(String domain) {}
   static void addBlacklist(String domain) {}
+  static void removeWhitelist(String domain) {}
+  static void removeBlacklist(String domain) {}
   static bool isDomainBlocked(String domain) => false;
   static String? getStatsJson() => null;
 }
