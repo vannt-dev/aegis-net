@@ -44,7 +44,7 @@ This document provides detailed instructions for setting up the environment, com
 ```text
 aegis-net/
 ├── .githooks/         # Git quality enforcement hooks (commit-msg, pre-commit, pre-push)
-├── rust/aegis_core/   # Rust Core Engine (Trie, DNS Sinkhole, C-FFI exports)
+├── rust/aegis_core/   # Rust Core Engine (rule matcher, DNS sinkhole, DoH, C-FFI exports)
 ├── android/           # Native Android Project (VpnService)
 ├── ios/               # Native iOS Project (NEPacketTunnelProvider)
 ├── lib/               # Flutter Application (UI, Providers, Bridge)
@@ -63,7 +63,16 @@ cargo build --release
 ```
 
 ### Cross-compile to Android shared libraries (`.so`):
+
+> **Automated in Gradle.** A `preBuild` task in `android/app/build.gradle.kts`
+> runs the command below automatically whenever `cargo-ndk` is on `PATH`, so a
+> normal `flutter build apk` / `flutter run` already produces the `.so`. Run it
+> manually only if you want to pre-build or debug the cross-compile. If the Rust
+> toolchain is absent the task is skipped and the app uses its pure-Dart
+> fallback (no crash).
+
 ```bash
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 cargo install cargo-ndk
 cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../android/app/src/main/jniLibs build --release
 ```
@@ -92,6 +101,13 @@ cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../android/app/src/main/jn
 ---
 
 ## 5. Building & Packaging iOS (IPA / TestFlight)
+
+> **⚠️ iOS is a work in progress.** The packet-tunnel code is wired to the Rust
+> engine, but system-wide filtering is not functional yet: it still needs a
+> dedicated Network Extension target, the `networkextension` entitlement, a
+> `NETunnelProviderManager` start path + MethodChannel handler, and
+> `libaegis_core.a` (`cargo build --release --target aarch64-apple-ios`) linked
+> into the extension. The steps below build the Flutter app shell only.
 
 1. Install Cocoapods:
    ```bash

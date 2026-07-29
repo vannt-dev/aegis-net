@@ -2,6 +2,12 @@
 
 **AegisNet** is a high-performance system-wide DNS privacy guard & ad-blocking application built with **Flutter** and powered by an ultra-fast **Rust Core Engine**.
 
+> **Platform availability:** system-wide DNS filtering is functional on
+> **Android** (verified). **iOS** is still in progress and currently runs the UI
+> only. On any platform without the native engine, the app runs a pure-Dart
+> simulation so the interface stays fully usable. See
+> [CHANGELOG.md](CHANGELOG.md) for details.
+
 ---
 
 ## 📋 Table of Contents
