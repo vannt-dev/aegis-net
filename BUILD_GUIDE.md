@@ -42,7 +42,7 @@ Tài liệu này hướng dẫn chi tiết cách thiết lập môi trường, b
 
 ```text
 aegis-net/
-├── rust/aegis_core/   # Mã nguồn Rust Engine (Trie, DNS Sinkhole, C-FFI)
+├── rust/aegis_core/   # Mã nguồn Rust Engine (rule matcher, DNS Sinkhole, DoH, C-FFI)
 ├── android/           # Project Android Native (VpnService)
 ├── ios/               # Project iOS Native (NEPacketTunnelProvider)
 ├── lib/               # Mã nguồn Flutter (UI, Providers, Bridge)
@@ -61,7 +61,15 @@ cargo build --release
 ```
 
 ### Biên dịch ra thư viện Android (`.so`):
+
+> **Đã tự động hoá trong Gradle.** Task `preBuild` trong
+> `android/app/build.gradle.kts` tự chạy lệnh dưới đây mỗi khi có `cargo-ndk`
+> trong `PATH`, nên `flutter build apk` / `flutter run` thông thường đã sinh sẵn
+> `.so`. Chỉ chạy tay khi muốn build trước hoặc debug. Nếu thiếu toolchain Rust,
+> task được bỏ qua và app chạy ở chế độ fallback thuần Dart (không crash).
+
 ```bash
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 cargo install cargo-ndk
 cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../android/app/src/main/jniLibs build --release
 ```
@@ -90,6 +98,13 @@ cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../android/app/src/main/jn
 ---
 
 ## 5. Biên Dịch & Đóng Gói iOS (IPA / TestFlight)
+
+> **⚠️ iOS đang trong quá trình hoàn thiện.** Phần packet-tunnel đã nối tới Rust
+> engine, nhưng lọc DNS toàn hệ thống **chưa hoạt động**: còn thiếu một Network
+> Extension target riêng, entitlement `networkextension`, luồng khởi động
+> `NETunnelProviderManager` + MethodChannel, và link `libaegis_core.a`
+> (`cargo build --release --target aarch64-apple-ios`). Các bước dưới chỉ build
+> phần vỏ Flutter.
 
 1. Tải Pods phụ thuộc:
    ```bash

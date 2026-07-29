@@ -2,7 +2,7 @@ import NetworkExtension
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
 
-    override fn startTunnel(options: [String : NSObject]?, completionHandler: @escaping (Error?) -> Void) {
+    override func startTunnel(options: [String : NSObject]?, completionHandler: @escaping (Error?) -> Void) {
         let tunnelNetworkSettings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
         
         let dnsSettings = NEDNSSettings(servers: ["1.1.1.1"])
@@ -19,20 +19,39 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
     
-    private fun readPackets() {
+    private func readPackets() {
         packetFlow.readPackets { [weak self] (packets, protocols) in
             guard let self = self else { return }
-            
+
+            var outPackets: [Data] = []
+            var outProtocols: [NSNumber] = []
+
             for (index, packet) in packets.enumerated() {
-                // Pass DNS IP packets to Rust Core Engine
-                // Process packet and write back using self.packetFlow.writePackets
+                // Hand each raw IPv4 packet to the Rust engine; a non-empty
+                // result is a synthesized DNS reply to write straight back.
+                var outBuf = [UInt8](repeating: 0, count: packet.count + 1500)
+                let written = packet.withUnsafeBytes { rawIn -> Int in
+                    guard let inBase = rawIn.bindMemory(to: UInt8.self).baseAddress else { return 0 }
+                    return outBuf.withUnsafeMutableBufferPointer { outPtr in
+                        Int(aegis_process_ip_packet(inBase, packet.count,
+                                                    outPtr.baseAddress, outPtr.count))
+                    }
+                }
+                if written > 0 {
+                    outPackets.append(Data(outBuf.prefix(written)))
+                    outProtocols.append(protocols[index])
+                }
             }
-            
+
+            if !outPackets.isEmpty {
+                self.packetFlow.writePackets(outPackets, withProtocols: outProtocols)
+            }
+
             self.readPackets()
         }
     }
-    
-    override fn stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
+
+    override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
         completionHandler()
     }
 }

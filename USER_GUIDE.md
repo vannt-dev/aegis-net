@@ -2,6 +2,11 @@
 
 **AegisNet** là ứng dụng tường lửa cá nhân & chặn quảng cáo toàn hệ thống mạnh mẽ, được xây dựng trên nền tảng **Flutter** kết hợp nhân xử lý siêu tốc bằng **Rust Core Engine**.
 
+> **Khả dụng theo nền tảng:** lọc DNS toàn hệ thống đã hoạt động trên **Android**
+> (đã kiểm chứng). **iOS** đang hoàn thiện, hiện chỉ chạy giao diện. Trên nền
+> tảng không có nhân native, app chạy mô phỏng thuần Dart để giao diện vẫn dùng
+> được đầy đủ. Xem [CHANGELOG.md](CHANGELOG.md) để biết chi tiết.
+
 ---
 
 ## 📋 Mục Lục
