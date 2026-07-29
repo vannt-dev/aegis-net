@@ -22,4 +22,5 @@ android/local.properties
 # iOS
 ios/Pods/
 ios/Runner.xcworkspace/
+ios/Frameworks/
 .DS_Store

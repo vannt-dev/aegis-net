@@ -55,7 +55,7 @@
 | Platform | Native DNS filtering | Notes |
 |----------|:--------------------:|-------|
 | **Android** | ✅ **Working (verified on emulator)** | TUN → Rust → device pipeline, DNS-only routing, DoH upstream. `libaegis_core.so` is built by a Gradle `cargo-ndk` task. |
-| **iOS** | 🚧 **In progress** | Packet-tunnel code wired to the engine, but still needs a Network Extension target, the `networkextension` entitlement, a `NETunnelProviderManager` start path, and `libaegis_core.a` linked (macOS/Xcode required). |
+| **iOS** | 🚧 **Integration code ready** | Extension provider, `NETunnelProviderManager` channel, entitlements and Rust framework script are all in the repo; Rust core cross-compiles for iOS in CI. Final assembly needs macOS/Xcode + a paid Apple Developer account — see [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md). |
 | **Web / Desktop** | ➖ Fallback UI only | Runs the pure-Dart fallback engine (simulation) for UI development. |
 
 > When the native engine is unavailable, the app **gracefully falls back** to a
@@ -117,6 +117,7 @@ For detailed setup, building, testing, and deployment instructions, refer to the
 - 🍎 **Apple App Store Deployment**: [APP_STORE_DEPLOYMENT_GUIDE.md](APP_STORE_DEPLOYMENT_GUIDE.md)
 - 🗺️ **Product Roadmap**: [ROADMAP.md](ROADMAP.md)
 - 📓 **Changelog**: [CHANGELOG.md](CHANGELOG.md)
+- 🍎 **iOS Packet Tunnel Setup**: [ios/IOS_SETUP.md](ios/IOS_SETUP.md)
 
 ---
 
