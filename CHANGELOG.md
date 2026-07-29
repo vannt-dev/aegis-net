@@ -73,9 +73,17 @@ verified native pipeline on Android.
 - The `readPackets` loop now runs each packet through `aegis_process_ip_packet`
   and writes replies back instead of discarding them; the engine C ABI is
   declared in the bridging header.
-- **Still required (not verifiable on Windows):** a Network Extension target,
-  the `networkextension` entitlement, a `NETunnelProviderManager` start path +
-  MethodChannel handler, and `libaegis_core.a` linked into the app.
+- **Full integration code prepared** (assembled on a Mac — see
+  [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md)): the `PacketTunnelProvider` moved to a
+  dedicated `ios/PacketTunnel/` extension folder with DNS-only routing that
+  mirrors Android; `VpnManager.swift` wiring the `com.aegisnet/vpn` channel to
+  `NETunnelProviderManager`; app + extension entitlements; the extension
+  `Info.plist`; and `ios/build_rust_ios.sh` to produce `AegisCore.xcframework`.
+- **Rust core verified to cross-compile for iOS** (device + simulator) on a
+  macOS CI runner (`.github/workflows/ios.yml`).
+- **Still requires macOS + a paid Apple Developer account:** creating the
+  Network Extension target, capabilities/provisioning, and linking the
+  framework. Runtime testing needs a real iPhone.
 
 ### 🧹 Housekeeping
 
