@@ -1,15 +1,20 @@
 name: 🚀 Release APK
 
-# Đẩy một tag dạng v1.2.3 là chạy. Cũng chạy tay được từ tab Actions.
+# Quy trình: làm việc trên `develop`, mở MR vào `main`.
+#
+#   - MR vào main  → build + kiểm tra, đính APK làm artifact. KHÔNG phát hành.
+#   - Merge vào main → phát hành thật: GitHub Release + mail cho tester.
+#   - Chạy tay      → phát hành, dùng khi cần phát lại một bản.
 on:
+  pull_request:
+    branches: [main]
   push:
-    tags:
-      - 'v*'
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Phiên bản, ví dụ 1.2.3 (không có chữ v)'
-        required: true
+        description: 'Ghi đè số phiên bản (bỏ trống thì lấy từ pubspec.yaml)'
+        required: false
 
 permissions:
   contents: write # cần để tạo GitHub Release
@@ -31,13 +36,40 @@ jobs:
       - name: Xác định phiên bản
         id: ver
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+          INPUT="${{ github.event.inputs.version }}"
+          if [ -n "$INPUT" ]; then
+            VERSION="$INPUT"
           else
-            VERSION="${GITHUB_REF_NAME#v}"   # v1.2.3 -> 1.2.3
+            # pubspec: "version: 1.2.3+4" -> lấy phần 1.2.3
+            VERSION=$(grep '^version:' pubspec.yaml \
+                      | sed 's/^version:[[:space:]]*//' | cut -d+ -f1 | tr -d '[:space:]')
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error::Không đọc được phiên bản từ pubspec.yaml."
+            exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Sẽ build phiên bản $VERSION (build number ${{ github.run_number }})"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "MR: chỉ build kiểm tra, không phát hành. Phiên bản $VERSION"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Phát hành $VERSION (build ${{ github.run_number }})"
+          fi
+
+      # Chặn sớm, trước khi tốn 7 phút build: không cho phát hành đè lên một
+      # phiên bản đã có. Quên tăng version trong pubspec.yaml là dính bước này.
+      - name: Kiểm tra phiên bản chưa từng phát hành
+        if: steps.ver.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::Release $TAG đã tồn tại. Hãy tăng version trong pubspec.yaml."
+            exit 1
+          fi
+          echo "$TAG chưa tồn tại, tiếp tục."
 
       # ------------------------------------------------------------- toolchains
       - uses: actions/setup-java@v4
@@ -136,10 +168,30 @@ jobs:
             exit 1
           fi
 
+      # ------------------------------------------------- MR: chỉ đưa APK ra xem
+      - name: Đính APK vào MR để tải thử
+        if: steps.ver.outputs.publish != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aegisnet-${{ steps.ver.outputs.version }}-pr${{ github.event.pull_request.number }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
+
       # ------------------------------------------------------------ phân phối
-      # Bỏ qua gọn gàng nếu chưa cấu hình Firebase — vẫn ra GitHub Release.
+      # GitHub Release đứng TRƯỚC Firebase: nó chỉ phụ thuộc file đã build, còn
+      # Firebase phụ thuộc dịch vụ ngoài. Xếp ngược lại thì một trục trặc phía
+      # Firebase sẽ cuốn theo cả bản lưu trữ, dù APK hoàn toàn hợp lệ.
+      - name: Tạo GitHub Release
+        if: steps.ver.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: AegisNet ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          files: build/app/outputs/flutter-apk/app-release.apk
+
       - name: Gửi cho tester qua Firebase App Distribution
-        if: env.FIREBASE_APP_ID != ''
+        if: steps.ver.outputs.publish == 'true' && env.FIREBASE_APP_ID != ''
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
           appId: ${{ secrets.FIREBASE_APP_ID }}
@@ -149,11 +201,3 @@ jobs:
           releaseNotes: |
             AegisNet ${{ steps.ver.outputs.version }} (build ${{ github.run_number }})
             ${{ github.event.head_commit.message }}
-
-      - name: Tạo GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.ver.outputs.version }}
-          name: AegisNet ${{ steps.ver.outputs.version }}
-          generate_release_notes: true
-          files: build/app/outputs/flutter-apk/app-release.apk
