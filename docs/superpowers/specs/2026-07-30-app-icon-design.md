@@ -38,10 +38,11 @@ mạng khắc bên trong — truyền đạt đồng thời "bảo vệ" và "DN
 Mô tả trên canvas 1024×1024:
 
 - **Khiên**: cạnh trên hơi cong lên, hai vai bo tròn, hai cạnh dưới hội tụ về
-  một mũi tù. Chiều cao **560px (55% canvas)**, bề ngang lớn nhất **410px
-  (40% canvas)**. Đặt lệch **lên trên 20px (2%)** so với tâm hình học — khiên là
-  hình nặng ở đáy, canh giữa toán học sẽ trông bị tụt.
-- **Nét viền khiên**: dày 34px.
+  một mũi tù. Đường path cao **542px (53% canvas)** (đỉnh `y=222`, mũi `y=764`),
+  bề ngang lớn nhất **396px (39% canvas)** (`x` từ 314 đến 710). Tâm path ở
+  `y=493`, tức lệch **lên trên 19px (~2%)** so với tâm canvas — khiên là hình
+  nặng ở đáy, canh giữa toán học sẽ trông bị tụt.
+- **Nét viền khiên**: dày 34px, `stroke-linejoin="round"`.
 - **Mạch bên trong**: đúng 4 node — 1 node trung tâm bán kính 46px, 3 node vệ
   tinh bán kính 30px tại đỉnh của tam giác đều xoay 90°. Nối bằng 3 đoạn thẳng
   nét 20px.
@@ -70,18 +71,26 @@ canvas — tức bán kính **312px** trên canvas 1024, tâm tại (512, 512).
 **Toàn bộ khiên và mạch phải nằm gọn trong vòng tròn này.** Riêng glow được phép
 tràn ra ngoài — mất phần glow ở rìa không ảnh hưởng nhận diện.
 
-Các con số ở §3.2 được chọn để thoả ràng buộc đó. Kiểm lại ba điểm cực trị của
-khiên (tâm khiên tại `(512, 492)` sau khi lệch lên 20px):
+Điểm dễ sai: nét viền dày 34px **nằm giữa** đường path, nên hình thật lan ra
+thêm **17px** ra ngoài path. Ràng buộc phải áp lên bao ngoài của nét viền, không
+phải lên path.
 
-| Điểm | Toạ độ | Khoảng cách tới (512, 512) | Ngưỡng |
-|---|---|---|---|
-| Mũi đáy | (512, 772) | 260px | 312px ✓ |
-| Giữa cạnh trên | (512, 212) | 300px | 312px ✓ |
-| Vai (điểm rộng nhất) | (±205 quanh tâm, y≈279) | 310px | 312px ✓ |
+Các con số ở §3.2 được chọn để thoả ràng buộc đó. Kiểm lại ba điểm cực trị:
 
-Vai là ràng buộc chặt nhất, chỉ dư 2px. Vì vậy **không được nới bề ngang khiên
-quá 410px** nếu không đồng thời giảm chiều cao hoặc giảm độ lệch lên. Nếu sau
-này cần chỉnh tỉ lệ khiên, phải tính lại bảng này trước.
+| Điểm | Toạ độ trên path | Cách (512,512) | Cộng 17px nét viền | Ngưỡng |
+|---|---|---|---|---|
+| Mũi đáy | (512, 764) | 252px | 269px | 312px ✓ |
+| Giữa cạnh trên | (512, 222) | 290px | 307px | 312px ✓ |
+| Vai (rộng nhất) | (710, 300) | 290px | 307px | 312px ✓ |
+
+Dư 5px. Vì vậy **không được nới bề ngang khiên quá 396px hay chiều cao quá
+542px** nếu không đồng thời giảm độ dày nét viền. Nếu sau này cần chỉnh tỉ lệ
+khiên, phải tính lại bảng này trước.
+
+Mũi đáy là góc nhọn nên phải dùng `stroke-linejoin="round"`; với `miter` mặc
+định, mối nối sẽ vọt ra xa hơn 17px và phá vỡ tính toán trên.
+
+Ràng buộc này được kiểm tự động ở §5.1 trên layer monochrome.
 
 ### 3.5 Bốn biến thể
 
@@ -200,6 +209,7 @@ với exit code khác 0 khi có mục sai, in ra đúng mục nào sai.
 | Kiểm tra | Lý do |
 |---|---|
 | Mọi file sinh ra tồn tại và đúng kích thước | Bắt trường hợp package chạy nửa chừng hoặc thiếu một dpi |
+| **Safe zone**: mọi pixel không trong suốt của `icon_monochrome.png` nằm trong bán kính 312px từ tâm | Kiểm tự động ràng buộc §3.4. Chọn layer monochrome vì nó không có glow — glow được phép tràn ra ngoài nên không kiểm được trên foreground |
 | `icon_foreground.png` và `icon_monochrome.png` có alpha, 4 pixel góc trong suốt | Lỗi Chrome headless hay gặp nhất — chèn nền trắng, khiến foreground hiện thành ô vuông trắng trên home screen |
 | `Icon-App-1024x1024@1x.png` không có pixel trong suốt | App Store Connect từ chối thẳng binary vi phạm |
 | `mipmap-anydpi-v26/ic_launcher.xml` tồn tại và trỏ đúng 3 layer | Thiếu thì Android im lặng tụt về icon legacy, không báo lỗi |
@@ -228,12 +238,13 @@ thay người dùng.
 
 ## 6. Chiến lược commit và rollback
 
-Chia làm hai commit tách bạch:
+Yêu cầu cốt lõi: **asset của nền tảng (`android/`, `ios/`, `web/`) phải nằm
+trong commit riêng, không trộn với file nguồn thiết kế** — để revert được phần
+asset mà vẫn giữ bản thiết kế và bộ công cụ.
 
-1. File nguồn — SVG, `render.mjs`, `verify.mjs`, `preview.html`
-2. Asset sinh ra + thay đổi `pubspec.yaml` / `manifest.json`
-
-Tách như vậy để revert riêng được phần asset mà vẫn giữ bản thiết kế.
+Kế hoạch triển khai chia nhỏ hơn thế thành từng commit một-task-một-commit cho
+dễ review, nhưng vẫn giữ đúng ranh giới trên: nhóm commit đầu là công cụ + SVG +
+PNG 1024 sinh ra, sau đó **một commit riêng** cho toàn bộ fan-out ra nền tảng.
 
 Mọi file bị ghi đè đều đang được git theo dõi; `git checkout -- android/ ios/
 web/` hoàn tác sạch.
