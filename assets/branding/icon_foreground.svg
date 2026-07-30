@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feComponentTransfer in="blur" result="soft">
+        <feFuncA type="linear" slope="0.45"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="soft"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="halo" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+  </defs>
+
+  <!-- Scale 0.93 quanh tam canvas de bao ngoai cua net vien nam trong safe zone
+       312px. Diem xa nhat la goc noi giua canh tren va vai, tai (690,254). -->
+  <g transform="translate(512 512) scale(0.93) translate(-512 -512)">
+  <g filter="url(#glow)">
+    <path d="M 512 222 Q 636 222 690 254 Q 710 266 710 300 L 710 468 Q 710 604 598 700 Q 552 740 512 764 Q 472 740 426 700 Q 314 604 314 468 L 314 300 Q 314 266 334 254 Q 388 222 512 222 Z"
+          fill="#18FFFF" fill-opacity="0.07"
+          stroke="#18FFFF" stroke-width="34" stroke-linejoin="round"/>
+
+    <g stroke="#18FFFF" stroke-opacity="0.55" stroke-width="20" stroke-linecap="round">
+      <line x1="512" y1="470" x2="512" y2="352"/>
+      <line x1="512" y1="470" x2="410" y2="529"/>
+      <line x1="512" y1="470" x2="614" y2="529"/>
+    </g>
+
+    <circle cx="512" cy="470" r="76" fill="#18FFFF" opacity="0.28" filter="url(#halo)"/>
+    <circle cx="512" cy="352" r="30" fill="#18FFFF"/>
+    <circle cx="410" cy="529" r="30" fill="#18FFFF"/>
+    <circle cx="614" cy="529" r="30" fill="#18FFFF"/>
+    <circle cx="512" cy="470" r="46" fill="#18FFFF"/>
+  </g>
+  </g>
+</svg>
