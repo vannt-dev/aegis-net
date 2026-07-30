@@ -50,6 +50,31 @@
 
 ---
 
+## 🎯 What DNS Filtering Can and Cannot Block
+
+AegisNet blocks by **domain name**. It sees which host a device asks for and
+answers or refuses; it never looks inside the encrypted connection. That draws a
+hard line around what it can do.
+
+**Blocked effectively** — ads and trackers served from their own domains:
+banners and interstitials in most free apps and games (AppLovin, Vungle, AdMob
+and similar networks), analytics and telemetry endpoints, and web ads while
+browsing.
+
+**Not blocked** — ads served from the *same* domains as the content itself:
+
+| App | Why |
+|-----|-----|
+| **YouTube** | Ads and video both come from `googlevideo.com`. Blocking it blocks the video too. Most YouTube ads are also stitched into the video stream server-side, so there is no separate request to refuse. |
+| **Facebook / Instagram** | In-feed ads arrive over the same hosts as the feed. |
+| **Spotify, TikTok** | Same pattern: ad content shares the delivery infrastructure. |
+
+This is a property of DNS filtering itself, not a gap in the rule list — no
+blocklist can fix it. Removing YouTube ads specifically requires a different
+approach, such as an alternative client (ReVanced, NewPipe) or YouTube Premium.
+
+---
+
 ## 📊 Platform Status
 
 | Platform | Native DNS filtering | Notes |
