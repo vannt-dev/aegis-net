@@ -15,6 +15,9 @@ typedef AegisAddDomainDart = void Function(Pointer<Utf8> domain);
 typedef AegisIsBlockedC = Int32 Function(Pointer<Utf8> domain);
 typedef AegisIsBlockedDart = int Function(Pointer<Utf8> domain);
 
+typedef AegisSetCategoryC = Void Function(Int32 categoryId, Int32 enabled);
+typedef AegisSetCategoryDart = void Function(int categoryId, int enabled);
+
 typedef AegisGetStatsC = Pointer<Utf8> Function();
 typedef AegisGetStatsDart = Pointer<Utf8> Function();
 
@@ -32,6 +35,7 @@ class AegisNativeBindings {
   static AegisAddDomainDart? _removeWhitelist;
   static AegisAddDomainDart? _removeBlacklist;
   static AegisIsBlockedDart? _isDomainBlocked;
+  static AegisSetCategoryDart? _setCategory;
   static AegisGetStatsDart? _getStatsJson;
   static AegisFreeStringDart? _freeString;
 
@@ -69,6 +73,9 @@ class AegisNativeBindings {
         _isDomainBlocked = _lib!
             .lookupFunction<AegisIsBlockedC, AegisIsBlockedDart>(
                 'aegis_is_domain_blocked');
+        _setCategory = _lib!
+            .lookupFunction<AegisSetCategoryC, AegisSetCategoryDart>(
+                'aegis_set_category');
         _getStatsJson = _lib!.lookupFunction<AegisGetStatsC, AegisGetStatsDart>(
             'aegis_get_stats_json');
         _freeString = _lib!
@@ -119,6 +126,11 @@ class AegisNativeBindings {
     final ptr = domain.toNativeUtf8();
     _removeBlacklist!(ptr);
     malloc.free(ptr);
+  }
+
+  static void setCategory(int categoryId, bool enabled) {
+    if (!_isLoaded || _setCategory == null) return;
+    _setCategory!(categoryId, enabled ? 1 : 0);
   }
 
   static bool isDomainBlocked(String domain) {

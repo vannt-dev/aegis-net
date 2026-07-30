@@ -6,6 +6,7 @@ class AegisNativeBindings {
   static void addBlacklist(String domain) {}
   static void removeWhitelist(String domain) {}
   static void removeBlacklist(String domain) {}
+  static void setCategory(int categoryId, bool enabled) {}
   static bool isDomainBlocked(String domain) => false;
   static String? getStatsJson() => null;
 }

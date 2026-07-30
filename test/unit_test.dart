@@ -50,11 +50,13 @@ void main() {
       await provider.toggleVpn();
       expect(provider.isVpnActive, isTrue);
 
-      provider.pauseProtection(const Duration(minutes: 5));
+      // pauseProtection/resumeProtection are async: they wait on the tunnel
+      // actually stopping/starting before flipping the paused flag.
+      await provider.pauseProtection(const Duration(minutes: 5));
       expect(provider.isPaused, isTrue);
       expect(provider.isVpnActive, isFalse);
 
-      provider.resumeProtection();
+      await provider.resumeProtection();
       expect(provider.isPaused, isFalse);
       expect(provider.isVpnActive, isTrue);
       provider.dispose();

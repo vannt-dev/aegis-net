@@ -1,8 +1,12 @@
 # 🍎 iOS Packet Tunnel — Setup Guide
 
 The iOS DNS filtering runs inside a **Network Extension (Packet Tunnel Provider)**.
-All the source is already in the repo; the steps below are the parts that
-**must** be done on a **Mac with Xcode** and can't be scripted from Windows.
+All the source is already in the repo, and the **Runner** target is fully wired
+(bundle id, `VpnManager.swift` membership, entitlements) — that part was done by
+editing `project.pbxproj` directly, and is verified by the macOS CI job.
+
+What remains below genuinely needs a **Mac with Xcode**: creating the extension
+target, linking the Rust `xcframework`, provisioning, and device testing.
 
 ## Prerequisites (hard requirements)
 
@@ -33,16 +37,20 @@ All the source is already in the repo; the steps below are the parts that
 ./ios/build_rust_ios.sh          # → ios/Frameworks/AegisCore.xcframework
 ```
 
-### 2. Set the app bundle id & add the new Runner files
-In Xcode → **Runner** target → *Signing & Capabilities*:
-- Set **Bundle Identifier** to `com.aegisnet.app` (currently `com.example.aegisNet`).
-- Select your paid **Team**.
+### 2. Select your signing team
 
-> The repo adds `ios/Runner/VpnManager.swift` and `ios/Runner/Runner.entitlements`,
-> which are **not yet in the Xcode project**. Add `VpnManager.swift` to the
-> Runner target (drag it in, ensure *Target Membership → Runner* is checked) —
-> `AppDelegate.swift` references it. Point the target's *Code Signing
-> Entitlements* build setting at `Runner/Runner.entitlements`.
+Already wired in `Runner.xcodeproj/project.pbxproj` — **nothing to do here**
+beyond picking a team:
+
+- Bundle Identifier is `com.aegisnet.app` (and `com.aegisnet.app.RunnerTests`),
+  matching the Android `applicationId`.
+- `VpnManager.swift` is a member of the Runner target, so the
+  `AppDelegate.swift` reference to it resolves.
+- `CODE_SIGN_ENTITLEMENTS` points at `Runner/Runner.entitlements` for all three
+  build configurations.
+
+In Xcode → **Runner** target → *Signing & Capabilities*, select your paid
+**Team**. That still cannot be scripted — it is tied to your developer account.
 
 ### 3. Add the Packet Tunnel extension target
 - **File → New → Target… → Network Extension** (Packet Tunnel Provider).

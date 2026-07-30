@@ -136,15 +136,20 @@ class VpnProvider extends ChangeNotifier {
 
     await Future.delayed(const Duration(milliseconds: 100));
 
+    // Only move the flag if the tunnel actually changed state. startVpn resolves
+    // false when the user declines the system VPN consent dialog, and claiming
+    // protection there would be a lie.
     if (_isVpnActive) {
-      await AegisBridge.stopVpn();
-      _isVpnActive = false;
-      _stopSimulation();
+      if (await AegisBridge.stopVpn()) {
+        _isVpnActive = false;
+        _stopSimulation();
+      }
     } else {
-      await AegisBridge.startVpn();
-      _isVpnActive = true;
-      if (enableSimulation) {
-        _startSimulation();
+      if (await AegisBridge.startVpn()) {
+        _isVpnActive = true;
+        if (enableSimulation) {
+          _startSimulation();
+        }
       }
     }
 
@@ -152,25 +157,56 @@ class VpnProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void pauseProtection(Duration duration) {
-    _pausedUntil = DateTime.now().add(duration);
+  Future<void> pauseProtection(Duration duration) async {
     _pauseTimer?.cancel();
-    if (enableSimulation) {
-      _pauseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (!isPaused) {
-          _pausedUntil = null;
-          timer.cancel();
-        }
+
+    // Stop the tunnel first and only claim "paused" if it really stopped —
+    // otherwise the UI would report paused while DNS is still being filtered.
+    if (_isVpnActive) {
+      final stopped = await AegisBridge.stopVpn();
+      if (!stopped) {
         notifyListeners();
-      });
+        return;
+      }
     }
+
+    _pausedUntil = DateTime.now().add(duration);
+    _pauseTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (isPaused) {
+        notifyListeners();
+        return;
+      }
+      timer.cancel();
+      // Bring the tunnel up BEFORE clearing the pause, so the UI never shows
+      // "protected" during the gap where the tunnel is still down.
+      await _restoreTunnelAfterPause();
+      _pausedUntil = null;
+      notifyListeners();
+    });
     notifyListeners();
   }
 
-  void resumeProtection() {
-    _pausedUntil = null;
+  Future<void> resumeProtection() async {
+    final wasPaused = isPaused;
     _pauseTimer?.cancel();
+    // Restart the tunnel that pauseProtection stopped, before dropping the
+    // paused flag — same reason as above.
+    if (wasPaused) {
+      await _restoreTunnelAfterPause();
+    }
+    _pausedUntil = null;
     notifyListeners();
+  }
+
+  /// Bring the tunnel back up after a pause. If it refuses to start, drop the
+  /// active flag so the UI stops claiming protection the engine isn't giving.
+  Future<void> _restoreTunnelAfterPause() async {
+    if (!_isVpnActive) return;
+    final started = await AegisBridge.startVpn();
+    if (!started) {
+      _isVpnActive = false;
+      _stopSimulation();
+    }
   }
 
   void toggleCategory(int categoryId, bool value) async {
@@ -178,6 +214,9 @@ class VpnProvider extends ChangeNotifier {
     if (categoryId == 1) _blockTrackers = value;
     if (categoryId == 2) _blockMalware = value;
     if (categoryId == 3) _blockAdult = value;
+
+    // Apply the change to the native rule engine, not just the UI.
+    AegisBridge.setCategory(categoryId, value);
 
     try {
       final prefs = await SharedPreferences.getInstance();
