@@ -1,8 +1,20 @@
 import java.io.File
+import java.io.FileInputStream
+import java.util.Properties
 
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Release signing. android/key.properties is gitignored and holds the keystore
+// password, so a checkout without it still builds — it just falls back to the
+// debug key, which is fine for local runs but must never be distributed.
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+val hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
 }
 
 android {
@@ -23,9 +35,30 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                // Debug keys differ per machine, so an APK signed this way cannot
+                // be installed over one built elsewhere. Loud on purpose.
+                logger.warn(
+                    "[aegis] android/key.properties missing — signing release with the DEBUG key. " +
+                        "Do NOT distribute this APK.",
+                )
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

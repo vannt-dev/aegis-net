@@ -43,39 +43,30 @@ keyAlias=upload
 storeFile=upload-keystore.jks
 ```
 
-### Bước 2.3: Cấu hình `android/app/build.gradle.kts`
-Cập nhật khối `signingConfigs` trong file `android/app/build.gradle.kts`:
+### Bước 2.3: Cấu hình `android/app/build.gradle.kts` — ĐÃ LÀM SẴN
 
-```kotlin
-import java.io.FileInputStream
-import java.util.Properties
+Không cần sửa gì. `android/app/build.gradle.kts` đã đọc `key.properties` và ký
+bản release bằng keystore của bạn. Nếu không tìm thấy `key.properties`, nó tụt
+về khoá debug và **in cảnh báo** — bản đó chỉ để chạy thử, không được đem phát
+hành, vì khoá debug khác nhau trên mỗi máy nên người dùng sẽ không cài đè được.
 
-val keystorePropertiesFile = rootProject.file("key.properties")
-val keystoreProperties = Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-}
+Kiểm tra nhanh sau khi làm xong bước 2.1 và 2.2:
 
-android {
-    ...
-    signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
-            storeFile = keystoreProperties["storeFile"]?.let { file(it) }
-            storePassword = keystoreProperties["storePassword"] as String
-        }
-    }
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
-    }
-}
+```bash
+flutter build apk --release
+# rồi xem chữ ký, KHÔNG được là "CN=Android Debug"
+APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+"$APKSIGNER" verify --print-certs \
+  build/app/outputs/flutter-apk/app-release.apk | grep "certificate DN"
 ```
+
+> [!NOTE]
+> Bản cấu hình ở đây **không** bật `isMinifyEnabled` / R8. Với app có FFI sang
+> Rust, bật R8 mà thiếu keep-rule rất dễ gây lỗi chỉ xuất hiện ở bản release.
+> Nếu cần thu nhỏ APK thì bật riêng và kiểm thử lại trên máy thật.
+
+Muốn build và phát hành tự động qua GitHub Actions, xem
+[`RELEASE_GUIDE.md`](RELEASE_GUIDE.md).
 
 ---
 

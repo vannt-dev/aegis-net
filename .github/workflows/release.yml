@@ -1,0 +1,159 @@
+name: 🚀 Release APK
+
+# Đẩy một tag dạng v1.2.3 là chạy. Cũng chạy tay được từ tab Actions.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Phiên bản, ví dụ 1.2.3 (không có chữ v)'
+        required: true
+
+permissions:
+  contents: write # cần để tạo GitHub Release
+
+jobs:
+  release:
+    name: Build, ký và phát hành APK
+    runs-on: ubuntu-latest
+
+    # Khai ở cấp job: `env` của một step KHÔNG dùng được trong `if` của chính
+    # step đó, nên bước Firebase phải đọc biến này từ đây.
+    env:
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------- version
+      - name: Xác định phiên bản
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"   # v1.2.3 -> 1.2.3
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Sẽ build phiên bản $VERSION (build number ${{ github.run_number }})"
+
+      # ------------------------------------------------------------- toolchains
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # QUAN TRỌNG: thiếu cargo-ndk thì task Gradle buildRustEngine bị bỏ qua
+      # trong im lặng (onlyIf + isIgnoreExitValue) và APK sẽ RA ĐỜI MÀ KHÔNG CÓ
+      # engine DNS — app cài được nhưng không chặn gì cả.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust/aegis_core
+
+      - name: Cài cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      # ------------------------------------------------------------------ gate
+      - name: Cài dependency
+        run: flutter pub get
+
+      - name: Kiểm tra trước khi phát hành
+        run: |
+          flutter analyze
+          flutter test
+          cd rust/aegis_core && cargo test
+
+      # --------------------------------------------------------------- ký tên
+      - name: Dựng lại keystore từ secret
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::Thiếu secret ANDROID_KEYSTORE_BASE64. Xem RELEASE_GUIDE.md."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=upload-keystore.jks
+          EOF
+
+      # ----------------------------------------------------------------- build
+      - name: Build APK release
+        run: |
+          flutter build apk --release \
+            --build-name="${{ steps.ver.outputs.version }}" \
+            --build-number="${{ github.run_number }}"
+
+      # Chốt chặn cuối: APK phải chứa engine cho cả 3 ABI. Nếu cargo-ndk hỏng
+      # giữa chừng, Gradle vẫn báo thành công — chỉ bước này bắt được.
+      - name: Xác minh engine Rust nằm trong APK
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          COUNT=$(unzip -l "$APK" | grep -c 'libaegis_core\.so' || true)
+          echo "Tìm thấy libaegis_core.so trong $COUNT ABI:"
+          unzip -l "$APK" | grep 'libaegis_core\.so' || true
+          if [ "$COUNT" -ne 3 ]; then
+            echo "::error::Cần đủ 3 ABI (arm64-v8a, armeabi-v7a, x86_64), chỉ có $COUNT."
+            echo "::error::APK này sẽ chạy ở chế độ fallback và KHÔNG lọc DNS. Không phát hành."
+            exit 1
+          fi
+
+      - name: Xác minh APK không ký bằng khoá debug
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          # Có thể cài nhiều bản build-tools; lấy bản mới nhất thay vì để glob
+          # nở ra nhiều đường dẫn rồi biến phần thừa thành tham số.
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          echo "Dùng $APKSIGNER"
+          DN=$("$APKSIGNER" verify --print-certs "$APK" \
+               | grep -i 'certificate DN' || true)
+          echo "$DN"
+          if [ -z "$DN" ]; then
+            echo "::error::Không đọc được chữ ký của APK."
+            exit 1
+          fi
+          if echo "$DN" | grep -qi 'CN=Android Debug'; then
+            echo "::error::APK đang ký bằng khoá DEBUG — key.properties không được đọc."
+            exit 1
+          fi
+
+      # ------------------------------------------------------------ phân phối
+      # Bỏ qua gọn gàng nếu chưa cấu hình Firebase — vẫn ra GitHub Release.
+      - name: Gửi cho tester qua Firebase App Distribution
+        if: env.FIREBASE_APP_ID != ''
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers
+          file: build/app/outputs/flutter-apk/app-release.apk
+          releaseNotes: |
+            AegisNet ${{ steps.ver.outputs.version }} (build ${{ github.run_number }})
+            ${{ github.event.head_commit.message }}
+
+      - name: Tạo GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: AegisNet ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          files: build/app/outputs/flutter-apk/app-release.apk
