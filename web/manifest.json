@@ -1,11 +1,11 @@
 {
-    "name": "aegis_net",
-    "short_name": "aegis_net",
+    "name": "AegisNet",
+    "short_name": "AegisNet",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0A0F14",
     "theme_color": "#18FFFF",
-    "description": "A new Flutter project.",
+    "description": "System-wide DNS privacy guard and ad blocker powered by a Rust core engine.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

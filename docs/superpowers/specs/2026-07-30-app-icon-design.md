@@ -75,17 +75,28 @@ tràn ra ngoài — mất phần glow ở rìa không ảnh hưởng nhận di�
 thêm **17px** ra ngoài path. Ràng buộc phải áp lên bao ngoài của nét viền, không
 phải lên path.
 
-Các con số ở §3.2 được chọn để thoả ràng buộc đó. Kiểm lại ba điểm cực trị:
+Điểm xa tâm nhất **không phải** mũi đáy, giữa cạnh trên hay vai, mà là **góc nối
+giữa cạnh trên và vai** — nằm chéo so với tâm nên cộng dồn cả `dx` lẫn `dy`:
 
-| Điểm | Toạ độ trên path | Cách (512,512) | Cộng 17px nét viền | Ngưỡng |
-|---|---|---|---|---|
-| Mũi đáy | (512, 764) | 252px | 269px | 312px ✓ |
-| Giữa cạnh trên | (512, 222) | 290px | 307px | 312px ✓ |
-| Vai (rộng nhất) | (710, 300) | 290px | 307px | 312px ✓ |
+| Điểm | Toạ độ trên path | Cách (512,512) | Cộng 17px nét viền |
+|---|---|---|---|
+| Mũi đáy | (512, 764) | 252px | 269px |
+| Giữa cạnh trên | (512, 222) | 290px | 307px |
+| Vai (rộng nhất) | (710, 300) | 290px | 307px |
+| **Góc trên–vai** | **(690, 254)** | **313px** | **330px** ❌ |
 
-Dư 5px. Vì vậy **không được nới bề ngang khiên quá 396px hay chiều cao quá
-542px** nếu không đồng thời giảm độ dày nét viền. Nếu sau này cần chỉnh tỉ lệ
-khiên, phải tính lại bảng này trước.
+330px vượt ngưỡng 312px. Vì vậy toàn bộ nhóm khiên + mạch được bọc trong một
+phép **`scale(0.93)` quanh tâm canvas**:
+
+```
+transform="translate(512 512) scale(0.93) translate(-512 -512)"
+```
+
+Bao ngoài thật sau khi scale: `330 × 0.93 = 307px`, dư 5px. Phép scale áp lên cả
+nét viền (SVG scale nét viền theo transform) nên tỉ lệ hình không đổi.
+
+Muốn chỉnh tỉ lệ khiên về sau thì đổi **con số 0.93** đó, đừng đổi toạ độ path —
+và luôn để test safe zone tự nói cho biết đã vượt ngưỡng chưa, đừng tính tay.
 
 Mũi đáy là góc nhọn nên phải dùng `stroke-linejoin="round"`; với `miter` mặc
 định, mối nối sẽ vọt ra xa hơn 17px và phá vỡ tính toán trên.
