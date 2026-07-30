@@ -27,3 +27,7 @@ ios/Frameworks/
 
 # Icon render scratch (see assets/branding/render.mjs)
 assets/branding/.render-tmp/
+
+# Cong cu / tai lieu noi bo cua may local, khong dua len repo
+.claude/
+docs/
