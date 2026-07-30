@@ -24,3 +24,6 @@ ios/Pods/
 ios/Runner.xcworkspace/
 ios/Frameworks/
 .DS_Store
+
+# Icon render scratch (see assets/branding/render.mjs)
+assets/branding/.render-tmp/

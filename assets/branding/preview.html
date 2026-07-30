@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>AegisNet — xem thử icon</title>
+<style>
+  body { margin: 0; padding: 32px; background: #1a1a1a; color: #eee;
+         font: 14px/1.5 system-ui, sans-serif; }
+  h2 { font-size: 15px; font-weight: 600; margin: 32px 0 12px; color: #9ad; }
+  .row { display: flex; gap: 24px; align-items: flex-end; flex-wrap: wrap; }
+  .cell { text-align: center; }
+  .cell span { display: block; margin-top: 6px; font-size: 11px; color: #888; }
+  img { display: block; image-rendering: auto; }
+  .circle img { border-radius: 50%; }
+  .squircle img { border-radius: 28%; }
+  .safe { position: relative; }
+  .safe::after {
+    content: ''; position: absolute; inset: 0; margin: auto;
+    width: 61%; height: 61%; border: 1px dashed #ff5c5c; border-radius: 50%;
+  }
+  .swatches { display: flex; gap: 16px; flex-wrap: wrap; }
+  .swatch { padding: 12px; border-radius: 12px; }
+</style>
+
+<h2>1 — Kích thước thật (icon đầy đủ)</h2>
+<div class="row">
+  <div class="cell"><img src="generated/icon_full.png" width="192"><span>192px</span></div>
+  <div class="cell"><img src="generated/icon_full.png" width="96"><span>96px</span></div>
+  <div class="cell"><img src="generated/icon_full.png" width="48"><span>48px — bài kiểm tra thật sự</span></div>
+  <div class="cell"><img src="generated/icon_full.png" width="32"><span>32px (favicon)</span></div>
+</div>
+
+<h2>2 — Mask của Android (nền + foreground chồng lên nhau)</h2>
+<div class="row">
+  <div class="cell circle" style="position:relative">
+    <img src="generated/icon_background.png" width="192">
+    <img src="generated/icon_foreground.png" width="192" style="position:absolute;top:0;left:0;border-radius:50%">
+    <span>mask tròn</span>
+  </div>
+  <div class="cell squircle" style="position:relative">
+    <img src="generated/icon_background.png" width="192">
+    <img src="generated/icon_foreground.png" width="192" style="position:absolute;top:0;left:0;border-radius:28%">
+    <span>mask squircle</span>
+  </div>
+</div>
+
+<h2>3 — Safe zone (vòng đỏ đứt = vùng Android đảm bảo hiển thị)</h2>
+<div class="row">
+  <div class="cell safe"><img src="generated/icon_foreground.png" width="256"><span>foreground — chỉ glow được tràn ra ngoài</span></div>
+  <div class="cell safe"><img src="generated/icon_monochrome.png" width="256" style="background:#333"><span>monochrome — phải nằm trọn bên trong</span></div>
+</div>
+
+<h2>4 — Themed icon trên các màu wallpaper khác nhau</h2>
+<div class="swatches">
+  <div class="swatch" style="background:#3b5f43"><img src="generated/icon_monochrome.png" width="96"></div>
+  <div class="swatch" style="background:#5c4a7d"><img src="generated/icon_monochrome.png" width="96"></div>
+  <div class="swatch" style="background:#7d4a4a"><img src="generated/icon_monochrome.png" width="96"></div>
+  <div class="swatch" style="background:#2b2b2b"><img src="generated/icon_monochrome.png" width="96"></div>
+</div>
