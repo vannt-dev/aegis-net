@@ -136,15 +136,20 @@ class VpnProvider extends ChangeNotifier {
 
     await Future.delayed(const Duration(milliseconds: 100));
 
+    // Only move the flag if the tunnel actually changed state. startVpn resolves
+    // false when the user declines the system VPN consent dialog, and claiming
+    // protection there would be a lie.
     if (_isVpnActive) {
-      await AegisBridge.stopVpn();
-      _isVpnActive = false;
-      _stopSimulation();
+      if (await AegisBridge.stopVpn()) {
+        _isVpnActive = false;
+        _stopSimulation();
+      }
     } else {
-      await AegisBridge.startVpn();
-      _isVpnActive = true;
-      if (enableSimulation) {
-        _startSimulation();
+      if (await AegisBridge.startVpn()) {
+        _isVpnActive = true;
+        if (enableSimulation) {
+          _startSimulation();
+        }
       }
     }
 
