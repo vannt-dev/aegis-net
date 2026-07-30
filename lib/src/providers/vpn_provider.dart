@@ -152,38 +152,56 @@ class VpnProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void pauseProtection(Duration duration) {
-    _pausedUntil = DateTime.now().add(duration);
+  Future<void> pauseProtection(Duration duration) async {
     _pauseTimer?.cancel();
 
-    // Actually stop the tunnel so DNS is no longer filtered while paused.
+    // Stop the tunnel first and only claim "paused" if it really stopped —
+    // otherwise the UI would report paused while DNS is still being filtered.
     if (_isVpnActive) {
-      AegisBridge.stopVpn();
+      final stopped = await AegisBridge.stopVpn();
+      if (!stopped) {
+        notifyListeners();
+        return;
+      }
     }
 
-    _pauseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!isPaused) {
-        _pausedUntil = null;
-        timer.cancel();
-        // Auto-resume protection when the pause window elapses.
-        if (_isVpnActive) {
-          AegisBridge.startVpn();
-        }
+    _pausedUntil = DateTime.now().add(duration);
+    _pauseTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (isPaused) {
+        notifyListeners();
+        return;
       }
+      timer.cancel();
+      // Bring the tunnel up BEFORE clearing the pause, so the UI never shows
+      // "protected" during the gap where the tunnel is still down.
+      await _restoreTunnelAfterPause();
+      _pausedUntil = null;
       notifyListeners();
     });
     notifyListeners();
   }
 
-  void resumeProtection() {
+  Future<void> resumeProtection() async {
     final wasPaused = isPaused;
-    _pausedUntil = null;
     _pauseTimer?.cancel();
-    // Restart the tunnel that pauseProtection stopped.
-    if (wasPaused && _isVpnActive) {
-      AegisBridge.startVpn();
+    // Restart the tunnel that pauseProtection stopped, before dropping the
+    // paused flag — same reason as above.
+    if (wasPaused) {
+      await _restoreTunnelAfterPause();
     }
+    _pausedUntil = null;
     notifyListeners();
+  }
+
+  /// Bring the tunnel back up after a pause. If it refuses to start, drop the
+  /// active flag so the UI stops claiming protection the engine isn't giving.
+  Future<void> _restoreTunnelAfterPause() async {
+    if (!_isVpnActive) return;
+    final started = await AegisBridge.startVpn();
+    if (!started) {
+      _isVpnActive = false;
+      _stopSimulation();
+    }
   }
 
   void toggleCategory(int categoryId, bool value) async {
