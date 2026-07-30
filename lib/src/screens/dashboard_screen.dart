@@ -207,11 +207,15 @@ class DashboardScreen extends StatelessWidget {
                 mainAxisSpacing: 14,
                 childAspectRatio: 1.45,
                 children: [
+                  // Mau cua 4 the nay la mau PHAN LOAI — no ma hoa "day la chi
+                  // so nao", nen phai co dinh. Truoc day the dau dung `accent`,
+                  // khien no trung mau voi the "Ads Blocked" (emerald) khi chon
+                  // theme Emerald. Giu ca 4 co dinh de luon phan biet duoc.
                   _buildStatCard(
                     title: AppStrings.get('total_queries'),
                     value: '$totalQueries',
                     icon: Icons.swap_vert_rounded,
-                    color: accent,
+                    color: Colors.cyanAccent,
                   ),
                   _buildStatCard(
                     title: AppStrings.get('ads_blocked'),
