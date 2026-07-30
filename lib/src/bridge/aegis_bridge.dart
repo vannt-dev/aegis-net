@@ -132,6 +132,14 @@ class AegisBridge {
     _blacklistedDomains.remove(clean);
   }
 
+  /// Enable/disable a rule category on the engine.
+  /// (0: Ads, 1: Trackers, 2: Malware, 3: Adult)
+  static void setCategory(int categoryId, bool enabled) {
+    if (_useNativeFfi) {
+      AegisNativeBindings.setCategory(categoryId, enabled);
+    }
+  }
+
   /// Get live filtering statistics summary
   static Map<String, dynamic> getStats() {
     if (_useNativeFfi) {

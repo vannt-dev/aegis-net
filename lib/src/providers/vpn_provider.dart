@@ -155,21 +155,34 @@ class VpnProvider extends ChangeNotifier {
   void pauseProtection(Duration duration) {
     _pausedUntil = DateTime.now().add(duration);
     _pauseTimer?.cancel();
-    if (enableSimulation) {
-      _pauseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (!isPaused) {
-          _pausedUntil = null;
-          timer.cancel();
-        }
-        notifyListeners();
-      });
+
+    // Actually stop the tunnel so DNS is no longer filtered while paused.
+    if (_isVpnActive) {
+      AegisBridge.stopVpn();
     }
+
+    _pauseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!isPaused) {
+        _pausedUntil = null;
+        timer.cancel();
+        // Auto-resume protection when the pause window elapses.
+        if (_isVpnActive) {
+          AegisBridge.startVpn();
+        }
+      }
+      notifyListeners();
+    });
     notifyListeners();
   }
 
   void resumeProtection() {
+    final wasPaused = isPaused;
     _pausedUntil = null;
     _pauseTimer?.cancel();
+    // Restart the tunnel that pauseProtection stopped.
+    if (wasPaused && _isVpnActive) {
+      AegisBridge.startVpn();
+    }
     notifyListeners();
   }
 
@@ -178,6 +191,9 @@ class VpnProvider extends ChangeNotifier {
     if (categoryId == 1) _blockTrackers = value;
     if (categoryId == 2) _blockMalware = value;
     if (categoryId == 3) _blockAdult = value;
+
+    // Apply the change to the native rule engine, not just the UI.
+    AegisBridge.setCategory(categoryId, value);
 
     try {
       final prefs = await SharedPreferences.getInstance();

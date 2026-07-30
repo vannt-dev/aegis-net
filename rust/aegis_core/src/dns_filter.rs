@@ -165,8 +165,56 @@ impl DnsFilterService {
         Some((domain_parts.join("."), qtype))
     }
 
+    /// Build an NXDOMAIN reply for a blocked domain. Returning "no such name"
+    /// makes clients give up quietly instead of retrying a sinkhole IP.
     fn build_blocked_response(request: &[u8]) -> Vec<u8> {
-        Self::build_ip_response(request, [0, 0, 0, 0])
+        let end = match Self::question_end_offset(request) {
+            Some(e) => e,
+            None => return vec![],
+        };
+
+        let mut response = request[..end].to_vec();
+        response[2] = 0x81; // QR=1, RD=1
+        response[3] = 0x83; // RA=1, RCODE=3 (NXDOMAIN)
+        response[6] = 0x00; // ANCOUNT = 0
+        response[7] = 0x00;
+        response[8] = 0x00; // NSCOUNT = 0
+        response[9] = 0x00;
+        response[10] = 0x00; // ARCOUNT = 0
+        response[11] = 0x00;
+        response
+    }
+
+    /// Byte offset just past the first DNS question (QNAME + QTYPE + QCLASS).
+    fn question_end_offset(buffer: &[u8]) -> Option<usize> {
+        if buffer.len() < 12 {
+            return None;
+        }
+        if u16::from_be_bytes([buffer[4], buffer[5]]) == 0 {
+            return None;
+        }
+
+        let mut offset = 12;
+        loop {
+            if offset >= buffer.len() {
+                return None;
+            }
+            let len = buffer[offset] as usize;
+            if len == 0 {
+                offset += 1; // skip the root label terminator
+                break;
+            }
+            if len > 63 || offset + 1 + len > buffer.len() {
+                return None;
+            }
+            offset += 1 + len;
+        }
+
+        // QTYPE (2) + QCLASS (2) follow the name.
+        if offset + 4 > buffer.len() {
+            return None;
+        }
+        Some(offset + 4)
     }
 
     fn build_ip_response(request: &[u8], ip: [u8; 4]) -> Vec<u8> {
@@ -321,16 +369,25 @@ mod tests {
     }
 
     #[test]
-    fn test_blocked_response_generation() {
+    fn test_blocked_response_is_nxdomain() {
         let mock_packet = vec![
             0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x03, b'a', b'd', b's', 0x00, 0x00, 0x01, 0x00, 0x01
+            0x03, b'a', b'd', b's', 0x00, 0x00, 0x01, 0x00, 0x01,
         ];
 
         let response = DnsFilterService::build_blocked_response(&mock_packet);
         assert!(!response.is_empty());
-        assert_eq!(response[2], 0x81);
-        let len = response.len();
-        assert_eq!(&response[len - 4..], &[0, 0, 0, 0]);
+        // Transaction id preserved.
+        assert_eq!(&response[0..2], &[0x12, 0x34]);
+        // QR bit set (this is a response).
+        assert_eq!(response[2] & 0x80, 0x80);
+        // RCODE = 3 (NXDOMAIN).
+        assert_eq!(response[3] & 0x0f, 0x03);
+        // No answer / authority / additional records.
+        assert_eq!(u16::from_be_bytes([response[6], response[7]]), 0);
+        assert_eq!(u16::from_be_bytes([response[8], response[9]]), 0);
+        assert_eq!(u16::from_be_bytes([response[10], response[11]]), 0);
+        // The question is echoed back and nothing extra is appended.
+        assert_eq!(response.len(), 21);
     }
 }

@@ -237,6 +237,18 @@ mod tests {
     }
 
     #[test]
+    fn test_disabling_category_stops_blocking() {
+        let engine = RuleEngine::new();
+        assert!(engine.is_blocked("doubleclick.net")); // Ads enabled by default
+
+        engine.set_category_enabled(RuleCategory::Ads, false);
+        assert!(!engine.is_blocked("doubleclick.net")); // category off -> allowed
+
+        engine.set_category_enabled(RuleCategory::Ads, true);
+        assert!(engine.is_blocked("doubleclick.net")); // re-enabled -> blocked
+    }
+
+    #[test]
     fn test_whitelist_covers_subdomains() {
         let engine = RuleEngine::new();
         // graph.facebook.com is a seeded tracker rule
