@@ -22,6 +22,25 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+
+# Nguon icon nam o assets/branding/ (SVG + render.mjs). Sua thiet ke thi chay:
+#   node assets/branding/render.mjs && dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: assets/branding/generated/icon_full.png
+  android: true
+  adaptive_icon_foreground: assets/branding/generated/icon_foreground.png
+  adaptive_icon_background: assets/branding/generated/icon_background.png
+  adaptive_icon_monochrome: assets/branding/generated/icon_monochrome.png
+  # Mac dinh package chen inset 16% vao foreground. SVG cua minh da tu ton trong
+  # safe zone roi (xem spec 3.4), de nguyen 16% se bi thu nho hai lan -> icon te.
+  adaptive_icon_foreground_inset: 0
+  ios: true
+  remove_alpha_ios: true
+  web:
+    generate: true
+    background_color: "#0A0F14"
+    theme_color: "#18FFFF"
