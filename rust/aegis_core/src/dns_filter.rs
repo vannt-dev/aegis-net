@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use log::{info, debug};
 use crate::rule_engine::RuleEngine;
 use crate::statistics::StatisticsEngine;
@@ -9,7 +9,7 @@ pub struct DnsFilterService {
     rule_engine: Arc<RuleEngine>,
     stats_engine: Arc<StatisticsEngine>,
     dns_cache: Arc<DnsCache>,
-    upstream_dns: String,
+    upstream_dns: RwLock<String>,
     safesearch_enabled: bool,
 }
 
@@ -23,9 +23,14 @@ impl DnsFilterService {
             rule_engine,
             stats_engine,
             dns_cache: Arc::new(DnsCache::new(300)), // 5 minute TTL cache
-            upstream_dns,
+            upstream_dns: RwLock::new(upstream_dns),
             safesearch_enabled: true,
         }
+    }
+
+    /// Replace the upstream DoH target used for cache-miss forwarding.
+    pub fn set_upstream_dns(&self, upstream: &str) {
+        *self.upstream_dns.write().unwrap() = upstream.to_string();
     }
 
     pub fn handle_dns_payload(&self, payload: &[u8], _client_addr: SocketAddr) -> Vec<u8> {
@@ -255,7 +260,8 @@ impl DnsFilterService {
     fn forward_to_upstream(&self, payload: &[u8]) -> Vec<u8> {
         use std::io::Read;
 
-        let endpoint = Self::doh_endpoint(&self.upstream_dns);
+        let upstream = self.upstream_dns.read().unwrap().clone();
+        let endpoint = Self::doh_endpoint(&upstream);
 
         let response = ureq::post(&endpoint)
             .set("Content-Type", "application/dns-message")

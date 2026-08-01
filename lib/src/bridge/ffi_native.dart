@@ -6,8 +6,10 @@ import 'package:ffi/ffi.dart';
 typedef AegisInitC = Int32 Function();
 typedef AegisInitDart = int Function();
 
-typedef AegisLoadRulesC = Uint32 Function(Pointer<Utf8> rulesText);
-typedef AegisLoadRulesDart = int Function(Pointer<Utf8> rulesText);
+typedef AegisLoadRulesC = Uint32 Function(
+    Pointer<Utf8> rulesText, Int32 categoryId);
+typedef AegisLoadRulesDart = int Function(
+    Pointer<Utf8> rulesText, int categoryId);
 
 typedef AegisAddDomainC = Void Function(Pointer<Utf8> domain);
 typedef AegisAddDomainDart = void Function(Pointer<Utf8> domain);
@@ -17,6 +19,9 @@ typedef AegisIsBlockedDart = int Function(Pointer<Utf8> domain);
 
 typedef AegisSetCategoryC = Void Function(Int32 categoryId, Int32 enabled);
 typedef AegisSetCategoryDart = void Function(int categoryId, int enabled);
+
+typedef AegisSetUpstreamDnsC = Void Function(Pointer<Utf8> upstream);
+typedef AegisSetUpstreamDnsDart = void Function(Pointer<Utf8> upstream);
 
 typedef AegisGetStatsC = Pointer<Utf8> Function();
 typedef AegisGetStatsDart = Pointer<Utf8> Function();
@@ -36,6 +41,7 @@ class AegisNativeBindings {
   static AegisAddDomainDart? _removeBlacklist;
   static AegisIsBlockedDart? _isDomainBlocked;
   static AegisSetCategoryDart? _setCategory;
+  static AegisSetUpstreamDnsDart? _setUpstreamDns;
   static AegisGetStatsDart? _getStatsJson;
   static AegisFreeStringDart? _freeString;
 
@@ -76,6 +82,9 @@ class AegisNativeBindings {
         _setCategory = _lib!
             .lookupFunction<AegisSetCategoryC, AegisSetCategoryDart>(
                 'aegis_set_category');
+        _setUpstreamDns = _lib!
+            .lookupFunction<AegisSetUpstreamDnsC, AegisSetUpstreamDnsDart>(
+                'aegis_set_upstream_dns');
         _getStatsJson = _lib!.lookupFunction<AegisGetStatsC, AegisGetStatsDart>(
             'aegis_get_stats_json');
         _freeString = _lib!
@@ -92,10 +101,10 @@ class AegisNativeBindings {
     return false;
   }
 
-  static int loadRules(String rulesText) {
+  static int loadRules(String rulesText, int categoryId) {
     if (!_isLoaded || _loadRules == null) return 0;
     final ptr = rulesText.toNativeUtf8();
-    final count = _loadRules!(ptr);
+    final count = _loadRules!(ptr, categoryId);
     malloc.free(ptr);
     return count;
   }
@@ -131,6 +140,13 @@ class AegisNativeBindings {
   static void setCategory(int categoryId, bool enabled) {
     if (!_isLoaded || _setCategory == null) return;
     _setCategory!(categoryId, enabled ? 1 : 0);
+  }
+
+  static void setUpstreamDns(String upstream) {
+    if (!_isLoaded || _setUpstreamDns == null) return;
+    final ptr = upstream.toNativeUtf8();
+    _setUpstreamDns!(ptr);
+    malloc.free(ptr);
   }
 
   static bool isDomainBlocked(String domain) {

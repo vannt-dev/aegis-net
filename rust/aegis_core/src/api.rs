@@ -41,6 +41,16 @@ pub extern "C" fn aegis_set_category(category_id: c_int, enabled: c_int) {
     RULE_ENGINE.set_category_enabled(cat, enabled != 0);
 }
 
+/// Set the upstream DoH target used to resolve cache-miss queries. Accepts a
+/// bare host/IP or a full `https://.../dns-query` URL.
+#[no_mangle]
+pub extern "C" fn aegis_set_upstream_dns(upstream_ptr: *const c_char) {
+    if upstream_ptr.is_null() { return; }
+    if let Ok(upstream) = unsafe { CStr::from_ptr(upstream_ptr) }.to_str() {
+        DNS_FILTER.set_upstream_dns(upstream);
+    }
+}
+
 /// Load filter rules text into engine
 #[no_mangle]
 pub extern "C" fn aegis_load_rules(rules_text_ptr: *const c_char, category_id: c_int) -> u32 {

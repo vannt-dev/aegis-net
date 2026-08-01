@@ -55,10 +55,12 @@ class AegisBridge {
     }
   }
 
-  /// Load raw rules text into engine
-  static int loadRulesText(String content) {
+  /// Load raw rules text into engine. [categoryId] follows the same mapping
+  /// as [setCategory] (0: Ads, 1: Trackers, 2: Malware, 3: Adult); defaults to
+  /// Ads since that's what every current caller loads.
+  static int loadRulesText(String content, {int categoryId = 0}) {
     if (_useNativeFfi) {
-      return AegisNativeBindings.loadRules(content);
+      return AegisNativeBindings.loadRules(content, categoryId);
     } else {
       int added = 0;
       for (final line in content.split('\n')) {
@@ -137,6 +139,13 @@ class AegisBridge {
   static void setCategory(int categoryId, bool enabled) {
     if (_useNativeFfi) {
       AegisNativeBindings.setCategory(categoryId, enabled);
+    }
+  }
+
+  /// Point the engine's upstream DoH resolver at a new host/IP/URL.
+  static void setUpstreamDns(String upstream) {
+    if (_useNativeFfi) {
+      AegisNativeBindings.setUpstreamDns(upstream);
     }
   }
 

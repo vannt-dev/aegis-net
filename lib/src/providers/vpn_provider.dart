@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
+import '../services/rule_downloader_service.dart';
 
 class DnsLogItem {
   final String id;
@@ -114,16 +115,24 @@ class VpnProvider extends ChangeNotifier {
       _blockTrackers = prefs.getBool('block_trackers') ?? true;
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
+      AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
       notifyListeners();
     } catch (_) {}
   }
 
+  /// Pulls the raw host/IP/URL out of a display label like
+  /// "Cloudflare (1.1.1.1)" or "Cloudflare DoH (https://1.1.1.1/dns-query)",
+  /// which is what the engine's DoH client actually needs.
+  String _dohTargetFrom(String provider) {
+    final match = RegExp(r'\(([^)]+)\)').firstMatch(provider);
+    return match?.group(1) ?? provider;
+  }
+
   void _startAutoSyncScheduler() {
     _autoSyncTimer?.cancel();
-    _autoSyncTimer = Timer.periodic(const Duration(hours: 24), (timer) {
+    _autoSyncTimer = Timer.periodic(const Duration(hours: 24), (timer) async {
       if (_isVpnActive) {
-        AegisBridge.loadRulesText(
-            '||doubleclick.net^\n||aniview.com^\n||telemetry.applovin.com^');
+        await RuleDownloaderService.syncAllFilters();
       }
     });
   }
@@ -231,6 +240,7 @@ class VpnProvider extends ChangeNotifier {
 
   void setUpstreamDns(String provider) async {
     _upstreamDns = provider;
+    AegisBridge.setUpstreamDns(_dohTargetFrom(provider));
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('upstream_dns', provider);

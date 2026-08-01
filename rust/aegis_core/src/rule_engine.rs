@@ -83,10 +83,19 @@ impl RuleEngine {
         };
 
         let mut rules = target_set.write().unwrap();
+        let mut allowed = self.allowed_domains.write().unwrap();
 
         for line in content.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
+                continue;
+            }
+
+            // `@@||domain^` exception rules (AdGuard/EasyList) override every
+            // category, so they belong in the whitelist, not the category set.
+            if let Some(domain) = Self::parse_exception_line(line) {
+                allowed.insert(domain);
+                count += 1;
                 continue;
             }
 
@@ -100,7 +109,23 @@ impl RuleEngine {
         count
     }
 
+    /// Parse an AdGuard/EasyList exception rule (`@@||domain^`), which
+    /// un-blocks a domain regardless of which category blocked it.
+    fn parse_exception_line(line: &str) -> Option<String> {
+        if line.starts_with("@@||") && line.ends_with('^') {
+            let domain = &line[4..line.len() - 1];
+            return Some(domain.to_lowercase());
+        }
+        None
+    }
+
     fn parse_rule_line(line: &str) -> Option<String> {
+        // Exception rules are handled by `parse_exception_line` above; never
+        // fall through and treat an unmatched `@@`-prefixed line as a block rule.
+        if line.starts_with("@@") {
+            return None;
+        }
+
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() >= 2 && (parts[0] == "0.0.0.0" || parts[0] == "127.0.0.1") {
             let domain = parts[1].to_lowercase();
@@ -288,5 +313,23 @@ mod tests {
         assert_eq!(count, 2);
         assert!(engine.is_blocked("badad.org"));
         assert!(engine.is_blocked("banner.net"));
+    }
+
+    #[test]
+    fn test_exception_rule_unblocks_domain() {
+        let engine = RuleEngine::new();
+        let content = "||shady-ads.example^\n@@||shady-ads.example^";
+        let count = engine.load_rules_text(content, RuleCategory::Ads);
+        assert_eq!(count, 2);
+        assert!(!engine.is_blocked("shady-ads.example"));
+    }
+
+    #[test]
+    fn test_malformed_exception_line_is_ignored() {
+        let engine = RuleEngine::new();
+        // Not a well-formed `@@||domain^` rule; must not leak into the block set.
+        let count = engine.load_rules_text("@@not-a-real-rule.com", RuleCategory::Ads);
+        assert_eq!(count, 0);
+        assert!(!engine.is_blocked("not-a-real-rule.com"));
     }
 }
