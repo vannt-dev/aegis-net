@@ -102,8 +102,11 @@ aegis-net/
 │               ├── AegisVpnService.kt
 │               └── MainActivity.kt
 ├── ios/                       # Native iOS NEPacketTunnelProvider (WIP)
+│   ├── PacketTunnel/           # NetworkExtension app-extension target
+│   │   └── PacketTunnelProvider.swift
 │   └── Runner/
-│       └── PacketTunnelProvider.swift
+│       ├── AppDelegate.swift
+│       └── VpnManager.swift    # com.aegisnet/vpn MethodChannel <-> NETunnelProviderManager
 ├── rust/                      # Rust Core Engine Crate
 │   └── aegis_core/
 │       ├── Cargo.toml
@@ -239,7 +242,9 @@ cargo clippy -- -D warnings
 AegisNet uses GitHub Actions for CI/CD with parallel job execution, Cargo & Gradle caching, and automated verification:
 
 - **Git Hooks**: Pre-commit formatting & strict pre-push test gate (`.githooks/`).
-- **CI Pipeline**: Automated build, linting, and unit test matrix on every push/PR (`.github/workflows/ci.yml`).
+- **Build & Test** ([`build.yml`](.github/workflows/build.yml)): Rust `cargo check`/`test`, Flutter analyze/test/web build, and Android debug APK build. Runs on every push to `main`/`develop` and every PR.
+- **iOS Build Verification** ([`ios.yml`](.github/workflows/ios.yml)): cross-compiles the Rust core for iOS targets and attempts the Flutter iOS shell build. Same triggers as above (push to `main`/`develop`, every PR).
+- **Release** ([`release.yml`](.github/workflows/release.yml)): builds, signs and publishes the Android release APK (GitHub Release + Firebase App Distribution). Only runs on `main` — a PR into `main` builds a downloadable artifact without publishing, a push/merge to `main` publishes for real.
 
 ---
 
