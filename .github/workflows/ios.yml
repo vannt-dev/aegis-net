@@ -58,6 +58,8 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:-ios'
+          pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-:hash:-ios'
 
       - name: Disable experimental Swift Package Manager
         continue-on-error: true

@@ -41,6 +41,8 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:-web'
+          pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-:hash:-web'
 
       - name: Install Dependencies
         run: flutter pub get
@@ -76,6 +78,8 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:-android'
+          pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-:hash:-android'
 
       - name: Install Dependencies
         run: flutter pub get
