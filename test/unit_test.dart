@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aegis_net/src/bridge/aegis_bridge.dart';
 import 'package:aegis_net/src/providers/vpn_provider.dart';
+import 'package:aegis_net/src/services/ios_doh_profile_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -155,6 +156,15 @@ void main() {
       expect(passedBypassApps, isNotNull);
       expect(passedBypassApps, contains('com.app.test'));
       provider.dispose();
+    });
+
+    test('IosDohProfileService generates valid Apple .mobileconfig XML', () {
+      final xml = IosDohProfileService.generateMobileConfigXml(
+        dohServerUrl: 'https://dns.adguard-dns.com/dns-query',
+      );
+      expect(xml, contains('com.apple.dnsSettings.managed'));
+      expect(xml, contains('https://dns.adguard-dns.com/dns-query'));
+      expect(xml, contains('AegisNet Encrypted DNS'));
     });
   });
 }

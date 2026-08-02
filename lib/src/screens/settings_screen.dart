@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/dns_benchmark_service.dart';
+import '../services/ios_doh_profile_service.dart';
 import '../i18n/app_strings.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
@@ -311,6 +312,63 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 )
                 .toList(),
+          ),
+
+          const SizedBox(height: 24),
+
+          // iOS Encrypted DNS Profile (.mobileconfig) Setup
+          Text(
+            'iOS Encrypted DNS Profile (No \$99 Dev Account Required)',
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.bold, color: accent),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Generate & install a native Apple Encrypted DNS (.mobileconfig) profile for system-wide DoH protection on iOS without requiring \$99/yr Network Extension entitlements.',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accent,
+                    foregroundColor: Colors.black,
+                  ),
+                  icon: const Icon(Icons.verified_user, size: 16),
+                  label: const Text('Install iOS Encrypted DNS Profile',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  onPressed: () async {
+                    final dohUrl = vpn.upstreamDns.contains('(')
+                        ? RegExp(r'\(([^)]+)\)')
+                                .firstMatch(vpn.upstreamDns)
+                                ?.group(1) ??
+                            'https://1.1.1.1/dns-query'
+                        : vpn.upstreamDns;
+                    final ok = await IosDohProfileService.installProfile(
+                        dohUrl: dohUrl);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(ok
+                              ? 'Profile generated! Review & Install in iOS Settings > Profile Downloaded.'
+                              : 'Failed to generate profile.'),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
           ),
 
           const SizedBox(height: 24),
