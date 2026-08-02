@@ -284,6 +284,15 @@ pub extern "C" fn aegis_get_stats_json() -> *mut c_char {
     CString::new(json).unwrap().into_raw()
 }
 
+/// Get recent DNS query log items as JSON string
+#[no_mangle]
+pub extern "C" fn aegis_get_recent_logs_json(limit: c_int) -> *mut c_char {
+    let limit_val = if limit <= 0 { 50 } else { limit as usize };
+    let logs = STATS_ENGINE.get_recent_logs(limit_val);
+    let json = serde_json::to_string(&logs).unwrap_or_else(|_| "[]".to_string());
+    CString::new(json).unwrap().into_raw()
+}
+
 /// Free string allocated by Rust
 #[no_mangle]
 pub extern "C" fn aegis_free_string(ptr: *mut c_char) {

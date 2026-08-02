@@ -20,6 +20,7 @@ class MainActivity: FlutterActivity() {
      * started, instead of returning false and never correcting itself.
      */
     private var pendingVpnResult: MethodChannel.Result? = null
+    private var pendingBypassApps: ArrayList<String> = arrayListOf()
 
     private fun settleVpnResult(started: Boolean) {
         pendingVpnResult?.success(started)
@@ -32,6 +33,10 @@ class MainActivity: FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "startVpn" -> {
+                    val bypassAppsRaw = call.argument<List<String>>("bypassApps") ?: emptyList()
+                    val bypassApps = ArrayList(bypassAppsRaw)
+                    pendingBypassApps = bypassApps
+
                     val intent = VpnService.prepare(this)
                     if (intent != null) {
                         // Consent required: hold the reply until onActivityResult.
@@ -41,7 +46,7 @@ class MainActivity: FlutterActivity() {
                         pendingVpnResult = result
                         startActivityForResult(intent, VPN_REQUEST_CODE)
                     } else {
-                        startAegisVpnService()
+                        startAegisVpnService(bypassApps)
                         result.success(true)
                     }
                 }
@@ -58,9 +63,10 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun startAegisVpnService() {
+    private fun startAegisVpnService(bypassApps: ArrayList<String> = arrayListOf()) {
         val intent = Intent(this, AegisVpnService::class.java).apply {
             action = AegisVpnService.ACTION_START
+            putStringArrayListExtra("bypassApps", bypassApps)
         }
         startService(intent)
     }
@@ -78,7 +84,7 @@ class MainActivity: FlutterActivity() {
 
         val granted = resultCode == Activity.RESULT_OK
         if (granted) {
-            startAegisVpnService()
+            startAegisVpnService(pendingBypassApps)
         }
         settleVpnResult(granted)
     }

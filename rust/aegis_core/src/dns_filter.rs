@@ -1,9 +1,17 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use log::{info, debug};
+use lazy_static::lazy_static;
 use crate::rule_engine::RuleEngine;
 use crate::statistics::StatisticsEngine;
 use crate::cache::DnsCache;
+
+lazy_static! {
+    static ref DOH_AGENT: ureq::Agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_millis(2500))
+        .max_idle_connections(10)
+        .build();
+}
 
 pub struct DnsFilterService {
     rule_engine: Arc<RuleEngine>,
@@ -268,10 +276,9 @@ impl DnsFilterService {
         let upstream = self.upstream_dns.read().unwrap().clone();
         let endpoint = Self::doh_endpoint(&upstream);
 
-        let response = ureq::post(&endpoint)
+        let response = DOH_AGENT.post(&endpoint)
             .set("Content-Type", "application/dns-message")
             .set("Accept", "application/dns-message")
-            .timeout(std::time::Duration::from_secs(5))
             .send_bytes(payload);
 
         match response {

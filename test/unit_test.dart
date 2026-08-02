@@ -112,5 +112,49 @@ void main() {
       expect(provider.isVpnActive, isFalse);
       provider.dispose();
     });
+
+    test('VpnProvider persists Whitelist, Blacklist, and BypassApps', () async {
+      final provider = VpnProvider(enableSimulation: false);
+
+      provider.addWhitelistDomain('custom-white.com');
+      provider.addBlacklistDomain('custom-black.com');
+      provider.addBypassApp('com.example.bypass');
+
+      expect(provider.whitelist, contains('custom-white.com'));
+      expect(provider.blacklist, contains('custom-black.com'));
+      expect(provider.bypassApps, contains('com.example.bypass'));
+
+      provider.dispose();
+
+      // Create new provider instance to test loading saved preferences
+      final provider2 = VpnProvider(enableSimulation: false);
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      expect(provider2.whitelist, contains('custom-white.com'));
+      expect(provider2.blacklist, contains('custom-black.com'));
+      expect(provider2.bypassApps, contains('com.example.bypass'));
+      provider2.dispose();
+    });
+
+    test('startVpn passes bypassApps in MethodChannel call', () async {
+      List<dynamic>? passedBypassApps;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(vpnChannel, (MethodCall call) async {
+        if (call.method == 'startVpn') {
+          final args = call.arguments as Map<dynamic, dynamic>?;
+          passedBypassApps = args?['bypassApps'] as List<dynamic>?;
+          return true;
+        }
+        return true;
+      });
+
+      final provider = VpnProvider(enableSimulation: false);
+      provider.addBypassApp('com.app.test');
+      await provider.toggleVpn();
+
+      expect(passedBypassApps, isNotNull);
+      expect(passedBypassApps, contains('com.app.test'));
+      provider.dispose();
+    });
   });
 }

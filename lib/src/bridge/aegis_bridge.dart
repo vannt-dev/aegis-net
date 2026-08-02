@@ -118,9 +118,11 @@ class AegisBridge {
   }
 
   /// Start Local VPN Tunnel
-  static Future<bool> startVpn() async {
+  static Future<bool> startVpn({List<String> bypassApps = const []}) async {
     try {
-      final bool success = await _vpnChannel.invokeMethod('startVpn');
+      final bool success = await _vpnChannel.invokeMethod('startVpn', {
+        'bypassApps': bypassApps,
+      });
       return success;
     } on MissingPluginException {
       // On Android/iOS an absent channel means the native handler never
@@ -277,6 +279,20 @@ class AegisBridge {
       'block_rate_percentage': rate,
       'estimated_data_saved_bytes': savedBytes,
     };
+  }
+
+  /// Get recent DNS query log items from native engine
+  static List<Map<String, dynamic>> getRecentLogs({int limit = 50}) {
+    if (_useNativeFfi) {
+      final jsonStr = AegisNativeBindings.getRecentLogsJson(limit);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        try {
+          final List<dynamic> list = jsonDecode(jsonStr);
+          return list.cast<Map<String, dynamic>>();
+        } catch (_) {}
+      }
+    }
+    return [];
   }
 
   /// Record simulated query

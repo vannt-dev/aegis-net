@@ -259,15 +259,19 @@ impl RuleEngine {
     }
 
     /// Returns true if `domain` equals a rule in `rules`, or is a subdomain of one.
+    /// Performs zero heap allocations during subdomain hierarchy traversal.
     fn set_matches_domain(rules: &HashSet<String>, domain: &str) -> bool {
         if rules.contains(domain) {
             return true;
         }
 
-        let parts: Vec<&str> = domain.split('.').collect();
-        for i in 1..parts.len().saturating_sub(1) {
-            let parent = parts[i..].join(".");
-            if rules.contains(&parent) {
+        let mut slice = domain;
+        while let Some(pos) = slice.find('.') {
+            slice = &slice[pos + 1..];
+            if slice.is_empty() {
+                break;
+            }
+            if rules.contains(slice) {
                 return true;
             }
         }

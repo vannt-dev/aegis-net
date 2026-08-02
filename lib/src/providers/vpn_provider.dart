@@ -115,8 +115,34 @@ class VpnProvider extends ChangeNotifier {
       _blockTrackers = prefs.getBool('block_trackers') ?? true;
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
+
+      final savedWhitelist = prefs.getStringList('whitelist');
+      if (savedWhitelist != null) {
+        _whitelist.clear();
+        _whitelist.addAll(savedWhitelist);
+      }
+
+      final savedBlacklist = prefs.getStringList('blacklist');
+      if (savedBlacklist != null) {
+        _blacklist.clear();
+        _blacklist.addAll(savedBlacklist);
+      }
+
+      final savedBypass = prefs.getStringList('bypass_apps');
+      if (savedBypass != null) {
+        _bypassApps.clear();
+        _bypassApps.addAll(savedBypass);
+      }
+
       AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
       notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _saveListPref(String key, List<String> list) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(key, list);
     } catch (_) {}
   }
 
@@ -154,7 +180,7 @@ class VpnProvider extends ChangeNotifier {
         _stopSimulation();
       }
     } else {
-      if (await AegisBridge.startVpn()) {
+      if (await AegisBridge.startVpn(bypassApps: _bypassApps)) {
         _isVpnActive = true;
         if (enableSimulation) {
           _startSimulation();
@@ -211,7 +237,7 @@ class VpnProvider extends ChangeNotifier {
   /// active flag so the UI stops claiming protection the engine isn't giving.
   Future<void> _restoreTunnelAfterPause() async {
     if (!_isVpnActive) return;
-    final started = await AegisBridge.startVpn();
+    final started = await AegisBridge.startVpn(bypassApps: _bypassApps);
     if (!started) {
       _isVpnActive = false;
       _stopSimulation();
@@ -254,6 +280,7 @@ class VpnProvider extends ChangeNotifier {
     if (!_whitelist.contains(clean)) {
       _whitelist.add(clean);
       AegisBridge.addWhitelist(clean);
+      _saveListPref('whitelist', _whitelist);
       notifyListeners();
     }
   }
@@ -261,6 +288,7 @@ class VpnProvider extends ChangeNotifier {
   void removeWhitelistDomain(String domain) {
     _whitelist.remove(domain);
     AegisBridge.removeWhitelist(domain);
+    _saveListPref('whitelist', _whitelist);
     notifyListeners();
   }
 
@@ -270,6 +298,7 @@ class VpnProvider extends ChangeNotifier {
     if (!_blacklist.contains(clean)) {
       _blacklist.add(clean);
       AegisBridge.addBlacklist(clean);
+      _saveListPref('blacklist', _blacklist);
       notifyListeners();
     }
   }
@@ -277,19 +306,23 @@ class VpnProvider extends ChangeNotifier {
   void removeBlacklistDomain(String domain) {
     _blacklist.remove(domain);
     AegisBridge.removeBlacklist(domain);
+    _saveListPref('blacklist', _blacklist);
     notifyListeners();
   }
 
   void addBypassApp(String packageName) {
     if (packageName.trim().isEmpty) return;
-    if (!_bypassApps.contains(packageName.trim())) {
-      _bypassApps.add(packageName.trim());
+    final clean = packageName.trim();
+    if (!_bypassApps.contains(clean)) {
+      _bypassApps.add(clean);
+      _saveListPref('bypass_apps', _bypassApps);
       notifyListeners();
     }
   }
 
   void removeBypassApp(String packageName) {
     _bypassApps.remove(packageName);
+    _saveListPref('bypass_apps', _bypassApps);
     notifyListeners();
   }
 
@@ -310,29 +343,50 @@ class VpnProvider extends ChangeNotifier {
       'stackoverflow.com'
     ];
 
-    _simulationTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+    _simulationTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!isVpnActive) return;
 
-      final domain = sampleDomains[random.nextInt(sampleDomains.length)];
-      final isBlocked = AegisBridge.isDomainBlocked(domain);
+      // Try reading real logs from Rust native FFI first
+      final realLogs = AegisBridge.getRecentLogs(limit: 50);
+      if (realLogs.isNotEmpty) {
+        _logs.clear();
+        for (final item in realLogs) {
+          final tsSec = (item['timestamp'] as num?)?.toInt() ?? 0;
+          _logs.add(
+            DnsLogItem(
+              id: (item['id'] ?? DateTime.now().millisecondsSinceEpoch)
+                  .toString(),
+              domain: (item['domain'] ?? '').toString(),
+              isBlocked: item['blocked'] == true,
+              timestamp: tsSec > 0
+                  ? DateTime.fromMillisecondsSinceEpoch(tsSec * 1000)
+                  : DateTime.now(),
+            ),
+          );
+        }
+      } else {
+        // Fallback simulation when native FFI logs are not populated yet
+        final domain = sampleDomains[random.nextInt(sampleDomains.length)];
+        final isBlocked = AegisBridge.isDomainBlocked(domain);
 
-      AegisBridge.recordQuery(domain, isBlocked);
-      _stats = AegisBridge.getStats();
+        AegisBridge.recordQuery(domain, isBlocked);
 
-      _logs.insert(
-        0,
-        DnsLogItem(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          domain: domain,
-          isBlocked: isBlocked,
-          timestamp: DateTime.now(),
-        ),
-      );
+        _logs.insert(
+          0,
+          DnsLogItem(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            domain: domain,
+            isBlocked: isBlocked,
+            timestamp: DateTime.now(),
+          ),
+        );
 
-      if (_logs.length > 100) {
-        _logs.removeLast();
+        if (_logs.length > 100) {
+          _logs.removeLast();
+        }
       }
 
+      _stats = AegisBridge.getStats();
       notifyListeners();
     });
   }

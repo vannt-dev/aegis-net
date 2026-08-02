@@ -26,6 +26,9 @@ typedef AegisSetUpstreamDnsDart = void Function(Pointer<Utf8> upstream);
 typedef AegisGetStatsC = Pointer<Utf8> Function();
 typedef AegisGetStatsDart = Pointer<Utf8> Function();
 
+typedef AegisGetLogsC = Pointer<Utf8> Function(Int32 limit);
+typedef AegisGetLogsDart = Pointer<Utf8> Function(int limit);
+
 typedef AegisFreeStringC = Void Function(Pointer<Utf8> str);
 typedef AegisFreeStringDart = void Function(Pointer<Utf8> str);
 
@@ -52,6 +55,7 @@ class AegisNativeBindings {
   static AegisSetCategoryDart? _setCategory;
   static AegisSetUpstreamDnsDart? _setUpstreamDns;
   static AegisGetStatsDart? _getStatsJson;
+  static AegisGetLogsDart? _getRecentLogsJson;
   static AegisFreeStringDart? _freeString;
   static AegisSnapshotDart? _exportSettings;
   static AegisSnapshotDart? _importSettings;
@@ -101,6 +105,9 @@ class AegisNativeBindings {
                 'aegis_set_upstream_dns');
         _getStatsJson = _lib!.lookupFunction<AegisGetStatsC, AegisGetStatsDart>(
             'aegis_get_stats_json');
+        _getRecentLogsJson = _lib!
+            .lookupFunction<AegisGetLogsC, AegisGetLogsDart>(
+                'aegis_get_recent_logs_json');
         _freeString = _lib!
             .lookupFunction<AegisFreeStringC, AegisFreeStringDart>(
                 'aegis_free_string');
@@ -214,6 +221,17 @@ class AegisNativeBindings {
   static String? getStatsJson() {
     if (!_isLoaded || _getStatsJson == null || _freeString == null) return null;
     final ptr = _getStatsJson!();
+    if (ptr == nullptr) return null;
+    final str = ptr.toDartString();
+    _freeString!(ptr);
+    return str;
+  }
+
+  static String? getRecentLogsJson(int limit) {
+    if (!_isLoaded || _getRecentLogsJson == null || _freeString == null) {
+      return null;
+    }
+    final ptr = _getRecentLogsJson!(limit);
     if (ptr == nullptr) return null;
     final str = ptr.toDartString();
     _freeString!(ptr);
