@@ -81,3 +81,13 @@ Chuyển sang tab **Settings**:
 ## 8. Sao Lưu & Phục Hồi Cấu Hình (Export / Import JSON)
 * Tại mục **Export / Import Configuration** trong tab Settings:
 * Bấm **`EXPORT JSON`** để xuất toàn bộ danh sách Whitelist, Blacklist, app ngoại lệ và cấu hình DNS ra file backup dạng JSON.
+
+---
+
+## 9. Cài Đặt Bảo Vệ DNS Mã Hóa Cho iOS (Không Cần Tài Khoản Trả Phí)
+Đối với người dùng iPhone / iPad:
+* Chuyển sang tab **Settings**.
+* Tại mục **iOS Encrypted DNS Profile**, bấm nút **`Install iOS Encrypted DNS Profile`**.
+* Hệ thống sẽ tự động tạo cấu hình mã hóa DoH (`.mobileconfig`) và mở trình duyệt Safari.
+* Khi iOS hiển thị thông báo **"Profile Downloaded"**, mở ứng dụng **Cài đặt (Settings)** trên iPhone ➔ chọn **Profile Downloaded** (Đã tải về hồ sơ) ➔ bấm **Cài đặt (Install)**.
+* Toàn bộ truy vấn DNS trên iPhone của bạn sẽ được bảo vệ bằng DNS mã hóa bảo mật toàn hệ thống!
