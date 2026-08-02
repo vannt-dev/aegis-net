@@ -289,15 +289,14 @@ class DashboardScreen extends StatelessWidget {
                           borderData: FlBorderData(show: false),
                           lineBarsData: [
                             LineChartBarData(
-                              spots: const [
-                                FlSpot(0, 30),
-                                FlSpot(1, 45),
-                                FlSpot(2, 28),
-                                FlSpot(3, 65),
-                                FlSpot(4, 50),
-                                FlSpot(5, 78),
-                                FlSpot(6, 62),
-                              ],
+                              spots: vpn.qpsHistory
+                                  .asMap()
+                                  .entries
+                                  .map((e) => FlSpot(
+                                        e.key.toDouble(),
+                                        e.value,
+                                      ))
+                                  .toList(),
                               isCurved: true,
                               color: accent,
                               barWidth: 3,

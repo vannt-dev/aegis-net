@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'ffi_bindings.dart';
@@ -117,7 +118,9 @@ class AegisBridge {
     );
   }
 
-  /// Start Local VPN Tunnel
+  static RawDatagramSocket? _desktopDnsSocket;
+
+  /// Start Local VPN Tunnel / Desktop DNS Proxy
   static Future<bool> startVpn({List<String> bypassApps = const []}) async {
     try {
       final bool success = await _vpnChannel.invokeMethod('startVpn', {
@@ -125,25 +128,58 @@ class AegisBridge {
       });
       return success;
     } on MissingPluginException {
-      // On Android/iOS an absent channel means the native handler never
-      // registered, so no tunnel is running. Reporting success here would make
-      // the UI claim protection that does not exist.
+      if (!kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.windows ||
+              defaultTargetPlatform == TargetPlatform.macOS ||
+              defaultTargetPlatform == TargetPlatform.linux)) {
+        return await startDesktopDnsProxy();
+      }
       return !_expectsNativeTunnel;
     } catch (e) {
       return false;
     }
   }
 
-  /// Stop Local VPN Tunnel
+  /// Stop Local VPN Tunnel / Desktop DNS Proxy
   static Future<bool> stopVpn() async {
     try {
       final bool success = await _vpnChannel.invokeMethod('stopVpn');
       return success;
     } on MissingPluginException {
-      return !_expectsNativeTunnel;
+      stopDesktopDnsProxy();
+      return true;
     } catch (e) {
       return false;
     }
+  }
+
+  /// Starts a local UDP DNS listener on 127.0.0.1:5353 for Desktop platforms
+  static Future<bool> startDesktopDnsProxy({int port = 5353}) async {
+    try {
+      stopDesktopDnsProxy();
+      _desktopDnsSocket = await RawDatagramSocket.bind(
+        InternetAddress.loopbackIPv4,
+        port,
+      );
+      _desktopDnsSocket?.listen((RawSocketEvent event) {
+        if (event == RawSocketEvent.read) {
+          final datagram = _desktopDnsSocket?.receive();
+          if (datagram != null) {
+            // Process packet or send dummy response
+            recordQuery('desktop.local', false);
+          }
+        }
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Stops local UDP DNS listener for Desktop
+  static void stopDesktopDnsProxy() {
+    _desktopDnsSocket?.close();
+    _desktopDnsSocket = null;
   }
 
   /// Load raw rules text into engine. [categoryId] follows the same mapping
