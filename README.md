@@ -102,10 +102,11 @@ aegis-net/
 │               ├── AegisVpnService.kt
 │               └── MainActivity.kt
 ├── ios/                       # Native iOS NEPacketTunnelProvider (WIP)
-│   ├── PacketTunnel/           # NetworkExtension app-extension target
+│   ├── PacketTunnel/           # Extension sources — target NOT created yet, never compiled
 │   │   └── PacketTunnelProvider.swift
 │   └── Runner/
-│       ├── AppDelegate.swift
+│       ├── AppDelegate.swift   # registers the channel from didInitializeImplicitFlutterEngine
+│       ├── SceneDelegate.swift # UIScene lifecycle (Flutter 3.35+)
 │       └── VpnManager.swift    # com.aegisnet/vpn MethodChannel <-> NETunnelProviderManager
 ├── rust/                      # Rust Core Engine Crate
 │   └── aegis_core/
@@ -117,6 +118,7 @@ aegis-net/
 │           ├── rule_engine.rs # Domain + subdomain HashSet matcher
 │           ├── packet.rs      # IPv4/UDP parse, reply reassembly & checksum
 │           ├── jni_bridge.rs  # JNI entry point for the Android VpnService
+│           ├── shared_state.rs # Snapshots crossing the iOS app <-> extension boundary
 │           ├── statistics.rs  # Ring buffer logs & real-time counter statistics
 │           └── lib.rs
 ├── lib/                       # Flutter Application (Dart)
@@ -153,7 +155,10 @@ For detailed setup, building, testing, and deployment instructions, refer to the
 
 ### Prerequisites
 
-1. **Flutter SDK** (v3.0.0+)
+1. **Flutter SDK** (v3.0.0+ for Android/Web; **iOS needs 3.35+** — the iOS shell
+   uses the UIScene lifecycle APIs `FlutterSceneDelegate` /
+   `FlutterImplicitEngineDelegate`, which older SDKs do not have. CI builds on
+   stable 3.44.x, matching `.metadata`.)
 2. **Rust Toolchain** (`rustup`, `cargo`)
 3. **Google Chrome / MS Edge** (for Web local testing) or **Android Studio** / **Visual Studio 2022** (for platform native builds)
 
@@ -205,6 +210,21 @@ pure-Dart fallback (no crash).
   npx serve build/web -l 8080
   ```
   Then open [http://localhost:8080](http://localhost:8080) in your browser.
+
+* **Run on iOS** (macOS + Xcode 15+ only):
+  ```bash
+  flutter build ios --no-codesign      # verify the shell compiles
+  flutter run -d <simulator-id>        # flutter devices to list them
+  ```
+  **There is no CocoaPods in this project** — the only native plugin goes through
+  Swift Package Manager, so `pod install` is not a step and will fail with *No
+  Podfile found*. If you open Xcode, open **`ios/Runner.xcworkspace`**, not
+  `Runner.xcodeproj`; opening the project directly leaves Xcode unable to resolve
+  the generated package and it reports *Missing package product
+  'FlutterGeneratedPluginSwiftPackage'*.
+
+  DNS filtering does **not** work on iOS yet — the `PacketTunnel` target still
+  has to be created in Xcode. See [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md).
 
 ---
 
