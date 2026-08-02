@@ -80,7 +80,7 @@ approach, such as an alternative client (ReVanced, NewPipe) or YouTube Premium.
 | Platform | Native DNS filtering | Notes |
 |----------|:--------------------:|-------|
 | **Android** | ✅ **Working (verified on emulator)** | TUN → Rust → device pipeline, DNS-only routing, DoH upstream. `libaegis_core.so` is built by a Gradle `cargo-ndk` task. |
-| **iOS** | 🚧 **Integration code ready** | Extension provider, `NETunnelProviderManager` channel, entitlements and Rust framework script are all in the repo; Rust core cross-compiles for iOS in CI. Final assembly needs macOS/Xcode + a paid Apple Developer account — see [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md). |
+| **iOS** | 🚧 **App shell builds in CI; filtering not wired up** | The Flutter shell compiles on a macOS runner on every PR. Extension provider, `NETunnelProviderManager` channel, entitlements, App Group state sharing and the Rust framework script are all in the repo, and the Rust core cross-compiles for iOS. Still missing: the `PacketTunnel` target does not exist in the Xcode project, so none of the extension Swift has ever been compiled. Final assembly needs macOS/Xcode + a paid Apple Developer account — see [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md). |
 | **Web / Desktop** | ➖ Fallback UI only | Runs the pure-Dart fallback engine (simulation) for UI development. |
 
 > When the native engine is unavailable, the app **gracefully falls back** to a
@@ -243,7 +243,7 @@ AegisNet uses GitHub Actions for CI/CD with parallel job execution, Cargo & Grad
 
 - **Git Hooks**: Pre-commit formatting & strict pre-push test gate (`.githooks/`).
 - **Build & Test** ([`build.yml`](.github/workflows/build.yml)): Rust `cargo check`/`test`, Flutter analyze/test/web build, and Android debug APK build. Runs on every push to `main`/`develop` and every PR.
-- **iOS Build Verification** ([`ios.yml`](.github/workflows/ios.yml)): cross-compiles the Rust core for iOS targets and attempts the Flutter iOS shell build. Same triggers as above (push to `main`/`develop`, every PR).
+- **iOS Build Verification** ([`ios.yml`](.github/workflows/ios.yml)): cross-compiles the Rust core for iOS targets and builds the Flutter iOS shell (`flutter build ios --no-codesign`) on a macOS runner. Both jobs gate — a broken iOS shell fails the run. Same triggers as above (push to `main`/`develop`, every PR).
 - **Release** ([`release.yml`](.github/workflows/release.yml)): builds, signs and publishes the Android release APK (GitHub Release + Firebase App Distribution). Only runs on `main` — a PR into `main` builds a downloadable artifact without publishing, a push/merge to `main` publishes for real.
 
 ---
