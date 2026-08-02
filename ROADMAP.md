@@ -8,8 +8,12 @@
       (`AegisVpnService.kt`), **verified on an Android 34 emulator**
 - [x] Android native build via Gradle `cargo-ndk` task (`libaegis_core.so`)
 - [~] iOS NetworkExtension (`PacketTunnelProvider.swift`) — packet loop wired to
-      the engine, but still needs a Network Extension target, entitlements,
-      a `NETunnelProviderManager` start path and `libaegis_core.a` linkage
+      the engine; entitlements, the `NETunnelProviderManager` start path
+      (`VpnManager.swift`) and app↔extension state sharing over the App Group
+      (`shared_state.rs`) are all in place, and the Flutter shell builds in CI.
+      Still needs the Network Extension **target** created in Xcode — none of the
+      extension Swift has ever been compiled — plus `AegisCore.xcframework`
+      linked into both the Runner and PacketTunnel targets
 - [x] Automated CI/CD GitHub Actions Build Workflow
 
 ## 📍 Phase 2: Engine Performance & Networking
