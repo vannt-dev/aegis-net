@@ -103,6 +103,14 @@ verified native pipeline on Android.
   handlers now count as failure on Android/iOS and remain a no-op only on
   web/desktop, where there is no native side by design. Covered by a regression
   test; Dart tests: **5 → 7**.
+- **`ios/Runner.xcworkspace/` was gitignored, which broke every fresh iOS build.**
+  The whole directory was excluded in `.gitignore`, so a clean checkout had no
+  workspace: `flutter build ios` aborted with *"An error occurred when adding
+  Swift Package Manager integration: Exception: Xcode workspace not found"*, and
+  anyone cloning on a Mac had to open `Runner.xcodeproj` directly — where the
+  generated Swift package cannot be resolved, producing *"Missing package product
+  'FlutterGeneratedPluginSwiftPackage'"*. Both reported errors came from this one
+  line. The workspace is part of the Flutter template and is now committed.
 - **CI stops swallowing iOS build failures.** The `flutter build ios` step is no
   longer `continue-on-error` (the job stays non-blocking), the pointless
   `--no-enable-swift-package-manager` step is gone — `Runner.xcodeproj` is a

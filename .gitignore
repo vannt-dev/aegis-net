@@ -21,8 +21,11 @@ android/local.properties
 
 # iOS
 ios/Pods/
-ios/Runner.xcworkspace/
 ios/Frameworks/
+# NOTE: ios/Runner.xcworkspace/ is deliberately NOT ignored. It is part of the
+# Flutter template, and without it `flutter build ios` fails with "Xcode
+# workspace not found" while Xcode users have to open Runner.xcodeproj directly,
+# where the generated Swift package cannot be resolved.
 .DS_Store
 
 # Icon render scratch (see assets/branding/render.mjs)
