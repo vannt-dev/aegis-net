@@ -1,10 +1,30 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'ffi_bindings.dart';
 
 class AegisBridge {
   static const MethodChannel _vpnChannel = MethodChannel('com.aegisnet/vpn');
   static bool _useNativeFfi = false;
+
+  /// App Group container shared with the iOS PacketTunnel extension. Null
+  /// everywhere else, and on iOS until the native side hands it over.
+  static String? _sharedContainerPath;
+
+  /// Only iOS splits the engine across two processes, so only iOS needs the
+  /// snapshot files. Android runs the tunnel in-process and Dart mutations
+  /// already reach the filtering code directly.
+  static bool get _usesSharedContainer =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// Android and iOS are the only platforms that ship a real tunnel. Everywhere
+  /// else (web, desktop) the app runs as a demo with no native side, so a
+  /// missing channel there is expected rather than a failure.
+  static bool get _expectsNativeTunnel =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   // Memory fallback state
   static final Set<String> _whitelistedDomains = {};
@@ -28,7 +48,73 @@ class AegisBridge {
   /// Initialize Aegis Core Engine (Attempts native FFI load first)
   static Future<bool> initEngine() async {
     _useNativeFfi = AegisNativeBindings.initNativeLibrary();
+    if (_usesSharedContainer) {
+      await _resolveSharedContainer();
+    }
     return true;
+  }
+
+  /// Ask the native side for the App Group container path — only Swift can
+  /// resolve it — then seed it with the current settings so a tunnel started
+  /// later has something to load.
+  static Future<void> _resolveSharedContainer() async {
+    try {
+      _sharedContainerPath =
+          await _vpnChannel.invokeMethod<String>('getSharedContainerPath');
+    } on MissingPluginException {
+      _sharedContainerPath = null;
+    } catch (_) {
+      _sharedContainerPath = null;
+    }
+    publishSettings();
+  }
+
+  static String? _sharedFile(String name) {
+    final base = _sharedContainerPath;
+    return base == null ? null : '$base/$name';
+  }
+
+  /// Where downloaded filter lists have to be written so the iOS tunnel
+  /// extension can read them. Null when there is no shared container, which is
+  /// every platform except iOS.
+  static String? get sharedContainerPath => _sharedContainerPath;
+
+  /// File name the extension expects for a category's filter list.
+  static String rulesFileNameFor(int categoryId) => 'rules_$categoryId.txt';
+
+  static Timer? _publishTimer;
+
+  /// Write the engine's settings where the tunnel extension will find them, and
+  /// nudge a running tunnel to reload. Without this the extension keeps
+  /// filtering with whatever it loaded when it started.
+  ///
+  /// Mutations arrive in bursts — seeding the stored allow/deny lists calls this
+  /// once per domain — so writes are coalesced rather than run per call.
+  static void publishSettings() {
+    if (!_useNativeFfi || !_usesSharedContainer) return;
+    _publishTimer?.cancel();
+    _publishTimer =
+        Timer(const Duration(milliseconds: 250), _publishSettingsNow);
+  }
+
+  static void _publishSettingsNow() {
+    _publishTimer = null;
+    final path = _sharedFile('settings.json');
+    if (path == null) return;
+
+    if (AegisNativeBindings.exportSettings(path) == 0) {
+      notifyTunnelReload();
+    }
+  }
+
+  /// Ask a running tunnel to re-read everything in the shared container. Also
+  /// used after downloaded filter lists are written, which do not go through
+  /// the settings snapshot.
+  static void notifyTunnelReload() {
+    if (!_usesSharedContainer) return;
+    unawaited(
+      _vpnChannel.invokeMethod('reloadTunnelConfig').catchError((_) => null),
+    );
   }
 
   /// Start Local VPN Tunnel
@@ -37,7 +123,10 @@ class AegisBridge {
       final bool success = await _vpnChannel.invokeMethod('startVpn');
       return success;
     } on MissingPluginException {
-      return true;
+      // On Android/iOS an absent channel means the native handler never
+      // registered, so no tunnel is running. Reporting success here would make
+      // the UI claim protection that does not exist.
+      return !_expectsNativeTunnel;
     } catch (e) {
       return false;
     }
@@ -49,7 +138,7 @@ class AegisBridge {
       final bool success = await _vpnChannel.invokeMethod('stopVpn');
       return success;
     } on MissingPluginException {
-      return true;
+      return !_expectsNativeTunnel;
     } catch (e) {
       return false;
     }
@@ -104,6 +193,7 @@ class AegisBridge {
     }
     _whitelistedDomains.add(clean);
     _blacklistedDomains.remove(clean);
+    publishSettings();
   }
 
   /// Add domain to Blacklist
@@ -114,6 +204,7 @@ class AegisBridge {
     }
     _blacklistedDomains.add(clean);
     _whitelistedDomains.remove(clean);
+    publishSettings();
   }
 
   /// Remove domain from Whitelist
@@ -123,6 +214,7 @@ class AegisBridge {
       AegisNativeBindings.removeWhitelist(clean);
     }
     _whitelistedDomains.remove(clean);
+    publishSettings();
   }
 
   /// Remove domain from Blacklist
@@ -132,6 +224,7 @@ class AegisBridge {
       AegisNativeBindings.removeBlacklist(clean);
     }
     _blacklistedDomains.remove(clean);
+    publishSettings();
   }
 
   /// Enable/disable a rule category on the engine.
@@ -140,6 +233,7 @@ class AegisBridge {
     if (_useNativeFfi) {
       AegisNativeBindings.setCategory(categoryId, enabled);
     }
+    publishSettings();
   }
 
   /// Point the engine's upstream DoH resolver at a new host/IP/URL.
@@ -147,11 +241,21 @@ class AegisBridge {
     if (_useNativeFfi) {
       AegisNativeBindings.setUpstreamDns(upstream);
     }
+    publishSettings();
   }
 
   /// Get live filtering statistics summary
   static Map<String, dynamic> getStats() {
     if (_useNativeFfi) {
+      // On iOS the tunnel runs in another process, so the only real counters
+      // are the ones it publishes; adopt them before reading our own.
+      if (_usesSharedContainer) {
+        final statsPath = _sharedFile('stats.json');
+        if (statsPath != null) {
+          AegisNativeBindings.importStats(statsPath);
+        }
+      }
+
       final jsonStr = AegisNativeBindings.getStatsJson();
       if (jsonStr != null && jsonStr.isNotEmpty) {
         try {

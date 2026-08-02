@@ -166,6 +166,52 @@ impl RuleEngine {
         blocked.remove(&domain.to_lowercase());
     }
 
+    /// Categories currently enabled, sorted for a stable snapshot on disk.
+    pub fn enabled_categories(&self) -> Vec<RuleCategory> {
+        let enabled = self.enabled_categories.read().unwrap();
+        let mut categories: Vec<RuleCategory> = enabled.iter().copied().collect();
+        categories.sort_by_key(|c| *c as u8);
+        categories
+    }
+
+    pub fn whitelist(&self) -> Vec<String> {
+        Self::sorted(&self.allowed_domains)
+    }
+
+    pub fn blacklist(&self) -> Vec<String> {
+        Self::sorted(&self.blocked_exact)
+    }
+
+    /// Replace the user lists and category toggles wholesale. Used when a
+    /// process adopts a snapshot produced by the other one, where "not in the
+    /// snapshot" has to mean "removed", not "left alone".
+    pub fn replace_user_state(
+        &self,
+        categories: &[RuleCategory],
+        whitelist: &[String],
+        blacklist: &[String],
+    ) {
+        {
+            let mut enabled = self.enabled_categories.write().unwrap();
+            enabled.clear();
+            enabled.extend(categories.iter().copied());
+        }
+        {
+            let mut allowed = self.allowed_domains.write().unwrap();
+            allowed.clear();
+            allowed.extend(whitelist.iter().map(|d| d.to_lowercase()));
+        }
+        let mut blocked = self.blocked_exact.write().unwrap();
+        blocked.clear();
+        blocked.extend(blacklist.iter().map(|d| d.to_lowercase()));
+    }
+
+    fn sorted(set: &RwLock<HashSet<String>>) -> Vec<String> {
+        let mut items: Vec<String> = set.read().unwrap().iter().cloned().collect();
+        items.sort();
+        items
+    }
+
     pub fn is_blocked(&self, domain: &str) -> bool {
         let clean_domain = domain.trim_end_matches('.').to_lowercase();
 

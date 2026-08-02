@@ -89,6 +89,16 @@ impl StatisticsEngine {
         }
     }
 
+    /// Adopt counters produced by another process (the iOS PacketTunnel
+    /// extension). Only the counters cross the boundary; the log ring stays
+    /// local, since it is display-only and would bloat the snapshot.
+    pub fn apply_summary(&self, summary: &StatsSummary) {
+        self.total_queries
+            .store(summary.total_queries, Ordering::Relaxed);
+        self.blocked_queries
+            .store(summary.blocked_queries, Ordering::Relaxed);
+    }
+
     pub fn get_recent_logs(&self, limit: usize) -> Vec<DnsLogEntry> {
         let logs = self.logs.read().unwrap();
         logs.iter().take(limit).cloned().collect()

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aegis_net/src/bridge/aegis_bridge.dart';
@@ -6,9 +7,35 @@ import 'package:aegis_net/src/providers/vpn_provider.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  const vpnChannel = MethodChannel('com.aegisnet/vpn');
+
+  /// Stands in for the native VpnManager/MainActivity handler. Without this the
+  /// channel throws MissingPluginException and the provider tests would only be
+  /// exercising the no-native-side fallback instead of the real path.
+  void mockTunnel({required bool startSucceeds}) {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(vpnChannel, (MethodCall call) async {
+      switch (call.method) {
+        case 'startVpn':
+          return startSucceeds;
+        case 'stopVpn':
+          return true;
+        case 'isVpnPrepared':
+          return true;
+      }
+      return null;
+    });
+  }
+
   group('AegisNet Unit Tests', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
+      mockTunnel(startSucceeds: true);
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(vpnChannel, null);
     });
 
     test('AegisBridge initial state & domain blocking logic', () {
@@ -59,6 +86,30 @@ void main() {
       await provider.resumeProtection();
       expect(provider.isPaused, isFalse);
       expect(provider.isVpnActive, isTrue);
+      provider.dispose();
+    });
+
+    test('toggleVpn stays off when the tunnel refuses to start', () async {
+      mockTunnel(startSucceeds: false);
+      final provider = VpnProvider(enableSimulation: false);
+
+      await provider.toggleVpn();
+
+      expect(provider.isVpnActive, isFalse);
+      provider.dispose();
+    });
+
+    test('toggleVpn stays off when no native handler is registered', () async {
+      // Reproduces the iOS bug where VpnManager never registers the channel:
+      // the call throws MissingPluginException and nothing is filtering, so the
+      // UI must not claim protection.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(vpnChannel, null);
+      final provider = VpnProvider(enableSimulation: false);
+
+      await provider.toggleVpn();
+
+      expect(provider.isVpnActive, isFalse);
       provider.dispose();
     });
   });

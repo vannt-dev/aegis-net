@@ -29,6 +29,15 @@ typedef AegisGetStatsDart = Pointer<Utf8> Function();
 typedef AegisFreeStringC = Void Function(Pointer<Utf8> str);
 typedef AegisFreeStringDart = void Function(Pointer<Utf8> str);
 
+// Cross-process snapshots (iOS: app <-> PacketTunnel extension).
+typedef AegisSnapshotC = Int32 Function(Pointer<Utf8> path);
+typedef AegisSnapshotDart = int Function(Pointer<Utf8> path);
+
+typedef AegisLoadRulesFileC = Uint32 Function(
+    Pointer<Utf8> path, Int32 categoryId);
+typedef AegisLoadRulesFileDart = int Function(
+    Pointer<Utf8> path, int categoryId);
+
 class AegisNativeBindings {
   static DynamicLibrary? _lib;
   static bool _isLoaded = false;
@@ -44,6 +53,11 @@ class AegisNativeBindings {
   static AegisSetUpstreamDnsDart? _setUpstreamDns;
   static AegisGetStatsDart? _getStatsJson;
   static AegisFreeStringDart? _freeString;
+  static AegisSnapshotDart? _exportSettings;
+  static AegisSnapshotDart? _importSettings;
+  static AegisSnapshotDart? _exportStats;
+  static AegisSnapshotDart? _importStats;
+  static AegisLoadRulesFileDart? _loadRulesFile;
 
   /// Load native Aegis Core shared library
   static bool initNativeLibrary() {
@@ -90,6 +104,19 @@ class AegisNativeBindings {
         _freeString = _lib!
             .lookupFunction<AegisFreeStringC, AegisFreeStringDart>(
                 'aegis_free_string');
+        _exportSettings = _lib!
+            .lookupFunction<AegisSnapshotC, AegisSnapshotDart>(
+                'aegis_export_settings');
+        _importSettings = _lib!
+            .lookupFunction<AegisSnapshotC, AegisSnapshotDart>(
+                'aegis_import_settings');
+        _exportStats = _lib!.lookupFunction<AegisSnapshotC, AegisSnapshotDart>(
+            'aegis_export_stats');
+        _importStats = _lib!.lookupFunction<AegisSnapshotC, AegisSnapshotDart>(
+            'aegis_import_stats');
+        _loadRulesFile = _lib!
+            .lookupFunction<AegisLoadRulesFileC, AegisLoadRulesFileDart>(
+                'aegis_load_rules_file');
 
         _init?.call();
         _isLoaded = true;
@@ -155,6 +182,33 @@ class AegisNativeBindings {
     final res = _isDomainBlocked!(ptr);
     malloc.free(ptr);
     return res == 1;
+  }
+
+  /// 0 on success, negative on failure (see shared_state::SnapshotError).
+  static int _snapshotCall(AegisSnapshotDart? fn, String path) {
+    if (!_isLoaded || fn == null) return -1;
+    final ptr = path.toNativeUtf8();
+    final status = fn(ptr);
+    malloc.free(ptr);
+    return status;
+  }
+
+  static int exportSettings(String path) =>
+      _snapshotCall(_exportSettings, path);
+
+  static int importSettings(String path) =>
+      _snapshotCall(_importSettings, path);
+
+  static int exportStats(String path) => _snapshotCall(_exportStats, path);
+
+  static int importStats(String path) => _snapshotCall(_importStats, path);
+
+  static int loadRulesFile(String path, int categoryId) {
+    if (!_isLoaded || _loadRulesFile == null) return 0;
+    final ptr = path.toNativeUtf8();
+    final count = _loadRulesFile!(ptr, categoryId);
+    malloc.free(ptr);
+    return count;
   }
 
   static String? getStatsJson() {
