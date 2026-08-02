@@ -28,6 +28,11 @@ impl DnsFilterService {
         }
     }
 
+    /// The upstream DoH target currently configured.
+    pub fn upstream_dns(&self) -> String {
+        self.upstream_dns.read().unwrap().clone()
+    }
+
     /// Replace the upstream DoH target used for cache-miss forwarding.
     pub fn set_upstream_dns(&self, upstream: &str) {
         *self.upstream_dns.write().unwrap() = upstream.to_string();

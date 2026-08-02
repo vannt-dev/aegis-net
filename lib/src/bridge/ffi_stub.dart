@@ -10,4 +10,11 @@ class AegisNativeBindings {
   static void setUpstreamDns(String upstream) {}
   static bool isDomainBlocked(String domain) => false;
   static String? getStatsJson() => null;
+
+  // Cross-process snapshots. -1 mirrors the native "no engine" status.
+  static int exportSettings(String path) => -1;
+  static int importSettings(String path) => -1;
+  static int exportStats(String path) => -1;
+  static int importStats(String path) => -1;
+  static int loadRulesFile(String path, int categoryId) => 0;
 }

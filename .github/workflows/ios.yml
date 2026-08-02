@@ -43,14 +43,13 @@ jobs:
             rust/aegis_core/target/x86_64-apple-ios/release/libaegis_core.a
           if-no-files-found: error
 
-  # The job stays non-blocking (the NetworkExtension target still has to be
-  # created on a Mac — see CHANGELOG.md "Known follow-ups"), but the build step
-  # itself is NOT: a broken iOS shell has to show up as a red step in the log.
-  # Flip continue-on-error to false once the first green build lands.
+  # Gating since the first green build. The Runner target compiles on a clean
+  # checkout, so any regression here is a real break — the PacketTunnel target
+  # is still absent (see CHANGELOG.md "Known follow-ups") but nothing in this
+  # job depends on it.
   flutter-ios-app:
-    name: 📱 Flutter iOS shell build (WIP, non-blocking)
+    name: 📱 Flutter iOS shell build
     runs-on: macos-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 

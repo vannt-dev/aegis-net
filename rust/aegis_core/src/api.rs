@@ -1,10 +1,12 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
+use std::path::Path;
 use std::sync::Arc;
 use lazy_static::lazy_static;
 use crate::rule_engine::{RuleEngine, RuleCategory};
 use crate::statistics::StatisticsEngine;
 use crate::dns_filter::DnsFilterService;
+use crate::shared_state;
 
 lazy_static! {
     static ref RULE_ENGINE: Arc<RuleEngine> = Arc::new(RuleEngine::new());
@@ -69,6 +71,88 @@ pub extern "C" fn aegis_load_rules(rules_text_ptr: *const c_char, category_id: c
         RULE_ENGINE.load_rules_text(rules_str, cat) as u32
     } else {
         0
+    }
+}
+
+/// Borrow a C string as a filesystem path, or `None` when it is null or not
+/// valid UTF-8.
+fn path_from_ptr(path_ptr: *const c_char) -> Option<&'static Path> {
+    if path_ptr.is_null() {
+        return None;
+    }
+    unsafe { CStr::from_ptr(path_ptr) }.to_str().ok().map(Path::new)
+}
+
+/// Write the engine's user settings to `path` for the other process to pick up.
+/// Returns 0 on success, or a negative [`shared_state::SnapshotError`] code.
+///
+/// iOS only: the app calls this after a rule change so the PacketTunnel
+/// extension, which holds a separate copy of the engine, can adopt it.
+#[no_mangle]
+pub extern "C" fn aegis_export_settings(path_ptr: *const c_char) -> c_int {
+    match path_from_ptr(path_ptr) {
+        Some(path) => match shared_state::export_settings(&RULE_ENGINE, &DNS_FILTER, path) {
+            Ok(()) => 0,
+            Err(err) => err.code(),
+        },
+        None => shared_state::SnapshotError::Io.code(),
+    }
+}
+
+/// Adopt the settings snapshot at `path`. Entries missing from the snapshot are
+/// removed, so the reader ends up matching the writer exactly.
+#[no_mangle]
+pub extern "C" fn aegis_import_settings(path_ptr: *const c_char) -> c_int {
+    match path_from_ptr(path_ptr) {
+        Some(path) => match shared_state::import_settings(&RULE_ENGINE, &DNS_FILTER, path) {
+            Ok(()) => 0,
+            Err(err) => err.code(),
+        },
+        None => shared_state::SnapshotError::Io.code(),
+    }
+}
+
+/// Load a filter list from disk instead of from a C string. Downloaded lists
+/// run to hundreds of thousands of lines; passing a path avoids marshalling
+/// megabytes across the FFI boundary. Returns the number of rules added.
+#[no_mangle]
+pub extern "C" fn aegis_load_rules_file(path_ptr: *const c_char, category_id: c_int) -> u32 {
+    let cat = match category_id {
+        0 => RuleCategory::Ads,
+        1 => RuleCategory::Trackers,
+        2 => RuleCategory::Malware,
+        3 => RuleCategory::Adult,
+        _ => RuleCategory::Ads,
+    };
+    match path_from_ptr(path_ptr) {
+        Some(path) => shared_state::load_rules_file(&RULE_ENGINE, path, cat).unwrap_or(0) as u32,
+        None => 0,
+    }
+}
+
+/// Publish the counters this process has accumulated. Called by the iOS
+/// extension, which is the only side that sees real DNS traffic.
+#[no_mangle]
+pub extern "C" fn aegis_export_stats(path_ptr: *const c_char) -> c_int {
+    match path_from_ptr(path_ptr) {
+        Some(path) => match shared_state::export_stats(&STATS_ENGINE, path) {
+            Ok(()) => 0,
+            Err(err) => err.code(),
+        },
+        None => shared_state::SnapshotError::Io.code(),
+    }
+}
+
+/// Adopt counters published by the other process, so `aegis_get_stats_json`
+/// reports what the tunnel actually did rather than this process's own totals.
+#[no_mangle]
+pub extern "C" fn aegis_import_stats(path_ptr: *const c_char) -> c_int {
+    match path_from_ptr(path_ptr) {
+        Some(path) => match shared_state::import_stats(&STATS_ENGINE, path) {
+            Ok(()) => 0,
+            Err(err) => err.code(),
+        },
+        None => shared_state::SnapshotError::Io.code(),
     }
 }
 
