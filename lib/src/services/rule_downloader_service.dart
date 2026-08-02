@@ -87,15 +87,23 @@ class RuleDownloaderService {
     final container = AegisBridge.sharedContainerPath;
     if (container == null) return;
 
+    var wrote = false;
     for (final entry in byCategory.entries) {
       try {
         final file =
             File('$container/${AegisBridge.rulesFileNameFor(entry.key)}');
         await file.writeAsString(entry.value.toString(), flush: true);
+        wrote = true;
       } catch (_) {
         // A container write failure must not fail the sync; the app's own
         // engine already has the rules.
       }
+    }
+
+    // Filter lists bypass the settings snapshot, so nothing else would tell a
+    // running tunnel that new rules are on disk.
+    if (wrote) {
+      AegisBridge.notifyTunnelReload();
     }
   }
 }

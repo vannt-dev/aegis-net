@@ -82,19 +82,39 @@ class AegisBridge {
   /// File name the extension expects for a category's filter list.
   static String rulesFileNameFor(int categoryId) => 'rules_$categoryId.txt';
 
+  static Timer? _publishTimer;
+
   /// Write the engine's settings where the tunnel extension will find them, and
   /// nudge a running tunnel to reload. Without this the extension keeps
   /// filtering with whatever it loaded when it started.
+  ///
+  /// Mutations arrive in bursts — seeding the stored allow/deny lists calls this
+  /// once per domain — so writes are coalesced rather than run per call.
   static void publishSettings() {
     if (!_useNativeFfi || !_usesSharedContainer) return;
+    _publishTimer?.cancel();
+    _publishTimer =
+        Timer(const Duration(milliseconds: 250), _publishSettingsNow);
+  }
+
+  static void _publishSettingsNow() {
+    _publishTimer = null;
     final path = _sharedFile('settings.json');
     if (path == null) return;
 
     if (AegisNativeBindings.exportSettings(path) == 0) {
-      unawaited(
-        _vpnChannel.invokeMethod('reloadTunnelConfig').catchError((_) => null),
-      );
+      notifyTunnelReload();
     }
+  }
+
+  /// Ask a running tunnel to re-read everything in the shared container. Also
+  /// used after downloaded filter lists are written, which do not go through
+  /// the settings snapshot.
+  static void notifyTunnelReload() {
+    if (!_usesSharedContainer) return;
+    unawaited(
+      _vpnChannel.invokeMethod('reloadTunnelConfig').catchError((_) => null),
+    );
   }
 
   /// Start Local VPN Tunnel
