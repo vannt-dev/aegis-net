@@ -89,9 +89,38 @@ verified native pipeline on Android.
 
 - Confirmed the prebuilt `aegis_core.dll` is git-ignored and untracked.
 
+### 🩹 iOS shell fixes (static review — not yet compiled on a Mac)
+
+- **The VPN channel was never registered.** `AppDelegate` wired
+  `com.aegisnet/vpn` from `didFinishLaunchingWithOptions:` via
+  `window?.rootViewController`, but this project uses the UIScene lifecycle
+  (`SceneDelegate` + `UIApplicationSceneManifest`), where no scene has connected
+  at launch and `window` is still nil. Registration moved to
+  `didInitializeImplicitFlutterEngine`, which runs before any scene connects.
+- **The UI no longer claims protection it does not have.** `AegisBridge.startVpn`
+  treated `MissingPluginException` as success, so the missing registration above
+  surfaced as a green "protected" dashboard with no tunnel running. Missing
+  handlers now count as failure on Android/iOS and remain a no-op only on
+  web/desktop, where there is no native side by design. Covered by a regression
+  test; Dart tests: **5 → 7**.
+- **CI stops swallowing iOS build failures.** The `flutter build ios` step is no
+  longer `continue-on-error` (the job stays non-blocking), the pointless
+  `--no-enable-swift-package-manager` step is gone — `Runner.xcodeproj` is a
+  Swift Package Manager project — and the generated
+  `ios/Flutter/ephemeral/Packages` state is dumped before the build to diagnose
+  "Missing package product 'FlutterGeneratedPluginSwiftPackage'".
+
 ## Known follow-ups
 
 - iOS: complete the Network Extension target, entitlements and static-lib
   linkage listed above.
+- **iOS: the extension gets its own copy of the engine.** Runner and PacketTunnel
+  are separate processes and the Rust engine keeps state in process-local
+  globals, so rules pushed from Dart never reach the code doing the filtering.
+  Needs a shared-state design over the already-declared App Group — see
+  [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md).
+- **iOS: link `AegisCore.xcframework` into Runner too**, not just PacketTunnel;
+  `DynamicLibrary.process()` finds nothing otherwise and the app silently uses
+  placeholder rules and statistics.
 - Android: the upstream DoH call is synchronous on the tunnel thread; a
   thread-pool/async path would improve throughput under load.

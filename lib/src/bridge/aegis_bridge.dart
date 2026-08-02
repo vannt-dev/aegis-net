@@ -1,10 +1,19 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'ffi_bindings.dart';
 
 class AegisBridge {
   static const MethodChannel _vpnChannel = MethodChannel('com.aegisnet/vpn');
   static bool _useNativeFfi = false;
+
+  /// Android and iOS are the only platforms that ship a real tunnel. Everywhere
+  /// else (web, desktop) the app runs as a demo with no native side, so a
+  /// missing channel there is expected rather than a failure.
+  static bool get _expectsNativeTunnel =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   // Memory fallback state
   static final Set<String> _whitelistedDomains = {};
@@ -37,7 +46,10 @@ class AegisBridge {
       final bool success = await _vpnChannel.invokeMethod('startVpn');
       return success;
     } on MissingPluginException {
-      return true;
+      // On Android/iOS an absent channel means the native handler never
+      // registered, so no tunnel is running. Reporting success here would make
+      // the UI claim protection that does not exist.
+      return !_expectsNativeTunnel;
     } catch (e) {
       return false;
     }
@@ -49,7 +61,7 @@ class AegisBridge {
       final bool success = await _vpnChannel.invokeMethod('stopVpn');
       return success;
     } on MissingPluginException {
-      return true;
+      return !_expectsNativeTunnel;
     } catch (e) {
       return false;
     }

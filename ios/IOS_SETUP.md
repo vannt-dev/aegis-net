@@ -1,9 +1,15 @@
 # 🍎 iOS Packet Tunnel — Setup Guide
 
 The iOS DNS filtering runs inside a **Network Extension (Packet Tunnel Provider)**.
-All the source is already in the repo, and the **Runner** target is fully wired
-(bundle id, `VpnManager.swift` membership, entitlements) — that part was done by
-editing `project.pbxproj` directly, and is verified by the macOS CI job.
+All the source is already in the repo, and the **Runner** target is wired
+(bundle id, `VpnManager.swift` membership, entitlements) by editing
+`project.pbxproj` directly.
+
+None of the Swift in `ios/` has been compiled yet: the CI job
+(`.github/workflows/ios.yml`) is marked `continue-on-error` at the job level, so
+it reports progress rather than gating, and the `PacketTunnel/` sources belong to
+a target that does not exist in the project file yet. Treat every Swift file here
+as unverified until it builds on a Mac.
 
 What remains below genuinely needs a **Mac with Xcode**: creating the extension
 target, linking the Rust `xcframework`, provisioning, and device testing.
@@ -22,7 +28,7 @@ target, linking the Rust `xcframework`, provisioning, and device testing.
 | File | Role |
 |------|------|
 | `ios/Runner/VpnManager.swift` | MethodChannel `com.aegisnet/vpn` → `NETunnelProviderManager` (install/start/stop) |
-| `ios/Runner/AppDelegate.swift` | Registers the channel on launch |
+| `ios/Runner/AppDelegate.swift` | Registers the channel from `didInitializeImplicitFlutterEngine` (not `didFinishLaunching:` — under UIScene there is no window yet) |
 | `ios/Runner/Runner.entitlements` | App: NetworkExtension + App Group |
 | `ios/PacketTunnel/PacketTunnelProvider.swift` | The tunnel: DNS-only routing → Rust engine → write replies |
 | `ios/PacketTunnel/PacketTunnel-Bridging-Header.h` | C ABI decl for `aegis_process_ip_packet` |
@@ -68,10 +74,20 @@ On **both** the Runner target and the PacketTunnel target, add:
 
 Point each target at the matching `*.entitlements` file (already in the repo).
 
-### 5. Link the Rust framework
+### 5. Link the Rust framework — into **both** targets
 Drag `ios/Frameworks/AegisCore.xcframework` into the project and add it to the
-**PacketTunnel** target's *Frameworks and Libraries* (Do Not Embed for a static
-library). This resolves `aegis_process_ip_packet`.
+*Frameworks and Libraries* of:
+
+- the **PacketTunnel** target — resolves `aegis_process_ip_packet`;
+- the **Runner** target — resolves the FFI symbols the Dart side looks up.
+
+Use *Do Not Embed* for a static library. Runner is easy to forget: on iOS
+`lib/src/bridge/ffi_native.dart` loads the engine with
+`DynamicLibrary.process()`, which only finds symbols already linked into the
+running binary (there is no `.so` to `dlopen`). If the library is linked into the
+extension only, every lookup throws, `AegisBridge._useNativeFfi` stays false and
+the app silently falls back to the hard-coded placeholder rules and statistics
+instead of the real engine.
 
 ### 6. Provisioning
 Create App IDs for `com.aegisnet.app` and `com.aegisnet.app.PacketTunnel` in the
@@ -85,11 +101,36 @@ flutter run --release        # on a connected iPhone
 Tap **START** → accept the "Allow VPN configuration" prompt. Verify filtering,
 e.g. a blocked domain resolves to a null address while normal domains resolve.
 
+## Open problem: the extension has its own copy of the engine
+
+On Android the tunnel runs inside the app process, so rules pushed through FFI
+and rules used for filtering are the same objects. **On iOS they are not.**
+Runner and PacketTunnel are separate processes, and the engine keeps all of its
+state in process-local globals (`RULE_ENGINE`, `STATS_ENGINE`, `DNS_FILTER` in
+`rust/aegis_core/src/api.rs`).
+
+So every `aegis_add_blacklist` / `aegis_set_category` / `aegis_set_upstream_dns`
+the Dart layer makes only mutates the *app's* copy, while `aegis_process_ip_packet`
+runs in the *extension's* copy, which has never received a rule. Left as is,
+filtering on iOS will use an empty rule set and the app will show statistics that
+the tunnel never produced.
+
+The App Group `group.com.aegisnet.app` is already declared in both entitlements
+files for exactly this purpose, but nothing reads or writes it yet. Whatever the
+design ends up being (shared rules file in the group container that
+`startTunnel` loads, stats written back the same way), it has to be decided
+before iOS filtering can work.
+
 ## Notes
 
 - The provider routes only the virtual DNS server (`10.0.0.3`) through the
   tunnel, mirroring Android, so non-DNS traffic and the engine's upstream DoH
   lookups stay on the real network (no loop, no `protect()` needed).
-- Automated **compile** verification runs in CI on a macOS runner
-  (`.github/workflows/ios.yml`), but runtime VPN behavior can only be checked on
-  a real device.
+- Signing: the project sets `CODE_SIGN_ENTITLEMENTS` for all three
+  configurations but has no `DEVELOPMENT_TEAM`. `flutter build ios --no-codesign`
+  works (signing is skipped), but `flutter build ipa` / archiving will fail until
+  a team is selected **and** the PacketTunnel target exists — an app that claims
+  `com.apple.developer.networking.networkextension` without shipping the
+  extension cannot get a matching provisioning profile.
+- Runtime VPN behavior can only be checked on a real device; the Simulator does
+  not run packet tunnels.

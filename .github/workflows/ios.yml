@@ -43,9 +43,10 @@ jobs:
             rust/aegis_core/target/x86_64-apple-ios/release/libaegis_core.a
           if-no-files-found: error
 
-  # WIP progress indicator only. The Flutter iOS shell cannot fully build until
-  # the NetworkExtension target and libaegis_core.a linkage are wired on a Mac
-  # (see CHANGELOG.md "Known follow-ups"), so every step here is non-blocking.
+  # The job stays non-blocking (the NetworkExtension target still has to be
+  # created on a Mac — see CHANGELOG.md "Known follow-ups"), but the build step
+  # itself is NOT: a broken iOS shell has to show up as a red step in the log.
+  # Flip continue-on-error to false once the first green build lands.
   flutter-ios-app:
     name: 📱 Flutter iOS shell build (WIP, non-blocking)
     runs-on: macos-latest
@@ -61,13 +62,28 @@ jobs:
           cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:-ios'
           pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-:hash:-ios'
 
-      - name: Disable experimental Swift Package Manager
-        continue-on-error: true
-        run: flutter config --no-enable-swift-package-manager
+      - name: Toolchain versions
+        run: |
+          flutter --version
+          xcodebuild -version
 
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Attempt iOS build (non-blocking, WIP)
-        continue-on-error: true
+      # Runner.xcodeproj integrates plugins via Swift Package Manager, and the
+      # package it points at (ios/Flutter/ephemeral/Packages) is generated, not
+      # committed. If it is missing or empty here, Xcode fails with
+      # "Missing package product 'FlutterGeneratedPluginSwiftPackage'" — so dump
+      # it before the build to show which side is at fault.
+      - name: Dump generated Swift package state
+        run: |
+          echo "=== enable-swift-package-manager ==="
+          flutter config --list | grep swift-package-manager || true
+          echo "=== ios/Flutter/ephemeral tree ==="
+          find ios/Flutter/ephemeral -maxdepth 4 || echo "MISSING: ios/Flutter/ephemeral"
+          echo "=== FlutterGeneratedPluginSwiftPackage/Package.swift ==="
+          cat ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift \
+            || echo "MISSING: generated Package.swift"
+
+      - name: Build iOS shell
         run: flutter build ios --no-codesign
