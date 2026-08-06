@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../services/desktop_dns_proxy.dart';
 import 'ffi_bindings.dart';
 
 class AegisBridge {
@@ -118,8 +118,6 @@ class AegisBridge {
     );
   }
 
-  static RawDatagramSocket? _desktopDnsSocket;
-
   /// Why the last [startVpn] failed, as reported by the native side, or null
   /// after a successful start. Vendor ROMs (MIUI in particular) refuse the
   /// tunnel in ways the app cannot work around, so the reason has to reach the
@@ -190,33 +188,22 @@ class AegisBridge {
     }
   }
 
-  /// Starts a local UDP DNS listener on 127.0.0.1:5353 for Desktop platforms
-  static Future<bool> startDesktopDnsProxy({int port = 5353}) async {
-    try {
-      stopDesktopDnsProxy();
-      _desktopDnsSocket = await RawDatagramSocket.bind(
-        InternetAddress.loopbackIPv4,
-        port,
-      );
-      _desktopDnsSocket?.listen((RawSocketEvent event) {
-        if (event == RawSocketEvent.read) {
-          final datagram = _desktopDnsSocket?.receive();
-          if (datagram != null) {
-            // Process packet or send dummy response
-            recordQuery('desktop.local', false);
-          }
-        }
-      });
-      return true;
-    } catch (_) {
-      return false;
-    }
+  /// Where the desktop resolver ended up, or null when it is not running.
+  /// Desktop has no VpnService equivalent, so this never means the machine is
+  /// protected — only that queries sent here are filtered.
+  static DesktopProxyStatus? desktopProxyStatus;
+
+  /// Starts the local DNS resolver used on desktop.
+  static Future<bool> startDesktopDnsProxy() async {
+    final status = await DesktopDnsProxy.start();
+    desktopProxyStatus = status.running ? status : null;
+    return status.running;
   }
 
-  /// Stops local UDP DNS listener for Desktop
+  /// Stops the local desktop resolver.
   static void stopDesktopDnsProxy() {
-    _desktopDnsSocket?.close();
-    _desktopDnsSocket = null;
+    desktopProxyStatus = null;
+    unawaited(DesktopDnsProxy.stop());
   }
 
   /// Load raw rules text into engine. [categoryId] follows the same mapping

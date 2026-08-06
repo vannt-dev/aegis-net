@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../bridge/aegis_bridge.dart';
+import '../services/desktop_dns_proxy.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 import '../i18n/app_strings.dart';
@@ -182,6 +183,14 @@ class DashboardScreen extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+
+              // Desktop has no VpnService equivalent, so a running proxy is not
+              // protection until the user repoints their resolver. Saying so is
+              // the whole point — the old stub let the UI imply otherwise.
+              if (vpn.isVpnActive && AegisBridge.desktopProxyStatus != null)
+                _DesktopProxyBanner(
+                  status: AegisBridge.desktopProxyStatus!,
                 ),
 
               // Strict Private DNS silently routes around the tunnel: the
@@ -463,6 +472,67 @@ class DashboardScreen extends StatelessWidget {
               fontSize: 20,
               fontWeight: FontWeight.bold,
               color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tells the desktop user where the resolver is listening and what they still
+/// have to do. Amber, not green: the proxy running is a precondition for
+/// filtering, not filtering itself.
+class _DesktopProxyBanner extends StatelessWidget {
+  const _DesktopProxyBanner({required this.status});
+
+  final DesktopProxyStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final port = status.port?.toString() ?? '';
+    final body = status.usableAsSystemResolver
+        ? AppStrings.get('desktop_proxy_ready')
+        : AppStrings.get('desktop_proxy_high_port').replaceAll('%s', port);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3B2F12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.amberAccent, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.dns_outlined,
+                  color: Colors.amberAccent, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppStrings.get('desktop_proxy_title'),
+                  style: const TextStyle(
+                      color: Colors.amberAccent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(body,
+              style: TextStyle(color: Colors.grey.shade300, fontSize: 12)),
+          const SizedBox(height: 8),
+          SelectableText(
+            '127.0.0.1${status.usableAsSystemResolver ? '' : ':$port'}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],

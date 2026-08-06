@@ -40,6 +40,11 @@ class AppStrings {
       'private_dns_body':
           'This device is set to a fixed Private DNS provider, so Android sends every lookup straight to it and AegisNet never sees them. Nothing is being filtered. Set Private DNS to "Automatic" or "Off" to restore blocking.',
       'private_dns_action': 'OPEN PRIVATE DNS SETTINGS',
+      'desktop_proxy_title': 'Nothing is filtered yet',
+      'desktop_proxy_ready':
+          'Desktop cannot capture DNS on its own. AegisNet is answering queries on 127.0.0.1 — set that as your system DNS server and filtering starts.',
+      'desktop_proxy_high_port':
+          'Desktop cannot capture DNS on its own, and port 53 was unavailable, so AegisNet is on 127.0.0.1:%s. System DNS settings only accept an address without a port, so this cannot be used as your resolver — test it with: dig -p %s @127.0.0.1 example.com',
     },
     'vi': {
       'app_title': 'AEGIS NET',
@@ -79,6 +84,11 @@ class AppStrings {
       'private_dns_body':
           'Máy đang đặt Private DNS cố định nên Android gửi thẳng mọi truy vấn tới nhà cung cấp đó, AegisNet không nhìn thấy gì. Hiện không có gì được lọc. Hãy đổi Private DNS sang "Tự động" hoặc "Tắt" để chặn hoạt động trở lại.',
       'private_dns_action': 'MỞ CÀI ĐẶT PRIVATE DNS',
+      'desktop_proxy_title': 'Chưa lọc được gì',
+      'desktop_proxy_ready':
+          'Máy tính không tự chặn được DNS. AegisNet đang trả lời truy vấn ở 127.0.0.1 — hãy đặt địa chỉ này làm DNS hệ thống thì việc lọc mới bắt đầu.',
+      'desktop_proxy_high_port':
+          'Máy tính không tự chặn được DNS, và cổng 53 đang bận nên AegisNet nằm ở 127.0.0.1:%s. Cài đặt DNS hệ thống chỉ nhận địa chỉ không kèm cổng, nên không dùng làm resolver được — thử bằng: dig -p %s @127.0.0.1 example.com',
     },
     'ko': {
       'app_title': 'AEGIS NET',
@@ -116,6 +126,11 @@ class AppStrings {
       'private_dns_body':
           '이 기기는 고정 비공개 DNS 제공업체로 설정되어 있어 Android가 모든 조회를 그쪽으로 직접 보내므로 AegisNet은 아무것도 볼 수 없습니다. 현재 필터링되는 것이 없습니다. 차단을 되돌리려면 비공개 DNS를 "자동" 또는 "사용 안 함"으로 설정하세요.',
       'private_dns_action': '비공개 DNS 설정 열기',
+      'desktop_proxy_title': '아직 아무것도 필터링되지 않습니다',
+      'desktop_proxy_ready':
+          '데스크톱은 스스로 DNS를 가로챌 수 없습니다. AegisNet이 127.0.0.1에서 쿼리에 응답하고 있으니, 이를 시스템 DNS 서버로 지정하면 필터링이 시작됩니다.',
+      'desktop_proxy_high_port':
+          '데스크톱은 스스로 DNS를 가로챌 수 없고 53 포트를 사용할 수 없어 AegisNet은 127.0.0.1:%s 에 있습니다. 시스템 DNS 설정은 포트 없는 주소만 받으므로 리졸버로 쓸 수 없습니다 — 다음으로 테스트하세요: dig -p %s @127.0.0.1 example.com',
     },
     'ja': {
       'app_title': 'AEGIS NET',
@@ -153,6 +168,11 @@ class AppStrings {
       'private_dns_body':
           'この端末は固定のプライベートDNSプロバイダに設定されているため、Androidはすべての名前解決をそこへ直接送り、AegisNetは何も受け取りません。現在フィルタリングは行われていません。ブロックを復元するにはプライベートDNSを「自動」または「オフ」に設定してください。',
       'private_dns_action': 'プライベートDNS設定を開く',
+      'desktop_proxy_title': 'まだ何もフィルタリングされていません',
+      'desktop_proxy_ready':
+          'デスクトップは自力でDNSを捕捉できません。AegisNetが127.0.0.1でクエリに応答しているので、これをシステムのDNSサーバーに設定するとフィルタリングが始まります。',
+      'desktop_proxy_high_port':
+          'デスクトップは自力でDNSを捕捉できず、ポート53も使えなかったため、AegisNetは127.0.0.1:%s にいます。システムのDNS設定はポートなしのアドレスしか受け付けないためリゾルバとしては使えません — 次で確認してください: dig -p %s @127.0.0.1 example.com',
     },
   };
 
