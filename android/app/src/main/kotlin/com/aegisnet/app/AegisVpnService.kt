@@ -156,7 +156,10 @@ class AegisVpnService : VpnService(), Runnable {
         val notification = builder
             .setContentTitle("AegisNet Shield")
             .setContentText("DNS filtering is active")
-            .setSmallIcon(R.mipmap.ic_launcher)
+            // Must be a white silhouette with real transparency: Android keeps
+            // only the alpha channel and tints it. A colour launcher icon comes
+            // out as one solid blob.
+            .setSmallIcon(R.drawable.ic_stat_aegis)
             .setOngoing(true)
             .also { b -> contentIntent?.let { b.setContentIntent(it) } }
             .build()

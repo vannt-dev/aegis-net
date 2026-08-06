@@ -35,6 +35,29 @@ for (const [dpi, size] of Object.entries(MIPMAPS)) {
   });
 }
 
+// Icon thong bao: he thong bo mau, chi giu kenh alpha. Mot file mau (vi du
+// ic_launcher) se bi to dac thanh mot khoi, nen mau va do trong suot deu phai
+// duoc kiem tra chu khong chi kich thuoc.
+const NOTIFICATION_DENSITIES = { mdpi: 24, hdpi: 36, xhdpi: 48, xxhdpi: 72, xxxhdpi: 96 };
+for (const [dpi, size] of Object.entries(NOTIFICATION_DENSITIES)) {
+  check(`drawable-${dpi}/ic_stat_aegis.png la ${size}x${size}, trang va co vung trong`, () => {
+    const p = join(ROOT, 'android/app/src/main/res', `drawable-${dpi}`, 'ic_stat_aegis.png');
+    assert(existsSync(p), 'khong ton tai — da chay "node assets/branding/render.mjs" chua?');
+
+    const m = pngMeta(p);
+    assert(m.width === size && m.height === size, `gap ${m.width}x${m.height}`);
+
+    const img = decodeRgba(p);
+    assert(hasAnyTransparent(img), 'khong co pixel trong suot — se bi to thanh mot khoi dac');
+
+    for (let i = 0; i < img.data.length; i += 4) {
+      if (img.data[i + 3] === 0) continue;
+      const [r, g, b] = [img.data[i], img.data[i + 1], img.data[i + 2]];
+      assert(r === 255 && g === 255 && b === 255, `co pixel khong trang (${r},${g},${b})`);
+    }
+  });
+}
+
 check('mipmap-anydpi-v26/ic_launcher.xml khai bao du 3 layer', () => {
   const p = join(ROOT, 'android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml');
   assert(existsSync(p), 'khong ton tai — Android se im lang tut ve icon legacy');
