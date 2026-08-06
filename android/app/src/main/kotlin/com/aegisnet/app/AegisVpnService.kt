@@ -138,7 +138,19 @@ class AegisVpnService : VpnService(), Runnable {
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
         } else {
-            Notification.Builder(this)
+            // Pre-O there are no channels, so IMPORTANCE_LOW has nothing to
+            // apply to and the notification would post at default prominence.
+            // PRIORITY_LOW is its equivalent: a quiet, always-present status
+            // notification rather than something demanding attention.
+            @Suppress("DEPRECATION")
+            Notification.Builder(this).setPriority(Notification.PRIORITY_LOW)
+        }
+
+        // Android 12+ defers a foreground-service notification for up to 10s by
+        // default. For a VPN the notification IS the confirmation that traffic
+        // is being filtered, so it has to appear the moment the tunnel does.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
         }
 
         val notification = builder

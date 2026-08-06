@@ -1,7 +1,9 @@
 package com.aegisnet.app
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
 import android.os.Handler
@@ -18,6 +20,7 @@ class MainActivity: FlutterActivity() {
         private const val TAG = "AegisMainActivity"
         private const val CHANNEL = "com.aegisnet/vpn"
         private const val VPN_REQUEST_CODE = 0xAF1
+        private const val NOTIFICATION_REQUEST_CODE = 0xAF2
 
         /// The consent dialog was shown and the user said no.
         private const val ERROR_CONSENT_DENIED = "consent_denied"
@@ -68,6 +71,7 @@ class MainActivity: FlutterActivity() {
             result.error(error, "AegisNet tunnel did not start: $error", null)
         } else {
             result.success(started)
+            if (started) requestNotificationPermission()
         }
     }
 
@@ -132,6 +136,30 @@ class MainActivity: FlutterActivity() {
         }
     }
 
+    /// True when the ongoing tunnel notification can actually be shown.
+    /// Notifications are opt-in from Android 13, and a fresh install starts out
+    /// denied, so the foreground service runs with its notification invisible.
+    private fun notificationsAllowed(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /// Asked only once the tunnel is actually up: the user has just approved a
+    /// VPN, so a prompt about seeing its status is in context. Deliberately not
+    /// blocking — a denial costs visibility, not filtering, and the request must
+    /// never collide with the system VPN consent dialog.
+    private fun requestNotificationPermission() {
+        if (notificationsAllowed()) return
+        try {
+            requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                NOTIFICATION_REQUEST_CODE,
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not request POST_NOTIFICATIONS", e)
+        }
+    }
+
     /// Private DNS lives under Network & internet on stock Android and
     /// somewhere else entirely on most vendor ROMs, so try the dedicated screen
     /// first and fall back to the wireless settings root.
@@ -175,6 +203,7 @@ class MainActivity: FlutterActivity() {
             "consentGranted" to consentGranted,
             "tunnelUp" to AegisVpnService.isTunnelUp,
             "nativeEngineLoaded" to AegisVpnService.nativeAvailable,
+            "notificationsAllowed" to notificationsAllowed(),
             "privateDnsMode" to privateDnsMode,
             "lastError" to AegisVpnService.lastError,
         )
