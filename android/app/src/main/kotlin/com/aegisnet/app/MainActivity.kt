@@ -204,6 +204,7 @@ class MainActivity: FlutterActivity() {
             "tunnelUp" to AegisVpnService.isTunnelUp,
             "nativeEngineLoaded" to AegisVpnService.nativeAvailable,
             "notificationsAllowed" to notificationsAllowed(),
+            "droppedUnderLoad" to AegisVpnService.droppedUnderLoad.get(),
             "privateDnsMode" to privateDnsMode,
             "lastError" to AegisVpnService.lastError,
         )

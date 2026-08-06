@@ -11,6 +11,11 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 class AegisVpnService : VpnService(), Runnable {
 
@@ -29,6 +34,19 @@ class AegisVpnService : VpnService(), Runnable {
         // Virtual DNS server the OS sends queries to; only this address is
         // routed into the TUN.
         private const val TUN_DNS_SERVER = "10.0.0.3"
+
+        /// Concurrent upstream lookups allowed before queries start queueing.
+        private const val WORKER_THREADS = 8
+
+        /// Queries waiting for a free worker. Deep enough to absorb the burst an
+        /// app launch produces, shallow enough that a dead upstream is noticed
+        /// rather than silently buffering for minutes.
+        private const val WORKER_QUEUE_DEPTH = 256
+
+        /// Queries dropped because every worker was busy and the queue was full.
+        /// Surfaced through diagnostics: a growing number means the upstream is
+        /// too slow for the load, which is invisible from the UI otherwise.
+        val droppedUnderLoad = AtomicLong(0)
 
         // Reasons handed back to Dart. Kept as stable codes so the UI can give
         // vendor-specific advice instead of a generic "failed".
@@ -92,6 +110,13 @@ class AegisVpnService : VpnService(), Runnable {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var vpnThread: Thread? = null
     @Volatile private var isRunning = false
+
+    /// Filtering runs here instead of on the reader thread. Sized for the work:
+    /// blocked and cached answers return in microseconds and never occupy a
+    /// worker for long, so this only has to cover concurrent cache misses, each
+    /// bounded by the engine's 2.5s DoH timeout.
+    private var workers: ThreadPoolExecutor? = null
+    private val tunWriteLock = Any()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -220,6 +245,13 @@ class AegisVpnService : VpnService(), Runnable {
 
             vpnInterface = tun
             isRunning = true
+            workers = ThreadPoolExecutor(
+                WORKER_THREADS,
+                WORKER_THREADS,
+                0L,
+                TimeUnit.MILLISECONDS,
+                ArrayBlockingQueue(WORKER_QUEUE_DEPTH),
+            )
             vpnThread = Thread(this, "AegisVpnThread").also { it.start() }
             publishStartResult(true, null)
             Log.i(TAG, "Aegis Local VPN Started Successfully with Split Tunneling")
@@ -246,6 +278,10 @@ class AegisVpnService : VpnService(), Runnable {
         isRunning = false
         markTunnelDown()
         try {
+            // Drop in-flight work before the fd goes away, so workers are not
+            // left writing to a closed descriptor.
+            workers?.shutdownNow()
+            workers = null
             vpnInterface?.close()
             vpnInterface = null
             vpnThread?.interrupt()
@@ -258,6 +294,12 @@ class AegisVpnService : VpnService(), Runnable {
         }
     }
 
+    /// Reads the TUN and hands each packet to the worker pool.
+    ///
+    /// The read stays on this one thread — a single fd wants a single reader —
+    /// but filtering does not. `nativeProcessPacket` blocks for the whole
+    /// upstream DoH round trip on a cache miss, so doing it here made every
+    /// other DNS query on the device queue behind that one lookup.
     override fun run() {
         val pfd = vpnInterface ?: return
         val inputStream = FileInputStream(pfd.fileDescriptor)
@@ -268,29 +310,49 @@ class AegisVpnService : VpnService(), Runnable {
             try {
                 val length = inputStream.read(buffer)
                 if (length <= 0) continue
+                if (!nativeAvailable) continue
 
-                // Hand the raw IPv4 packet to the Rust engine (when present).
-                val reply =
-                    if (nativeAvailable) nativeProcessPacket(buffer.copyOf(length))
-                    else ByteArray(0)
-
-                if (reply.isNotEmpty()) {
-                    // Every DNS query gets an answer here: blocked (NXDOMAIN),
-                    // SafeSearch-rewritten, cached, resolved upstream by the
-                    // engine's own DoH client, or SERVFAIL when that upstream is
-                    // unreachable. No VpnService.protect() is needed — the DoH
-                    // socket is not routed into the TUN, only TUN_DNS_SERVER is.
-                    outputStream.write(reply)
+                // buffer is reused by the next read, so the worker gets a copy.
+                val packet = buffer.copyOf(length)
+                try {
+                    workers?.execute { filterAndReply(packet, outputStream) }
+                } catch (e: RejectedExecutionException) {
+                    // Every worker is busy and the queue is full: the upstream
+                    // is struggling. Dropping is what a resolver under load does
+                    // anyway, and the client will retry — but count it, because
+                    // it is invisible otherwise.
+                    droppedUnderLoad.incrementAndGet()
                 }
-
-                // An empty reply means the packet was not a parseable IPv4/UDP
-                // DNS query. Only TUN_DNS_SERVER/32 is routed into this
-                // interface, so that is a malformed or non-IPv4 datagram aimed
-                // at our virtual resolver, and dropping it is correct.
             } catch (e: Exception) {
                 if (!isRunning) break
-                Log.e(TAG, "Error handling TUN packet", e)
+                Log.e(TAG, "Error reading from the TUN interface", e)
             }
+        }
+    }
+
+    private fun filterAndReply(packet: ByteArray, outputStream: FileOutputStream) {
+        try {
+            val reply = nativeProcessPacket(packet)
+
+            // An empty reply means the packet was not a parseable IPv4/UDP DNS
+            // query. Only TUN_DNS_SERVER/32 is routed into this interface, so
+            // that is a malformed or non-IPv4 datagram aimed at our virtual
+            // resolver, and dropping it is correct.
+            if (reply.isEmpty()) return
+
+            // Every DNS query gets an answer here: blocked (NXDOMAIN),
+            // SafeSearch-rewritten, cached, resolved upstream by the engine's
+            // own DoH client, or SERVFAIL when that upstream is unreachable. No
+            // VpnService.protect() is needed — the DoH socket is not routed into
+            // the TUN, only TUN_DNS_SERVER is.
+            //
+            // Workers finish out of order, so writes are serialised: two threads
+            // writing the same stream can interleave into a torn packet.
+            synchronized(tunWriteLock) {
+                outputStream.write(reply)
+            }
+        } catch (e: Exception) {
+            if (isRunning) Log.e(TAG, "Error handling TUN packet", e)
         }
     }
 
