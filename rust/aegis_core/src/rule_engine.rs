@@ -382,4 +382,67 @@ mod tests {
         assert_eq!(count, 0);
         assert!(!engine.is_blocked("not-a-real-rule.com"));
     }
+
+    // --- TLD boundary -------------------------------------------------------
+    //
+    // `set_matches_domain` walks every parent label including the last one, so a
+    // rule holding a bare TLD covers the whole TLD. That is deliberate: `||zip^`
+    // is how AdGuard lists express "block all of .zip", and stopping one label
+    // short would make such a rule match only the literal string "zip" — that is,
+    // nothing a resolver ever sees. The tests below pin the behaviour down in
+    // both directions, because the same matcher backs the block sets and the
+    // whitelist, and nothing else in the suite covers the last label.
+
+    #[test]
+    fn test_tld_rule_blocks_every_domain_under_it() {
+        let engine = RuleEngine::new();
+        let count = engine.load_rules_text("||zip^", RuleCategory::Malware);
+        assert_eq!(count, 1);
+
+        assert!(engine.is_blocked("foo.bar.zip"));
+        assert!(engine.is_blocked("invoice.zip"));
+        assert!(engine.is_blocked("zip"));
+        // A neighbouring TLD is untouched.
+        assert!(!engine.is_blocked("invoice.example"));
+    }
+
+    #[test]
+    fn test_tld_exception_unblocks_every_domain_under_it() {
+        let engine = RuleEngine::new();
+        // graph.facebook.com is a seeded tracker rule.
+        assert!(engine.is_blocked("graph.facebook.com"));
+
+        let count = engine.load_rules_text("@@||com^", RuleCategory::Ads);
+        assert_eq!(count, 1);
+
+        // The exception lands in the whitelist, which outranks every category.
+        assert!(!engine.is_blocked("graph.facebook.com"));
+        // A domain outside .com keeps its verdict.
+        assert!(engine.is_blocked("doubleclick.net"));
+    }
+
+    #[test]
+    fn test_bare_tld_needs_the_adguard_syntax_to_load() {
+        let engine = RuleEngine::new();
+        // A plain line has to contain a dot to be read as a domain, so a stray
+        // "com" in a list cannot silently swallow every .com. Only the explicit
+        // `||com^` form does, which takes an author who meant it.
+        let count = engine.load_rules_text("com", RuleCategory::Ads);
+        assert_eq!(count, 0);
+        assert!(!engine.is_blocked("example.com"));
+    }
+
+    #[test]
+    fn test_subdomain_matching_stays_intact_below_the_tld() {
+        let engine = RuleEngine::new();
+        let count = engine.load_rules_text("||example.com^", RuleCategory::Ads);
+        assert_eq!(count, 1);
+
+        assert!(engine.is_blocked("example.com"));
+        assert!(engine.is_blocked("ads.example.com"));
+        assert!(engine.is_blocked("a.b.c.example.com"));
+        // Sibling domains sharing only the TLD must not be caught.
+        assert!(!engine.is_blocked("notexample.com"));
+        assert!(!engine.is_blocked("example.org"));
+    }
 }
