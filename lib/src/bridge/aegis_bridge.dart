@@ -120,23 +120,60 @@ class AegisBridge {
 
   static RawDatagramSocket? _desktopDnsSocket;
 
+  /// Why the last [startVpn] failed, as reported by the native side, or null
+  /// after a successful start. Vendor ROMs (MIUI in particular) refuse the
+  /// tunnel in ways the app cannot work around, so the reason has to reach the
+  /// user rather than being swallowed into a bare `false`.
+  static String? lastVpnError;
+
   /// Start Local VPN Tunnel / Desktop DNS Proxy
   static Future<bool> startVpn({List<String> bypassApps = const []}) async {
     try {
       final bool success = await _vpnChannel.invokeMethod('startVpn', {
         'bypassApps': bypassApps,
       });
+      lastVpnError = success ? null : 'tunnel_refused';
       return success;
     } on MissingPluginException {
       if (!kIsWeb &&
           (defaultTargetPlatform == TargetPlatform.windows ||
               defaultTargetPlatform == TargetPlatform.macOS ||
               defaultTargetPlatform == TargetPlatform.linux)) {
-        return await startDesktopDnsProxy();
+        final started = await startDesktopDnsProxy();
+        lastVpnError = started ? null : 'desktop_proxy_failed';
+        return started;
       }
+      lastVpnError = _expectsNativeTunnel ? 'no_native_handler' : null;
       return !_expectsNativeTunnel;
-    } catch (e) {
+    } on PlatformException catch (e) {
+      // The native side names the failure: consent_dialog_unavailable,
+      // consent_denied, tunnel_not_established, tunnel_start_timeout, ...
+      lastVpnError = e.code;
       return false;
+    } catch (e) {
+      lastVpnError = e.toString();
+      return false;
+    }
+  }
+
+  /// Opens the system's Private DNS settings. Buried several levels deep on
+  /// most ROMs, so pointing the user at it beats describing the path.
+  static Future<void> openPrivateDnsSettings() async {
+    try {
+      await _vpnChannel.invokeMethod('openPrivateDnsSettings');
+    } catch (_) {}
+  }
+
+  /// Everything the native side can observe about why filtering may not be
+  /// working on this device (consent state, tunnel state, engine presence,
+  /// Private DNS mode). Empty where there is no native handler.
+  static Future<Map<String, dynamic>> getVpnDiagnostics() async {
+    try {
+      final raw = await _vpnChannel
+          .invokeMapMethod<String, dynamic>('getVpnDiagnostics');
+      return raw ?? <String, dynamic>{};
+    } catch (_) {
+      return <String, dynamic>{};
     }
   }
 

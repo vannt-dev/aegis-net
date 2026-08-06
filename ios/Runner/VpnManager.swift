@@ -1,5 +1,6 @@
 import Flutter
 import NetworkExtension
+import UIKit
 
 /// Bridges the Flutter `com.aegisnet/vpn` MethodChannel to iOS's
 /// `NETunnelProviderManager`, the iOS equivalent of Android's MainActivity VPN
@@ -28,16 +29,21 @@ final class VpnManager {
             case "getSharedContainerPath": self?.sharedContainerPath(result)
             case "reloadTunnelConfig": self?.reloadTunnelConfig(result)
             case "openUrl": self?.openUrl(call, result: result)
-            case "installMobileConfigProfile": self?.installMobileConfigProfile(call, result: result)
             default: result(FlutterMethodNotImplemented)
             }
         }
     }
 
+    /// Opens the loopback URL Dart is serving the .mobileconfig profile from.
+    /// Safari downloads it and routes it to Settings > Profile Downloaded —
+    /// iOS will not install a profile opened as a `file:` URL, so the payload
+    /// is generated and served entirely on the Dart side.
     private func openUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         guard let args = call.arguments as? [String: Any],
               let urlString = args["url"] as? String,
-              let url = URL(string: urlString) else {
+              let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
             result(false)
             return
         }
@@ -45,75 +51,6 @@ final class VpnManager {
             UIApplication.shared.open(url, options: [:]) { success in
                 result(success)
             }
-        }
-    }
-
-    private func installMobileConfigProfile(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let args = call.arguments as? [String: Any] else {
-            result(false)
-            return
-        }
-        let dohUrl = (args["dohUrl"] as? String) ?? "https://1.1.1.1/dns-query"
-        let xml = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.1.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>PayloadContent</key>
-            <array>
-                <dict>
-                    <key>DNSSettings</key>
-                    <dict>
-                        <key>DNSProtocol</key>
-                        <string>HTTPS</string>
-                        <key>ServerURL</key>
-                        <string>\(dohUrl)</string>
-                    </dict>
-                    <key>PayloadDescription</key>
-                    <string>Configures Encrypted DNS (DoH) for AegisNet Privacy Shield</string>
-                    <key>PayloadDisplayName</key>
-                    <string>AegisNet Encrypted DNS</string>
-                    <key>PayloadIdentifier</key>
-                    <string>com.aegisnet.dns.profile</string>
-                    <key>PayloadType</key>
-                    <string>com.apple.dnsSettings.managed</string>
-                    <key>PayloadUUID</key>
-                    <string>E7A69156-4271-4C5C-9A5A-4A732E958055</string>
-                    <key>PayloadVersion</key>
-                    <integer>1</integer>
-                </dict>
-            </array>
-            <key>PayloadDescription</key>
-            <string>Enables AegisNet Encrypted DNS Firewall on iOS</string>
-            <key>PayloadDisplayName</key>
-            <string>AegisNet Encrypted DNS</string>
-            <key>PayloadIdentifier</key>
-            <string>com.aegisnet.profile</string>
-            <key>PayloadOrganization</key>
-            <string>AegisNet</string>
-            <key>PayloadRemovalDisallowed</key>
-            <false/>
-            <key>PayloadType</key>
-            <string>Configuration</string>
-            <key>PayloadUUID</key>
-            <string>B4C25191-76A9-4E6D-A2BF-15D397C118B8</string>
-            <key>PayloadVersion</key>
-            <integer>1</integer>
-        </dict>
-        </plist>
-        """
-
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileUrl = tempDir.appendingPathComponent("aegis_dns.mobileconfig")
-        do {
-            try xml.write(to: fileUrl, atomically: true, encoding: .utf8)
-            DispatchQueue.main.async {
-                UIApplication.shared.open(fileUrl, options: [:]) { success in
-                    result(success)
-                }
-            }
-        } catch {
-            result(false)
         }
     }
 

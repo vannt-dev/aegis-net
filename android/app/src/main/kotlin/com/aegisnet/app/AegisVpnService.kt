@@ -1,7 +1,12 @@
 package com.aegisnet.app
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import java.io.FileInputStream
@@ -14,9 +19,21 @@ class AegisVpnService : VpnService(), Runnable {
         const val ACTION_STOP = "com.aegisnet.app.STOP"
         private const val TAG = "AegisVpnService"
 
+        private const val CHANNEL_ID = "aegis_vpn_status"
+        private const val NOTIFICATION_ID = 0xA3
+
+        /// ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE (API 34). Spelled as
+        /// a literal so the module still compiles against an older compileSdk.
+        private const val FGS_TYPE_SPECIAL_USE = 1 shl 30
+
         // Virtual DNS server the OS sends queries to; only this address is
         // routed into the TUN.
         private const val TUN_DNS_SERVER = "10.0.0.3"
+
+        // Reasons handed back to Dart. Kept as stable codes so the UI can give
+        // vendor-specific advice instead of a generic "failed".
+        const val ERROR_ESTABLISH_NULL = "tunnel_not_established"
+        const val ERROR_ESTABLISH_DENIED = "tunnel_permission_denied"
 
         /// True when libaegis_core.so (the Rust DNS engine) is present. Built
         /// per-ABI via cargo-ndk; absent in UI-only builds. Loading must never
@@ -24,6 +41,37 @@ class AegisVpnService : VpnService(), Runnable {
         @Volatile
         var nativeAvailable: Boolean = false
             private set
+
+        /// True only while a TUN interface is actually established. The old code
+        /// reported success the moment startService() was called, so a tunnel
+        /// the system silently refused still showed as "protected".
+        @Volatile
+        var isTunnelUp: Boolean = false
+            private set
+
+        /// Why the last start attempt failed, or null after a successful one.
+        @Volatile
+        var lastError: String? = null
+            private set
+
+        /// Set by MainActivity for the duration of one start attempt. Invoked
+        /// with the outcome of `establish()` — the thing the caller actually
+        /// wants to know.
+        @Volatile
+        var startListener: ((Boolean, String?) -> Unit)? = null
+
+        fun publishStartResult(started: Boolean, error: String?) {
+            isTunnelUp = started
+            lastError = error
+            val listener = startListener
+            startListener = null
+            listener?.invoke(started, error)
+        }
+
+        fun markTunnelDown(error: String? = null) {
+            isTunnelUp = false
+            if (error != null) lastError = error
+        }
 
         init {
             nativeAvailable = try {
@@ -46,18 +94,82 @@ class AegisVpnService : VpnService(), Runnable {
     @Volatile private var isRunning = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val action = intent?.action
-        if (action == ACTION_START) {
-            val bypassApps = intent.getStringArrayListExtra("bypassApps") ?: arrayListOf()
-            startVpn(bypassApps)
-        } else if (action == ACTION_STOP) {
-            stopVpn()
+        when (intent?.action) {
+            ACTION_START -> {
+                // Go foreground BEFORE building the tunnel. Android 12 kills a
+                // service that has not posted its notification within 5s of
+                // startForegroundService(), and MIUI reaps plain background
+                // services within seconds of the user leaving the app — which
+                // is why the tunnel kept dying on Xiaomi devices.
+                enterForeground()
+                startVpn(intent.getStringArrayListExtra("bypassApps") ?: arrayListOf())
+            }
+            ACTION_STOP -> stopVpn()
         }
         return START_STICKY
     }
 
+    private fun enterForeground() {
+        val manager = getSystemService(NotificationManager::class.java)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "AegisNet Shield",
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = "Shows while DNS filtering is active"
+                setShowBadge(false)
+            }
+            manager?.createNotificationChannel(channel)
+        }
+
+        // FLAG_IMMUTABLE is mandatory from API 31 (Android 12) — omitting it
+        // throws IllegalArgumentException on exactly the devices reported here.
+        var pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            pendingFlags = pendingFlags or PendingIntent.FLAG_IMMUTABLE
+        }
+        val contentIntent = packageManager.getLaunchIntentForPackage(packageName)?.let {
+            PendingIntent.getActivity(this, 0, it, pendingFlags)
+        }
+
+        @Suppress("DEPRECATION")
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            Notification.Builder(this)
+        }
+
+        val notification = builder
+            .setContentTitle("AegisNet Shield")
+            .setContentText("DNS filtering is active")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setOngoing(true)
+            .also { b -> contentIntent?.let { b.setContentIntent(it) } }
+            .build()
+
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(NOTIFICATION_ID, notification, FGS_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun leaveForeground() {
+        @Suppress("DEPRECATION")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            stopForeground(true)
+        }
+    }
+
     private fun startVpn(bypassApps: ArrayList<String>) {
-        if (isRunning) return
+        if (isRunning) {
+            publishStartResult(true, null)
+            return
+        }
         try {
             // DNS-only tunnel: advertise a private DNS server and route ONLY
             // its address into the TUN. Every other packet (including the Rust
@@ -81,24 +193,49 @@ class AegisVpnService : VpnService(), Runnable {
                 }
             }
 
-            vpnInterface = builder.establish()
-            isRunning = true
+            // establish() returns null — it does NOT throw — when the platform
+            // refuses the tunnel, which is what MIUI's Security app does when it
+            // revokes VPN consent behind the framework's back. The previous code
+            // treated that as success and left the UI claiming protection.
+            val tun = builder.establish()
+            if (tun == null) {
+                failStart(ERROR_ESTABLISH_NULL)
+                return
+            }
 
-            vpnThread = Thread(this, "AegisVpnThread")
-            vpnThread?.start()
+            vpnInterface = tun
+            isRunning = true
+            vpnThread = Thread(this, "AegisVpnThread").also { it.start() }
+            publishStartResult(true, null)
             Log.i(TAG, "Aegis Local VPN Started Successfully with Split Tunneling")
+        } catch (e: SecurityException) {
+            // Consent was never granted, or another app holds the VPN slot.
+            Log.e(TAG, "Denied while establishing the tunnel", e)
+            failStart(ERROR_ESTABLISH_DENIED)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start Aegis VPN", e)
+            failStart(e.javaClass.simpleName + (e.message?.let { ": $it" } ?: ""))
         }
+    }
+
+    /// A tunnel that never came up must not leave a foreground notification
+    /// claiming otherwise, and Dart has to hear about it.
+    private fun failStart(reason: String) {
+        isRunning = false
+        publishStartResult(false, reason)
+        leaveForeground()
+        stopSelf()
     }
 
     private fun stopVpn() {
         isRunning = false
+        markTunnelDown()
         try {
             vpnInterface?.close()
             vpnInterface = null
             vpnThread?.interrupt()
             vpnThread = null
+            leaveForeground()
             stopSelf()
             Log.i(TAG, "Aegis Local VPN Stopped")
         } catch (e: Exception) {
@@ -123,20 +260,33 @@ class AegisVpnService : VpnService(), Runnable {
                     else ByteArray(0)
 
                 if (reply.isNotEmpty()) {
-                    // A synthesized DNS reply (blocked / SafeSearch / cached) —
-                    // write it straight back to the client.
+                    // Every DNS query gets an answer here: blocked (NXDOMAIN),
+                    // SafeSearch-rewritten, cached, resolved upstream by the
+                    // engine's own DoH client, or SERVFAIL when that upstream is
+                    // unreachable. No VpnService.protect() is needed — the DoH
+                    // socket is not routed into the TUN, only TUN_DNS_SERVER is.
                     outputStream.write(reply)
                 }
 
-                // NOTE: packets without a synthesized reply — allowed cache-miss
-                // DNS queries and all non-DNS traffic — are currently dropped.
-                // Forwarding them to the real network requires a socket excluded
-                // from the tunnel via VpnService.protect(); tracked as follow-up.
+                // An empty reply means the packet was not a parseable IPv4/UDP
+                // DNS query. Only TUN_DNS_SERVER/32 is routed into this
+                // interface, so that is a malformed or non-IPv4 datagram aimed
+                // at our virtual resolver, and dropping it is correct.
             } catch (e: Exception) {
                 if (!isRunning) break
                 Log.e(TAG, "Error handling TUN packet", e)
             }
         }
+    }
+
+    /// The system tears the tunnel down without going through stopVpn() when
+    /// the user revokes consent from Settings — MIUI does this routinely. Dart
+    /// must not keep showing "protected" afterwards.
+    override fun onRevoke() {
+        Log.w(TAG, "VPN consent revoked by the system")
+        markTunnelDown(ERROR_ESTABLISH_DENIED)
+        stopVpn()
+        super.onRevoke()
     }
 
     override fun onDestroy() {

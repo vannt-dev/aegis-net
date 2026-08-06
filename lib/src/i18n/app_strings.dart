@@ -26,6 +26,20 @@ class AppStrings {
       'export_json': 'EXPORT JSON',
       'speed_test': 'SPEED TEST',
       'export_logs': 'EXPORT LOGS (CSV)',
+      'vpn_diagnostics': 'VPN DIAGNOSTICS',
+      'vpn_err_consent_denied':
+          'VPN permission was declined. Tap the power button again and choose OK.',
+      'vpn_err_consent_unavailable':
+          'This ROM did not show the VPN permission dialog. On Xiaomi/MIUI: Settings > Apps > AegisNet, enable "Autostart" and "Display pop-up windows while running in the background", then try again.',
+      'vpn_err_not_established':
+          'The system refused to create the VPN. On Xiaomi/MIUI: remove other VPN profiles under Settings > Connection & sharing > VPN, set AegisNet battery saver to "No restrictions", then try again.',
+      'vpn_err_timeout':
+          'Timed out waiting for the tunnel to start. Reopen the app and try again.',
+      'vpn_err_generic': 'Could not start the VPN',
+      'private_dns_title': 'Private DNS is bypassing AegisNet',
+      'private_dns_body':
+          'This device is set to a fixed Private DNS provider, so Android sends every lookup straight to it and AegisNet never sees them. Nothing is being filtered. Set Private DNS to "Automatic" or "Off" to restore blocking.',
+      'private_dns_action': 'OPEN PRIVATE DNS SETTINGS',
     },
     'vi': {
       'app_title': 'AEGIS NET',
@@ -51,6 +65,20 @@ class AppStrings {
       'export_json': 'XUẤT FILE JSON',
       'speed_test': 'ĐO TỐC ĐỘ DNS',
       'export_logs': 'XUẤT LOGS (CSV)',
+      'vpn_diagnostics': 'CHẨN ĐOÁN VPN',
+      'vpn_err_consent_denied':
+          'Bạn đã từ chối quyền VPN. Bấm nút nguồn lần nữa và chọn "OK".',
+      'vpn_err_consent_unavailable':
+          'Máy không hiện hộp thoại cấp quyền VPN. Trên Xiaomi/MIUI: Cài đặt > Ứng dụng > AegisNet, bật "Tự khởi động" và "Hiển thị cửa sổ pop-up khi chạy nền", rồi thử lại.',
+      'vpn_err_not_established':
+          'Hệ thống từ chối tạo VPN. Trên Xiaomi/MIUI: xoá các hồ sơ VPN khác trong Cài đặt > Kết nối & chia sẻ > VPN, đặt tiết kiệm pin của AegisNet thành "Không giới hạn", rồi thử lại.',
+      'vpn_err_timeout':
+          'Hết thời gian chờ khởi động VPN. Hãy mở lại ứng dụng và thử lại.',
+      'vpn_err_generic': 'Không bật được VPN',
+      'private_dns_title': 'Private DNS đang đi vòng qua AegisNet',
+      'private_dns_body':
+          'Máy đang đặt Private DNS cố định nên Android gửi thẳng mọi truy vấn tới nhà cung cấp đó, AegisNet không nhìn thấy gì. Hiện không có gì được lọc. Hãy đổi Private DNS sang "Tự động" hoặc "Tắt" để chặn hoạt động trở lại.',
+      'private_dns_action': 'MỞ CÀI ĐẶT PRIVATE DNS',
     },
     'ko': {
       'app_title': 'AEGIS NET',
@@ -76,6 +104,18 @@ class AppStrings {
       'export_json': 'JSON 내보내기',
       'speed_test': '속도 테스트',
       'export_logs': '로그 내보내기 (CSV)',
+      'vpn_diagnostics': 'VPN 진단',
+      'vpn_err_consent_denied': 'VPN 권한이 거부되었습니다. 전원 버튼을 다시 누르고 확인을 선택하세요.',
+      'vpn_err_consent_unavailable':
+          '이 ROM에서 VPN 권한 대화상자가 표시되지 않았습니다. Xiaomi/MIUI: 설정 > 앱 > AegisNet에서 "자동 시작"과 "백그라운드 팝업 표시"를 켠 뒤 다시 시도하세요.',
+      'vpn_err_not_established':
+          '시스템이 VPN 생성을 거부했습니다. Xiaomi/MIUI: 설정 > 연결 및 공유 > VPN에서 다른 VPN 프로필을 삭제하고, AegisNet의 배터리 절약을 "제한 없음"으로 설정한 뒤 다시 시도하세요.',
+      'vpn_err_timeout': '터널 시작 대기 시간이 초과되었습니다. 앱을 다시 열고 시도하세요.',
+      'vpn_err_generic': 'VPN을 시작할 수 없습니다',
+      'private_dns_title': '비공개 DNS가 AegisNet을 우회하고 있습니다',
+      'private_dns_body':
+          '이 기기는 고정 비공개 DNS 제공업체로 설정되어 있어 Android가 모든 조회를 그쪽으로 직접 보내므로 AegisNet은 아무것도 볼 수 없습니다. 현재 필터링되는 것이 없습니다. 차단을 되돌리려면 비공개 DNS를 "자동" 또는 "사용 안 함"으로 설정하세요.',
+      'private_dns_action': '비공개 DNS 설정 열기',
     },
     'ja': {
       'app_title': 'AEGIS NET',
@@ -101,10 +141,40 @@ class AppStrings {
       'export_json': 'JSONエクスポート',
       'speed_test': 'スピードテスト',
       'export_logs': 'ログエクスポート (CSV)',
+      'vpn_diagnostics': 'VPN診断',
+      'vpn_err_consent_denied': 'VPNの権限が拒否されました。電源ボタンをもう一度押してOKを選択してください。',
+      'vpn_err_consent_unavailable':
+          'このROMではVPN許可ダイアログが表示されませんでした。Xiaomi/MIUI: 設定 > アプリ > AegisNet で「自動起動」と「バックグラウンドでのポップアップ表示」を有効にしてから再試行してください。',
+      'vpn_err_not_established':
+          'システムがVPNの作成を拒否しました。Xiaomi/MIUI: 設定 > 接続と共有 > VPN で他のVPNプロファイルを削除し、AegisNetのバッテリー節約を「制限なし」にしてから再試行してください。',
+      'vpn_err_timeout': 'トンネル開始の待機がタイムアウトしました。アプリを開き直してください。',
+      'vpn_err_generic': 'VPNを開始できませんでした',
+      'private_dns_title': 'プライベートDNSがAegisNetを迂回しています',
+      'private_dns_body':
+          'この端末は固定のプライベートDNSプロバイダに設定されているため、Androidはすべての名前解決をそこへ直接送り、AegisNetは何も受け取りません。現在フィルタリングは行われていません。ブロックを復元するにはプライベートDNSを「自動」または「オフ」に設定してください。',
+      'private_dns_action': 'プライベートDNS設定を開く',
     },
   };
 
   static String get(String key) {
     return _localizedValues[lang]?[key] ?? _localizedValues['en']![key] ?? key;
+  }
+
+  /// Native failure codes from MainActivity/AegisVpnService mapped to advice
+  /// the user can act on. Unknown codes still surface, with the raw code
+  /// appended so a bug report carries it.
+  static String vpnError(String code) {
+    const messageKeys = <String, String>{
+      'consent_denied': 'vpn_err_consent_denied',
+      'consent_dialog_unavailable': 'vpn_err_consent_unavailable',
+      'vpn_prepare_failed': 'vpn_err_consent_unavailable',
+      'tunnel_not_established': 'vpn_err_not_established',
+      'tunnel_permission_denied': 'vpn_err_not_established',
+      'tunnel_refused': 'vpn_err_not_established',
+      'tunnel_start_timeout': 'vpn_err_timeout',
+    };
+
+    final key = messageKeys[code];
+    return key != null ? get(key) : '${get('vpn_err_generic')} ($code)';
   }
 }

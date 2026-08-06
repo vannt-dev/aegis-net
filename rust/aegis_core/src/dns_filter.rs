@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
-use log::{info, debug};
+use log::{info, debug, warn};
 use lazy_static::lazy_static;
 use crate::rule_engine::RuleEngine;
 use crate::statistics::StatisticsEngine;
@@ -86,10 +86,18 @@ impl DnsFilterService {
             self.stats_engine.record_request(&domain, false);
             let response = self.forward_to_upstream(payload);
 
-            if !response.is_empty() {
-                self.dns_cache.insert(cache_key, response.clone());
+            if response.is_empty() {
+                // Returning nothing means the tunnel writes nothing back and the
+                // query is black-holed: every client on the device then retries
+                // until it times out, with no signal that DNS is down. Answer
+                // explicitly so callers fail fast — and never cache it, or the
+                // domain stays broken for the whole TTL after the upstream
+                // recovers.
+                warn!("Upstream DoH unreachable for {}; answering SERVFAIL", domain);
+                return Self::build_servfail_response(payload);
             }
 
+            self.dns_cache.insert(cache_key, response.clone());
             return response;
         }
 
@@ -186,6 +194,20 @@ impl DnsFilterService {
     /// Build an NXDOMAIN reply for a blocked domain. Returning "no such name"
     /// makes clients give up quietly instead of retrying a sinkhole IP.
     fn build_blocked_response(request: &[u8]) -> Vec<u8> {
+        Self::build_empty_response(request, 0x83) // RA=1, RCODE=3 (NXDOMAIN)
+    }
+
+    /// RCODE=2. Sent when the upstream could not be reached, which is a
+    /// different claim from NXDOMAIN: the name may well exist, we just could
+    /// not find out. Clients treat SERVFAIL as a transient failure and retry
+    /// later instead of caching a negative answer.
+    fn build_servfail_response(request: &[u8]) -> Vec<u8> {
+        Self::build_empty_response(request, 0x82) // RA=1, RCODE=2 (SERVFAIL)
+    }
+
+    /// Echo the request's header and question back with no records, under the
+    /// given second header byte (RA + RCODE).
+    fn build_empty_response(request: &[u8], flags_low: u8) -> Vec<u8> {
         let end = match Self::question_end_offset(request) {
             Some(e) => e,
             None => return vec![],
@@ -193,7 +215,7 @@ impl DnsFilterService {
 
         let mut response = request[..end].to_vec();
         response[2] = 0x81; // QR=1, RD=1
-        response[3] = 0x83; // RA=1, RCODE=3 (NXDOMAIN)
+        response[3] = flags_low;
         response[6] = 0x00; // ANCOUNT = 0
         response[7] = 0x00;
         response[8] = 0x00; // NSCOUNT = 0
@@ -407,5 +429,72 @@ mod tests {
         assert_eq!(u16::from_be_bytes([response[10], response[11]]), 0);
         // The question is echoed back and nothing extra is appended.
         assert_eq!(response.len(), 21);
+    }
+
+    #[test]
+    fn test_servfail_response_is_distinct_from_nxdomain() {
+        let mock_packet = vec![
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x03, b'a', b'b', b'c', 0x00, 0x00, 0x01, 0x00, 0x01,
+        ];
+
+        let response = DnsFilterService::build_servfail_response(&mock_packet);
+        assert!(!response.is_empty());
+        assert_eq!(&response[0..2], &[0x12, 0x34]);
+        assert_eq!(response[2] & 0x80, 0x80);
+        // RCODE = 2 (SERVFAIL). NXDOMAIN would tell the client the name does
+        // not exist, which is a different — and wrong — claim to make when the
+        // upstream is simply unreachable.
+        assert_eq!(response[3] & 0x0f, 0x02);
+        assert_eq!(u16::from_be_bytes([response[6], response[7]]), 0);
+        assert_eq!(response.len(), 21);
+    }
+
+    #[test]
+    fn test_unreachable_upstream_answers_servfail_instead_of_dropping() {
+        // Port 1 on loopback refuses instantly, so this stays hermetic and
+        // fast while exercising the real upstream-failure path.
+        let service = DnsFilterService::new(
+            Arc::new(RuleEngine::new()),
+            Arc::new(StatisticsEngine::new(10)),
+            "https://127.0.0.1:1/dns-query".to_string(),
+        );
+
+        let query = vec![
+            0xaa, 0xbb, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00, 0x01,
+        ];
+
+        let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let response = service.handle_dns_payload(&query, client);
+
+        // Dropping the packet black-holes the query: every client on the device
+        // then retries until it times out, with no signal that DNS is down.
+        assert!(!response.is_empty(), "upstream failure must not drop the query");
+        assert_eq!(response[3] & 0x0f, 0x02, "expected SERVFAIL");
+        assert_eq!(&response[0..2], &query[0..2]);
+    }
+
+    #[test]
+    fn test_servfail_is_never_cached() {
+        let service = DnsFilterService::new(
+            Arc::new(RuleEngine::new()),
+            Arc::new(StatisticsEngine::new(10)),
+            "https://127.0.0.1:1/dns-query".to_string(),
+        );
+
+        let query = vec![
+            0x11, 0x22, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x05, b'c', b'a', b'c', b'h', b'e', 0x03, b'n', b'e', b't', 0x00,
+            0x00, 0x01, 0x00, 0x01,
+        ];
+        let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
+
+        service.handle_dns_payload(&query, client);
+
+        // A cached SERVFAIL would keep the domain broken for the whole TTL even
+        // after the upstream recovers.
+        assert!(service.dns_cache.get("cache.net|1").is_none());
     }
 }

@@ -73,6 +73,39 @@ class VpnProvider extends ChangeNotifier {
 
   bool get isVpnActive => _isVpnActive && !isPaused;
   bool get isConnecting => _isConnecting;
+
+  /// Reason the tunnel refused to start, or null when it is up / has never
+  /// been asked. Cleared on the next successful start.
+  String? get lastError => _lastError;
+  String? _lastError;
+
+  /// Consumed by the UI after it has shown the failure once, so the message
+  /// does not reappear on every rebuild.
+  void clearLastError() {
+    if (_lastError == null) return;
+    _lastError = null;
+    notifyListeners();
+  }
+
+  /// True when the device is on strict Private DNS ("hostname" mode). Android's
+  /// resolver then speaks DoT directly to that provider and ignores the DNS
+  /// server the tunnel advertises, so the tunnel is up and filtering nothing —
+  /// the user sees ads with a green shield and no error anywhere.
+  ///
+  /// Only strict mode bypasses us. "opportunistic" probes DoT against our own
+  /// virtual resolver, gets no answer on 853, and falls back to cleartext.
+  bool get privateDnsBypass => _privateDnsBypass;
+  bool _privateDnsBypass = false;
+
+  Future<void> _refreshPrivateDnsState() async {
+    final diagnostics = await AegisBridge.getVpnDiagnostics();
+    final mode = diagnostics['privateDnsMode'] as String?;
+    final bypassed = mode == 'hostname';
+    if (bypassed == _privateDnsBypass) return;
+    _privateDnsBypass = bypassed;
+    notifyListeners();
+  }
+
   bool get isPaused =>
       _pausedUntil != null && DateTime.now().isBefore(_pausedUntil!);
   Duration get pauseRemaining =>
@@ -181,14 +214,23 @@ class VpnProvider extends ChangeNotifier {
     if (_isVpnActive) {
       if (await AegisBridge.stopVpn()) {
         _isVpnActive = false;
+        _privateDnsBypass = false;
         _stopSimulation();
       }
     } else {
       if (await AegisBridge.startVpn(bypassApps: _bypassApps)) {
         _isVpnActive = true;
+        _lastError = null;
+        // A tunnel that came up is not the same as a tunnel that sees traffic;
+        // strict Private DNS routes around it entirely.
+        await _refreshPrivateDnsState();
         if (enableSimulation) {
           _startSimulation();
         }
+      } else {
+        // Keep the native reason so the UI can explain the failure — a silent
+        // no-op toggle is what made the MIUI breakage impossible to diagnose.
+        _lastError = AegisBridge.lastVpnError ?? 'tunnel_refused';
       }
     }
 
