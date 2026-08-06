@@ -1,6 +1,12 @@
+import 'dart:typed_data';
+
 /// Web / Stub implementation when dart:ffi is unavailable
 class AegisNativeBindings {
   static bool initNativeLibrary() => false;
+
+  /// No engine, so no reply. Callers must answer the query themselves rather
+  /// than dropping it — see DnsMessage.buildServfail.
+  static Uint8List? handleDnsPacket(Uint8List query) => null;
   static int loadRules(String rulesText, int categoryId) => 0;
   static void addWhitelist(String domain) {}
   static void addBlacklist(String domain) {}

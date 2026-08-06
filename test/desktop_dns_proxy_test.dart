@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aegis_net/src/services/desktop_dns_proxy.dart';
+import 'package:aegis_net/src/services/dns_message.dart';
 
 /// A minimal well-formed query for `example.com` A/IN, transaction id 0xABCD.
 Uint8List _query({int id = 0xABCD}) => Uint8List.fromList([
@@ -95,7 +96,7 @@ void main() {
 
   group('SERVFAIL fallback', () {
     test('echoes the question and sets RCODE 2 with no records', () {
-      final reply = DesktopDnsProxy.buildServfail(_query());
+      final reply = DnsMessage.buildServfail(_query());
 
       expect(reply, isNotNull);
       expect(reply![0], 0xAB);
@@ -110,18 +111,18 @@ void main() {
     });
 
     test('refuses to invent a response for a malformed query', () {
-      expect(DesktopDnsProxy.buildServfail(Uint8List(0)), isNull);
-      expect(DesktopDnsProxy.buildServfail(Uint8List(8)), isNull);
+      expect(DnsMessage.buildServfail(Uint8List(0)), isNull);
+      expect(DnsMessage.buildServfail(Uint8List(8)), isNull);
 
       // QDCOUNT = 0: there is no question to echo back.
       final noQuestion = Uint8List.fromList(
           [0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0, 0]);
-      expect(DesktopDnsProxy.buildServfail(noQuestion), isNull);
+      expect(DnsMessage.buildServfail(noQuestion), isNull);
 
       // Label length runs past the end of the buffer.
       final truncated =
           Uint8List.fromList([0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x3F, 0x61]);
-      expect(DesktopDnsProxy.buildServfail(truncated), isNull);
+      expect(DnsMessage.buildServfail(truncated), isNull);
     });
   });
 }
