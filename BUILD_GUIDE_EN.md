@@ -34,7 +34,7 @@ This document provides detailed instructions for setting up the environment, com
 * **macOS** running Xcode 15+.
 * Target Rust iOS Architectures:
   ```bash
-  rustup target add aarch64-apple-ios x86_64-apple-ios-simulator
+  rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
   ```
 
 ---
@@ -102,23 +102,41 @@ cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../android/app/src/main/jn
 
 ## 5. Building & Packaging iOS (IPA / TestFlight)
 
-> **⚠️ iOS is a work in progress.** The packet-tunnel code is wired to the Rust
-> engine, but system-wide filtering is not functional yet: it still needs a
-> dedicated Network Extension target, the `networkextension` entitlement, a
-> `NETunnelProviderManager` start path + MethodChannel handler, and
-> `libaegis_core.a` (`cargo build --release --target aarch64-apple-ios`) linked
-> into the extension. The steps below build the Flutter app shell only.
+> **⚠️ iOS is a work in progress.** The `networkextension` entitlement, the App
+> Group, `VpnManager.swift` (MethodChannel → `NETunnelProviderManager`) and the
+> app↔extension state sharing are all in place. What is missing: the
+> **Network Extension target** (`PacketTunnel`) does not exist in the project
+> yet, and `AegisCore.xcframework` is not linked. So system-wide filtering does
+> **not** work — the steps below build the Flutter app shell only. See
+> [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md) for the rest.
 
-1. Install Cocoapods:
+> **No CocoaPods here.** There is no `Podfile`; the only native plugin
+> (`shared_preferences_foundation`) goes through Swift Package Manager. Running
+> `pod install` fails with *No Podfile found*. When opening Xcode, open
+> `ios/Runner.xcworkspace` — **not** `Runner.xcodeproj`: opening the project
+> directly leaves Xcode unable to resolve the package generated under
+> `ios/Flutter/ephemeral/`, and it reports *Missing package product
+> 'FlutterGeneratedPluginSwiftPackage'*.
+
+1. Fetch dependencies (this also generates the iOS Swift package):
    ```bash
-   cd ios && pod install && cd ..
+   flutter pub get
    ```
 
-2. Build iOS IPA bundle:
+2. Build the shell to verify compilation (no Apple account needed):
+   ```bash
+   flutter build ios --no-codesign
+   ```
+   * *Output file*: `build/ios/iphoneos/Runner.app`
+
+3. Package an IPA — only possible once the `PacketTunnel` target exists and a
+   Team is selected in Xcode:
    ```bash
    flutter build ipa --release
    ```
    * *Output file*: `build/ios/archive/Runner.xcarchive`
+   * Without a team or without the extension this fails at provisioning: the app
+     claims the `networkextension` entitlement while shipping no extension.
 
 ---
 

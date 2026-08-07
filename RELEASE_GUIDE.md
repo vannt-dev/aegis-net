@@ -116,22 +116,54 @@ khi thiếu `FIREBASE_APP_ID`.
 
 ## 4. Phát hành
 
-```bash
-git tag v1.0.1
-git push origin v1.0.1
+Quy trình: làm việc trên `develop`, mở MR vào `main`. Merge là phát hành.
+
+```
+develop  ──MR──►  main
+   │                │
+   │                └─► phát hành thật: GitHub Release + mail cho tester
+   └─► MR chỉ build kiểm tra, đính APK làm artifact để tải thử
 ```
 
-Xong. Workflow sẽ:
+### Khi mở MR từ `develop` vào `main`
 
-1. Chạy `flutter analyze`, `flutter test`, `cargo test` — hỏng thì dừng, không phát hành
-2. Build APK release đã ký, `versionName` lấy từ tag, `versionCode` lấy từ số thứ tự lần chạy
-3. **Chặn nếu APK thiếu engine Rust ở bất kỳ ABI nào trong 3**
-4. **Chặn nếu APK bị ký bằng khoá debug**
-5. Đẩy lên Firebase App Distribution → tester nhận mail
+Workflow build và kiểm tra, **không phát hành gì cả**. Vào tab Actions của lần
+chạy đó, kéo xuống mục **Artifacts** để tải APK về cài thử. Artifact giữ 14 ngày.
+
+### Khi merge MR vào `main`
+
+1. Chạy `flutter analyze`, `flutter test`, `cargo test` — hỏng thì dừng
+2. **Chặn nếu phiên bản đã được phát hành rồi** (quên tăng `version` trong
+   `pubspec.yaml`). Bước này chạy trước khi build nên hỏng là biết ngay, không
+   mất 7 phút chờ.
+3. Build APK release đã ký. `versionName` lấy từ `pubspec.yaml`, `versionCode`
+   lấy từ số thứ tự lần chạy workflow
+4. **Chặn nếu APK thiếu engine Rust ở bất kỳ ABI nào trong 3**
+5. **Chặn nếu APK bị ký bằng khoá debug**
 6. Tạo GitHub Release kèm file APK
+7. Đẩy lên Firebase App Distribution → tester nhận mail
 
-Chạy tay cũng được: tab **Actions → 🚀 Release APK → Run workflow**, nhập số
-phiên bản.
+> [!NOTE]
+> Bước 6 đứng trước bước 7 là có chủ ý. GitHub Release chỉ phụ thuộc file đã
+> build, còn Firebase phụ thuộc dịch vụ ngoài. Xếp ngược lại thì một trục trặc
+> phía Firebase sẽ cuốn theo cả bản lưu trữ, dù APK hoàn toàn hợp lệ — đã xảy ra
+> đúng một lần như vậy.
+
+### Nhớ tăng version trước khi merge
+
+Sửa `pubspec.yaml`:
+
+```yaml
+version: 1.0.1+1     # phần trước dấu + là thứ workflow dùng
+```
+
+Không tăng thì bước 2 chặn lại với thông báo rõ ràng, không âm thầm ghi đè bản
+cũ.
+
+### Phát hành lại bằng tay
+
+Tab **Actions → 🚀 Release APK → Run workflow**, để trống ô version thì nó lấy
+từ `pubspec.yaml`, hoặc nhập số khác để ghi đè.
 
 > [!NOTE]
 > Lần chạy đầu lâu (~15–20 phút) vì phải biên dịch `cargo-ndk` và tải Android

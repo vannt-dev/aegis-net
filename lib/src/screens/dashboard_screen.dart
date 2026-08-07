@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../bridge/aegis_bridge.dart';
+import '../services/desktop_dns_proxy.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 import '../i18n/app_strings.dart';
@@ -11,6 +13,27 @@ const Color emeraldDarkColor = Color(0xFF065F46);
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
+
+  /// Flips the tunnel and, when the native side refused, says why. A toggle
+  /// that quietly springs back is indistinguishable from a broken app — which
+  /// is exactly how the MIUI failure presented.
+  static Future<void> _toggleAndReport(
+      BuildContext context, VpnProvider vpn) async {
+    await vpn.toggleVpn();
+
+    final error = vpn.lastError;
+    if (error == null || !context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppStrings.vpnError(error)),
+        duration: const Duration(seconds: 10),
+        backgroundColor: const Color(0xFF3B1D1D),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    vpn.clearLastError();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -162,10 +185,75 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
 
+              // Desktop has no VpnService equivalent, so a running proxy is not
+              // protection until the user repoints their resolver. Saying so is
+              // the whole point — the old stub let the UI imply otherwise.
+              if (vpn.isVpnActive && AegisBridge.desktopProxyStatus != null)
+                _DesktopProxyBanner(
+                  status: AegisBridge.desktopProxyStatus!,
+                ),
+
+              // Strict Private DNS silently routes around the tunnel: the
+              // shield reads PROTECTED while nothing is being filtered. Say so
+              // rather than letting the user conclude the app does not work.
+              if (vpn.isVpnActive && vpn.privateDnsBypass)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B2F12),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.amberAccent, width: 1),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: Colors.amberAccent, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              AppStrings.get('private_dns_title'),
+                              style: const TextStyle(
+                                  color: Colors.amberAccent,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        AppStrings.get('private_dns_body'),
+                        style: TextStyle(
+                            color: Colors.grey.shade300, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: AegisBridge.openPrivateDnsSettings,
+                          child: Text(
+                            AppStrings.get('private_dns_action'),
+                            style: const TextStyle(
+                                color: Colors.amberAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
               // Glowing Interactive Power Toggle Button
               Center(
                 child: GestureController(
-                  onTap: vpn.isConnecting ? null : () => vpn.toggleVpn(),
+                  onTap: vpn.isConnecting
+                      ? null
+                      : () => _toggleAndReport(context, vpn),
                   isActive: vpn.isVpnActive,
                   isConnecting: vpn.isConnecting,
                   isPaused: vpn.isPaused,
@@ -289,15 +377,14 @@ class DashboardScreen extends StatelessWidget {
                           borderData: FlBorderData(show: false),
                           lineBarsData: [
                             LineChartBarData(
-                              spots: const [
-                                FlSpot(0, 30),
-                                FlSpot(1, 45),
-                                FlSpot(2, 28),
-                                FlSpot(3, 65),
-                                FlSpot(4, 50),
-                                FlSpot(5, 78),
-                                FlSpot(6, 62),
-                              ],
+                              spots: vpn.qpsHistory
+                                  .asMap()
+                                  .entries
+                                  .map((e) => FlSpot(
+                                        e.key.toDouble(),
+                                        e.value,
+                                      ))
+                                  .toList(),
                               isCurved: true,
                               color: accent,
                               barWidth: 3,
@@ -385,6 +472,67 @@ class DashboardScreen extends StatelessWidget {
               fontSize: 20,
               fontWeight: FontWeight.bold,
               color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tells the desktop user where the resolver is listening and what they still
+/// have to do. Amber, not green: the proxy running is a precondition for
+/// filtering, not filtering itself.
+class _DesktopProxyBanner extends StatelessWidget {
+  const _DesktopProxyBanner({required this.status});
+
+  final DesktopProxyStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final port = status.port?.toString() ?? '';
+    final body = status.usableAsSystemResolver
+        ? AppStrings.get('desktop_proxy_ready')
+        : AppStrings.get('desktop_proxy_high_port').replaceAll('%s', port);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3B2F12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.amberAccent, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.dns_outlined,
+                  color: Colors.amberAccent, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppStrings.get('desktop_proxy_title'),
+                  style: const TextStyle(
+                      color: Colors.amberAccent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(body,
+              style: TextStyle(color: Colors.grey.shade300, fontSize: 12)),
+          const SizedBox(height: 8),
+          SelectableText(
+            '127.0.0.1${status.usableAsSystemResolver ? '' : ':$port'}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],

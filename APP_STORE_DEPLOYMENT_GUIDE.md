@@ -81,10 +81,24 @@ Hướng dẫn chi tiết từng bước đưa ứng dụng **AegisNet** lên **
 ## 5. Biên Dịch Thư Viện Rust & Khởi Tạo Bản Build IPA
 
 ### Bước 5.1: Biên dịch thư viện tĩnh Rust (.a) cho iOS
+
+Dùng script có sẵn — nó thêm target, build cả 3 slice (device + 2 simulator) và
+đóng gói thành `ios/Frameworks/AegisCore.xcframework`:
+
 ```bash
-rustup target add aarch64-apple-ios x86_64-apple-ios-simulator
+./ios/build_rust_ios.sh
+```
+
+Tương đương thủ công:
+
+```bash
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 cargo build --manifest-path rust/aegis_core/Cargo.toml --target aarch64-apple-ios --release
 ```
+
+> Sau đó phải link `AegisCore.xcframework` vào **cả** target `Runner` lẫn
+> `PacketTunnel` (Do Not Embed). Thiếu ở Runner thì FFI phía app không resolve
+> được symbol và app chạy bằng dữ liệu giả — xem [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md).
 
 ### Bước 5.2: Tạo gói lưu trữ Archive / IPA
 ```bash

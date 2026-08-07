@@ -2,7 +2,7 @@ name: AegisNet iOS Build Verification
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 concurrency:
@@ -43,13 +43,13 @@ jobs:
             rust/aegis_core/target/x86_64-apple-ios/release/libaegis_core.a
           if-no-files-found: error
 
-  # WIP progress indicator only. The Flutter iOS shell cannot fully build until
-  # the NetworkExtension target and libaegis_core.a linkage are wired on a Mac
-  # (see CHANGELOG.md "Known follow-ups"), so every step here is non-blocking.
+  # Gating since the first green build. The Runner target compiles on a clean
+  # checkout, so any regression here is a real break — the PacketTunnel target
+  # is still absent (see CHANGELOG.md "Known follow-ups") but nothing in this
+  # job depends on it.
   flutter-ios-app:
-    name: 📱 Flutter iOS shell build (WIP, non-blocking)
+    name: 📱 Flutter iOS shell build
     runs-on: macos-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -58,14 +58,31 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:-ios'
+          pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-:hash:-ios'
 
-      - name: Disable experimental Swift Package Manager
-        continue-on-error: true
-        run: flutter config --no-enable-swift-package-manager
+      - name: Toolchain versions
+        run: |
+          flutter --version
+          xcodebuild -version
 
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Attempt iOS build (non-blocking, WIP)
-        continue-on-error: true
+      # Runner.xcodeproj integrates plugins via Swift Package Manager, and the
+      # package it points at (ios/Flutter/ephemeral/Packages) is generated, not
+      # committed. If it is missing or empty here, Xcode fails with
+      # "Missing package product 'FlutterGeneratedPluginSwiftPackage'" — so dump
+      # it before the build to show which side is at fault.
+      - name: Dump generated Swift package state
+        run: |
+          echo "=== enable-swift-package-manager ==="
+          flutter config --list | grep swift-package-manager || true
+          echo "=== ios/Flutter/ephemeral tree ==="
+          find ios/Flutter/ephemeral -maxdepth 4 || echo "MISSING: ios/Flutter/ephemeral"
+          echo "=== FlutterGeneratedPluginSwiftPackage/Package.swift ==="
+          cat ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift \
+            || echo "MISSING: generated Package.swift"
+
+      - name: Build iOS shell
         run: flutter build ios --no-codesign

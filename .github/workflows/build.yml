@@ -2,8 +2,14 @@ name: AegisNet Fast CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
+  # Cache Actions bị xoá sau 7 ngày không dùng, và gradle/actions/setup-gradle
+  # chỉ GHI cache khi chạy trên default branch (trên PR nó là read-only). Không
+  # có nhịp chạy trên main thì cache Gradle hết hạn và mọi PR build lạnh lại từ
+  # đầu. Thứ 2 + thứ 5 giữ khoảng cách tối đa 4 ngày, an toàn dưới ngưỡng 7 ngày.
+  schedule:
+    - cron: '0 3 * * 1,4'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name || github.ref }}
@@ -41,6 +47,8 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:-web'
+          pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-:hash:-web'
 
       - name: Install Dependencies
         run: flutter pub get
@@ -76,9 +84,15 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:-android'
+          pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-:hash:-android'
 
       - name: Install Dependencies
         run: flutter pub get
 
+      # Job này chỉ là cổng kiểm tra biên dịch, APK ở đây không ai cài. Mặc định
+      # `flutter build apk` đóng gói cả 3 ABI; bản phát hành thật do release.yml
+      # dựng, ở đó có bước bắt buộc đủ 3 ABI nên giới hạn tại đây không đụng tới
+      # artifact giao cho tester.
       - name: Build Android APK
-        run: flutter build apk --debug
+        run: flutter build apk --debug --target-platform android-arm64

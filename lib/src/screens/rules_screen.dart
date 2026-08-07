@@ -248,6 +248,7 @@ class _RulesScreenState extends State<RulesScreen>
           subtitle: Text(description,
               style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
           value: enabled,
+          activeTrackColor: Colors.cyanAccent.withValues(alpha: 0.5),
           activeThumbColor: Colors.cyanAccent,
           onChanged: (val) {},
         ),

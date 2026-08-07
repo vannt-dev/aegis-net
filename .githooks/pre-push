@@ -5,7 +5,7 @@ export PATH="$PATH:/c/flutter/bin:/c/src/flutter/bin"
 
 # Condition 1: Flutter Unit & Widget Tests
 if command -v flutter >/dev/null 2>&1; then
-  echo "1/2 Running Flutter Unit & Widget Tests..."
+  echo "1/3 Running Flutter Unit & Widget Tests..."
   flutter test
   if [ $? -ne 0 ]; then
     echo "❌ [PUSH ABORTED] Flutter unit/widget tests failed! Fix failing tests before pushing."
@@ -13,12 +13,12 @@ if command -v flutter >/dev/null 2>&1; then
   fi
   echo "  ✓ Flutter tests passed!"
 else
-  echo "1/2 [SKIP] Flutter CLI not found in shell PATH."
+  echo "1/3 [SKIP] Flutter CLI not found in shell PATH."
 fi
 
 # Condition 2: Rust Core Engine Unit Tests
 if command -v cargo >/dev/null 2>&1; then
-  echo "2/2 Running Rust Core Unit Tests..."
+  echo "2/3 Running Rust Core Unit Tests..."
   cargo test --manifest-path rust/aegis_core/Cargo.toml
   if [ $? -ne 0 ]; then
     echo "❌ [PUSH ABORTED] Rust Core unit tests failed! Fix failing tests before pushing."
@@ -26,7 +26,31 @@ if command -v cargo >/dev/null 2>&1; then
   fi
   echo "  ✓ Rust tests passed!"
 else
-  echo "2/2 [SKIP] Cargo CLI not found in shell PATH."
+  echo "2/3 [SKIP] Cargo CLI not found in shell PATH."
+fi
+
+# Condition 3: Web bundle still compiles.
+#
+# Web is the only target without dart:ffi, so an import that forgets the
+# conditional-export pattern (lib/src/bridge/ffi_bindings.dart,
+# lib/src/services/desktop_dns_proxy.dart) breaks the web build alone. Neither
+# `flutter analyze` nor `flutter test` catches it — both run against the VM
+# target — so CI was the first thing to notice. Same command CI runs.
+#
+# Verified by reintroducing the bug: a direct ffi_native.dart import fails this
+# step with exit 1. (dart:io and dart:isolate imports do NOT fail the web build
+# on their own, so this step does not guard those.)
+if command -v flutter >/dev/null 2>&1; then
+  echo "3/3 Building Web Bundle (catches dart:ffi leaks)..."
+  flutter build web --release
+  if [ $? -ne 0 ]; then
+    echo "❌ [PUSH ABORTED] Web build failed! A dart:ffi import is most likely reaching"
+    echo "   the web target — import bridge/ffi_bindings.dart, never ffi_native.dart."
+    exit 1
+  fi
+  echo "  ✓ Web bundle built!"
+else
+  echo "3/3 [SKIP] Flutter CLI not found in shell PATH."
 fi
 
 echo "🚀 [PRE-PUSH HOOK] All conditions satisfied! Pushing code..."

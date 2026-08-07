@@ -33,7 +33,7 @@ Tài liệu này hướng dẫn chi tiết cách thiết lập môi trường, b
 * **macOS** chạy Xcode 15+.
 * Target Rust iOS Architectures:
   ```bash
-  rustup target add aarch64-apple-ios x86_64-apple-ios-simulator
+  rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
   ```
 
 ---
@@ -99,23 +99,41 @@ cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../android/app/src/main/jn
 
 ## 5. Biên Dịch & Đóng Gói iOS (IPA / TestFlight)
 
-> **⚠️ iOS đang trong quá trình hoàn thiện.** Phần packet-tunnel đã nối tới Rust
-> engine, nhưng lọc DNS toàn hệ thống **chưa hoạt động**: còn thiếu một Network
-> Extension target riêng, entitlement `networkextension`, luồng khởi động
-> `NETunnelProviderManager` + MethodChannel, và link `libaegis_core.a`
-> (`cargo build --release --target aarch64-apple-ios`). Các bước dưới chỉ build
-> phần vỏ Flutter.
+> **⚠️ iOS đang trong quá trình hoàn thiện.** Entitlement `networkextension`,
+> App Group, `VpnManager.swift` (MethodChannel → `NETunnelProviderManager`) và
+> cơ chế chia sẻ state giữa app với extension đều đã có. Còn thiếu: **target
+> Network Extension** (`PacketTunnel`) chưa được tạo trong project, và
+> `AegisCore.xcframework` chưa được link. Nên lọc DNS toàn hệ thống **chưa chạy**
+> — các bước dưới chỉ build phần vỏ Flutter. Xem
+> [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md) cho phần còn lại.
 
-1. Tải Pods phụ thuộc:
+> **Không dùng CocoaPods.** Repo không có `Podfile`; plugin native duy nhất
+> (`shared_preferences_foundation`) đi qua Swift Package Manager. Chạy
+> `pod install` sẽ báo *No Podfile found*. Khi mở Xcode, mở
+> `ios/Runner.xcworkspace` — **không** phải `Runner.xcodeproj`, vì mở thẳng
+> project thì Xcode không resolve được package sinh ra trong
+> `ios/Flutter/ephemeral/` và báo *Missing package product
+> 'FlutterGeneratedPluginSwiftPackage'*.
+
+1. Tải phụ thuộc (tự sinh luôn Swift package cho iOS):
    ```bash
-   cd ios && pod install && cd ..
+   flutter pub get
    ```
 
-2. Biên dịch gói iOS IPA:
+2. Build phần vỏ để kiểm tra biên dịch (không cần tài khoản Apple):
+   ```bash
+   flutter build ios --no-codesign
+   ```
+   * *File đầu ra*: `build/ios/iphoneos/Runner.app`
+
+3. Đóng gói IPA — chỉ làm được sau khi đã tạo target `PacketTunnel` và chọn
+   Team trong Xcode:
    ```bash
    flutter build ipa --release
    ```
    * *File đầu ra*: `build/ios/archive/Runner.xcarchive`
+   * Thiếu team hoặc thiếu extension thì bước này fail ở khâu provisioning, vì
+     app khai entitlement `networkextension` mà không kèm extension nào.
 
 ---
 

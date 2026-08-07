@@ -1,10 +1,12 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
+use std::path::Path;
 use std::sync::Arc;
 use lazy_static::lazy_static;
 use crate::rule_engine::{RuleEngine, RuleCategory};
 use crate::statistics::StatisticsEngine;
 use crate::dns_filter::DnsFilterService;
+use crate::shared_state;
 
 lazy_static! {
     static ref RULE_ENGINE: Arc<RuleEngine> = Arc::new(RuleEngine::new());
@@ -41,6 +43,16 @@ pub extern "C" fn aegis_set_category(category_id: c_int, enabled: c_int) {
     RULE_ENGINE.set_category_enabled(cat, enabled != 0);
 }
 
+/// Set the upstream DoH target used to resolve cache-miss queries. Accepts a
+/// bare host/IP or a full `https://.../dns-query` URL.
+#[no_mangle]
+pub extern "C" fn aegis_set_upstream_dns(upstream_ptr: *const c_char) {
+    if upstream_ptr.is_null() { return; }
+    if let Ok(upstream) = unsafe { CStr::from_ptr(upstream_ptr) }.to_str() {
+        DNS_FILTER.set_upstream_dns(upstream);
+    }
+}
+
 /// Load filter rules text into engine
 #[no_mangle]
 pub extern "C" fn aegis_load_rules(rules_text_ptr: *const c_char, category_id: c_int) -> u32 {
@@ -59,6 +71,88 @@ pub extern "C" fn aegis_load_rules(rules_text_ptr: *const c_char, category_id: c
         RULE_ENGINE.load_rules_text(rules_str, cat) as u32
     } else {
         0
+    }
+}
+
+/// Borrow a C string as a filesystem path, or `None` when it is null or not
+/// valid UTF-8.
+fn path_from_ptr(path_ptr: *const c_char) -> Option<&'static Path> {
+    if path_ptr.is_null() {
+        return None;
+    }
+    unsafe { CStr::from_ptr(path_ptr) }.to_str().ok().map(Path::new)
+}
+
+/// Write the engine's user settings to `path` for the other process to pick up.
+/// Returns 0 on success, or a negative [`shared_state::SnapshotError`] code.
+///
+/// iOS only: the app calls this after a rule change so the PacketTunnel
+/// extension, which holds a separate copy of the engine, can adopt it.
+#[no_mangle]
+pub extern "C" fn aegis_export_settings(path_ptr: *const c_char) -> c_int {
+    match path_from_ptr(path_ptr) {
+        Some(path) => match shared_state::export_settings(&RULE_ENGINE, &DNS_FILTER, path) {
+            Ok(()) => 0,
+            Err(err) => err.code(),
+        },
+        None => shared_state::SnapshotError::Io.code(),
+    }
+}
+
+/// Adopt the settings snapshot at `path`. Entries missing from the snapshot are
+/// removed, so the reader ends up matching the writer exactly.
+#[no_mangle]
+pub extern "C" fn aegis_import_settings(path_ptr: *const c_char) -> c_int {
+    match path_from_ptr(path_ptr) {
+        Some(path) => match shared_state::import_settings(&RULE_ENGINE, &DNS_FILTER, path) {
+            Ok(()) => 0,
+            Err(err) => err.code(),
+        },
+        None => shared_state::SnapshotError::Io.code(),
+    }
+}
+
+/// Load a filter list from disk instead of from a C string. Downloaded lists
+/// run to hundreds of thousands of lines; passing a path avoids marshalling
+/// megabytes across the FFI boundary. Returns the number of rules added.
+#[no_mangle]
+pub extern "C" fn aegis_load_rules_file(path_ptr: *const c_char, category_id: c_int) -> u32 {
+    let cat = match category_id {
+        0 => RuleCategory::Ads,
+        1 => RuleCategory::Trackers,
+        2 => RuleCategory::Malware,
+        3 => RuleCategory::Adult,
+        _ => RuleCategory::Ads,
+    };
+    match path_from_ptr(path_ptr) {
+        Some(path) => shared_state::load_rules_file(&RULE_ENGINE, path, cat).unwrap_or(0) as u32,
+        None => 0,
+    }
+}
+
+/// Publish the counters this process has accumulated. Called by the iOS
+/// extension, which is the only side that sees real DNS traffic.
+#[no_mangle]
+pub extern "C" fn aegis_export_stats(path_ptr: *const c_char) -> c_int {
+    match path_from_ptr(path_ptr) {
+        Some(path) => match shared_state::export_stats(&STATS_ENGINE, path) {
+            Ok(()) => 0,
+            Err(err) => err.code(),
+        },
+        None => shared_state::SnapshotError::Io.code(),
+    }
+}
+
+/// Adopt counters published by the other process, so `aegis_get_stats_json`
+/// reports what the tunnel actually did rather than this process's own totals.
+#[no_mangle]
+pub extern "C" fn aegis_import_stats(path_ptr: *const c_char) -> c_int {
+    match path_from_ptr(path_ptr) {
+        Some(path) => match shared_state::import_stats(&STATS_ENGINE, path) {
+            Ok(()) => 0,
+            Err(err) => err.code(),
+        },
+        None => shared_state::SnapshotError::Io.code(),
     }
 }
 
@@ -190,12 +284,113 @@ pub extern "C" fn aegis_get_stats_json() -> *mut c_char {
     CString::new(json).unwrap().into_raw()
 }
 
+/// Get recent DNS query log items as JSON string
+#[no_mangle]
+pub extern "C" fn aegis_get_recent_logs_json(limit: c_int) -> *mut c_char {
+    let limit_val = if limit <= 0 { 50 } else { limit as usize };
+    let logs = STATS_ENGINE.get_recent_logs(limit_val);
+    let json = serde_json::to_string(&logs).unwrap_or_else(|_| "[]".to_string());
+    CString::new(json).unwrap().into_raw()
+}
+
 /// Free string allocated by Rust
 #[no_mangle]
 pub extern "C" fn aegis_free_string(ptr: *mut c_char) {
     if !ptr.is_null() {
         unsafe {
             let _ = CString::from_raw(ptr);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::thread;
+
+    /// IPv4+UDP+DNS frame carrying an A query for `host`, aimed at port 53.
+    fn dns_packet(host: &str, txid: u16) -> Vec<u8> {
+        let mut dns = vec![
+            (txid >> 8) as u8,
+            (txid & 0xff) as u8,
+            0x01,
+            0x00, // RD
+            0x00,
+            0x01, // QDCOUNT
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+        ];
+        for label in host.split('.') {
+            dns.push(label.len() as u8);
+            dns.extend_from_slice(label.as_bytes());
+        }
+        dns.extend_from_slice(&[0x00, 0x00, 0x01, 0x00, 0x01]); // root, A, IN
+
+        let total = 20 + 8 + dns.len();
+        let mut p = vec![0u8; total];
+        p[0] = 0x45;
+        p[2..4].copy_from_slice(&(total as u16).to_be_bytes());
+        p[8] = 64;
+        p[9] = 17; // UDP
+        p[12..16].copy_from_slice(&[10, 0, 0, 2]);
+        p[16..20].copy_from_slice(&[10, 0, 0, 3]);
+        let csum = crate::packet::internet_checksum(&p[..20]);
+        p[10..12].copy_from_slice(&csum.to_be_bytes());
+        p[20..22].copy_from_slice(&40000u16.to_be_bytes());
+        p[22..24].copy_from_slice(&53u16.to_be_bytes());
+        p[24..26].copy_from_slice(&((8 + dns.len()) as u16).to_be_bytes());
+        p[28..].copy_from_slice(&dns);
+        p
+    }
+
+    /// The tunnel loop hands packets to a pool of threads so a slow upstream
+    /// lookup cannot stall every other query behind it. That is only sound if
+    /// the engine tolerates concurrent callers, which is what this pins down:
+    /// rule lookups, the stats ring and response building all run at once.
+    #[test]
+    fn process_ip_packet_is_safe_from_many_threads_at_once() {
+        const THREADS: usize = 8;
+        const PER_THREAD: usize = 50;
+
+        let handles: Vec<_> = (0..THREADS)
+            .map(|t| {
+                thread::spawn(move || {
+                    for i in 0..PER_THREAD {
+                        let txid = (t * PER_THREAD + i) as u16;
+                        // A seeded ad domain: answered from the rule engine, so
+                        // the test never touches the network.
+                        let packet = dns_packet("doubleclick.net", txid);
+                        let mut out = vec![0u8; packet.len() + 1500];
+
+                        let n = super::aegis_process_ip_packet(
+                            packet.as_ptr(),
+                            packet.len(),
+                            out.as_mut_ptr(),
+                            out.len(),
+                        );
+
+                        assert!(n > 0, "blocked query produced no reply");
+                        let reply = crate::packet::parse_ipv4_udp(&out[..n])
+                            .expect("reply is not a valid IPv4/UDP packet");
+
+                        // Every reply must carry its own transaction id back —
+                        // a torn or shared buffer would show up here.
+                        assert_eq!(
+                            u16::from_be_bytes([reply.payload[0], reply.payload[1]]),
+                            txid,
+                        );
+                        // RCODE 3 = NXDOMAIN, the blocked answer.
+                        assert_eq!(reply.payload[3] & 0x0f, 3);
+                    }
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().expect("a worker thread panicked");
         }
     }
 }

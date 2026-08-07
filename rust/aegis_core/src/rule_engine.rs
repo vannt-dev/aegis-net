@@ -83,10 +83,19 @@ impl RuleEngine {
         };
 
         let mut rules = target_set.write().unwrap();
+        let mut allowed = self.allowed_domains.write().unwrap();
 
         for line in content.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
+                continue;
+            }
+
+            // `@@||domain^` exception rules (AdGuard/EasyList) override every
+            // category, so they belong in the whitelist, not the category set.
+            if let Some(domain) = Self::parse_exception_line(line) {
+                allowed.insert(domain);
+                count += 1;
                 continue;
             }
 
@@ -100,7 +109,23 @@ impl RuleEngine {
         count
     }
 
+    /// Parse an AdGuard/EasyList exception rule (`@@||domain^`), which
+    /// un-blocks a domain regardless of which category blocked it.
+    fn parse_exception_line(line: &str) -> Option<String> {
+        if line.starts_with("@@||") && line.ends_with('^') {
+            let domain = &line[4..line.len() - 1];
+            return Some(domain.to_lowercase());
+        }
+        None
+    }
+
     fn parse_rule_line(line: &str) -> Option<String> {
+        // Exception rules are handled by `parse_exception_line` above; never
+        // fall through and treat an unmatched `@@`-prefixed line as a block rule.
+        if line.starts_with("@@") {
+            return None;
+        }
+
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() >= 2 && (parts[0] == "0.0.0.0" || parts[0] == "127.0.0.1") {
             let domain = parts[1].to_lowercase();
@@ -139,6 +164,52 @@ impl RuleEngine {
     pub fn remove_blacklist(&self, domain: &str) {
         let mut blocked = self.blocked_exact.write().unwrap();
         blocked.remove(&domain.to_lowercase());
+    }
+
+    /// Categories currently enabled, sorted for a stable snapshot on disk.
+    pub fn enabled_categories(&self) -> Vec<RuleCategory> {
+        let enabled = self.enabled_categories.read().unwrap();
+        let mut categories: Vec<RuleCategory> = enabled.iter().copied().collect();
+        categories.sort_by_key(|c| *c as u8);
+        categories
+    }
+
+    pub fn whitelist(&self) -> Vec<String> {
+        Self::sorted(&self.allowed_domains)
+    }
+
+    pub fn blacklist(&self) -> Vec<String> {
+        Self::sorted(&self.blocked_exact)
+    }
+
+    /// Replace the user lists and category toggles wholesale. Used when a
+    /// process adopts a snapshot produced by the other one, where "not in the
+    /// snapshot" has to mean "removed", not "left alone".
+    pub fn replace_user_state(
+        &self,
+        categories: &[RuleCategory],
+        whitelist: &[String],
+        blacklist: &[String],
+    ) {
+        {
+            let mut enabled = self.enabled_categories.write().unwrap();
+            enabled.clear();
+            enabled.extend(categories.iter().copied());
+        }
+        {
+            let mut allowed = self.allowed_domains.write().unwrap();
+            allowed.clear();
+            allowed.extend(whitelist.iter().map(|d| d.to_lowercase()));
+        }
+        let mut blocked = self.blocked_exact.write().unwrap();
+        blocked.clear();
+        blocked.extend(blacklist.iter().map(|d| d.to_lowercase()));
+    }
+
+    fn sorted(set: &RwLock<HashSet<String>>) -> Vec<String> {
+        let mut items: Vec<String> = set.read().unwrap().iter().cloned().collect();
+        items.sort();
+        items
     }
 
     pub fn is_blocked(&self, domain: &str) -> bool {
@@ -188,15 +259,19 @@ impl RuleEngine {
     }
 
     /// Returns true if `domain` equals a rule in `rules`, or is a subdomain of one.
+    /// Performs zero heap allocations during subdomain hierarchy traversal.
     fn set_matches_domain(rules: &HashSet<String>, domain: &str) -> bool {
         if rules.contains(domain) {
             return true;
         }
 
-        let parts: Vec<&str> = domain.split('.').collect();
-        for i in 1..parts.len().saturating_sub(1) {
-            let parent = parts[i..].join(".");
-            if rules.contains(&parent) {
+        let mut slice = domain;
+        while let Some(pos) = slice.find('.') {
+            slice = &slice[pos + 1..];
+            if slice.is_empty() {
+                break;
+            }
+            if rules.contains(slice) {
                 return true;
             }
         }
@@ -288,5 +363,86 @@ mod tests {
         assert_eq!(count, 2);
         assert!(engine.is_blocked("badad.org"));
         assert!(engine.is_blocked("banner.net"));
+    }
+
+    #[test]
+    fn test_exception_rule_unblocks_domain() {
+        let engine = RuleEngine::new();
+        let content = "||shady-ads.example^\n@@||shady-ads.example^";
+        let count = engine.load_rules_text(content, RuleCategory::Ads);
+        assert_eq!(count, 2);
+        assert!(!engine.is_blocked("shady-ads.example"));
+    }
+
+    #[test]
+    fn test_malformed_exception_line_is_ignored() {
+        let engine = RuleEngine::new();
+        // Not a well-formed `@@||domain^` rule; must not leak into the block set.
+        let count = engine.load_rules_text("@@not-a-real-rule.com", RuleCategory::Ads);
+        assert_eq!(count, 0);
+        assert!(!engine.is_blocked("not-a-real-rule.com"));
+    }
+
+    // --- TLD boundary -------------------------------------------------------
+    //
+    // `set_matches_domain` walks every parent label including the last one, so a
+    // rule holding a bare TLD covers the whole TLD. That is deliberate: `||zip^`
+    // is how AdGuard lists express "block all of .zip", and stopping one label
+    // short would make such a rule match only the literal string "zip" — that is,
+    // nothing a resolver ever sees. The tests below pin the behaviour down in
+    // both directions, because the same matcher backs the block sets and the
+    // whitelist, and nothing else in the suite covers the last label.
+
+    #[test]
+    fn test_tld_rule_blocks_every_domain_under_it() {
+        let engine = RuleEngine::new();
+        let count = engine.load_rules_text("||zip^", RuleCategory::Malware);
+        assert_eq!(count, 1);
+
+        assert!(engine.is_blocked("foo.bar.zip"));
+        assert!(engine.is_blocked("invoice.zip"));
+        assert!(engine.is_blocked("zip"));
+        // A neighbouring TLD is untouched.
+        assert!(!engine.is_blocked("invoice.example"));
+    }
+
+    #[test]
+    fn test_tld_exception_unblocks_every_domain_under_it() {
+        let engine = RuleEngine::new();
+        // graph.facebook.com is a seeded tracker rule.
+        assert!(engine.is_blocked("graph.facebook.com"));
+
+        let count = engine.load_rules_text("@@||com^", RuleCategory::Ads);
+        assert_eq!(count, 1);
+
+        // The exception lands in the whitelist, which outranks every category.
+        assert!(!engine.is_blocked("graph.facebook.com"));
+        // A domain outside .com keeps its verdict.
+        assert!(engine.is_blocked("doubleclick.net"));
+    }
+
+    #[test]
+    fn test_bare_tld_needs_the_adguard_syntax_to_load() {
+        let engine = RuleEngine::new();
+        // A plain line has to contain a dot to be read as a domain, so a stray
+        // "com" in a list cannot silently swallow every .com. Only the explicit
+        // `||com^` form does, which takes an author who meant it.
+        let count = engine.load_rules_text("com", RuleCategory::Ads);
+        assert_eq!(count, 0);
+        assert!(!engine.is_blocked("example.com"));
+    }
+
+    #[test]
+    fn test_subdomain_matching_stays_intact_below_the_tld() {
+        let engine = RuleEngine::new();
+        let count = engine.load_rules_text("||example.com^", RuleCategory::Ads);
+        assert_eq!(count, 1);
+
+        assert!(engine.is_blocked("example.com"));
+        assert!(engine.is_blocked("ads.example.com"));
+        assert!(engine.is_blocked("a.b.c.example.com"));
+        // Sibling domains sharing only the TLD must not be caught.
+        assert!(!engine.is_blocked("notexample.com"));
+        assert!(!engine.is_blocked("example.org"));
     }
 }

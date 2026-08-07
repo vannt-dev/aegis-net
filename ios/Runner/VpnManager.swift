@@ -1,5 +1,6 @@
 import Flutter
 import NetworkExtension
+import UIKit
 
 /// Bridges the Flutter `com.aegisnet/vpn` MethodChannel to iOS's
 /// `NETunnelProviderManager`, the iOS equivalent of Android's MainActivity VPN
@@ -8,6 +9,10 @@ final class VpnManager {
     static let shared = VpnManager()
 
     private let channelName = "com.aegisnet/vpn"
+
+    /// App Group shared with the PacketTunnel extension. The two processes have
+    /// separate copies of the Rust engine and exchange state through files here.
+    static let appGroupId = "group.com.aegisnet.app"
 
     /// Bundle id of the PacketTunnel app-extension (main app id + ".PacketTunnel").
     private var providerBundleId: String {
@@ -21,7 +26,66 @@ final class VpnManager {
             case "startVpn": self?.startVpn(result)
             case "stopVpn": self?.stopVpn(result)
             case "isVpnPrepared": self?.isPrepared(result)
+            case "getSharedContainerPath": self?.sharedContainerPath(result)
+            case "reloadTunnelConfig": self?.reloadTunnelConfig(result)
+            case "openUrl": self?.openUrl(call, result: result)
             default: result(FlutterMethodNotImplemented)
+            }
+        }
+    }
+
+    /// Opens the loopback URL Dart is serving the .mobileconfig profile from.
+    /// Safari downloads it and routes it to Settings > Profile Downloaded —
+    /// iOS will not install a profile opened as a `file:` URL, so the payload
+    /// is generated and served entirely on the Dart side.
+    private func openUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let urlString = args["url"] as? String,
+              let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            result(false)
+            return
+        }
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url, options: [:]) { success in
+                result(success)
+            }
+        }
+    }
+
+    /// Path Dart writes snapshots to. Nil when the App Group is missing from the
+    /// provisioning profile — Dart then skips the snapshot work entirely rather
+    /// than writing somewhere the extension cannot read.
+    private func sharedContainerPath(_ result: @escaping FlutterResult) {
+        guard let url = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: VpnManager.appGroupId
+        ) else {
+            NSLog("[AegisVPN] App Group \(VpnManager.appGroupId) unavailable")
+            result(nil)
+            return
+        }
+        result(url.path)
+    }
+
+    /// Tell a running tunnel to re-read the settings snapshot. Nothing to do
+    /// when no tunnel is up: it loads the snapshot on start anyway.
+    private func reloadTunnelConfig(_ result: @escaping FlutterResult) {
+        NETunnelProviderManager.loadAllFromPreferences { managers, _ in
+            guard
+                let session = managers?.first?.connection as? NETunnelProviderSession,
+                session.status == .connected
+            else {
+                result(false)
+                return
+            }
+
+            do {
+                try session.sendProviderMessage(Data("reload".utf8)) { _ in }
+                result(true)
+            } catch {
+                NSLog("[AegisVPN] reload message failed: \(error)")
+                result(false)
             }
         }
     }

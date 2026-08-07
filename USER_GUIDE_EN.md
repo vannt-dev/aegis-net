@@ -80,5 +80,15 @@ Switch to the **Settings** tab:
 ---
 
 ## 8. Export & Import Configuration
-* In **Settings** under **Export / Import Configuration**:
-* Tap **`EXPORT JSON`** to export your Whitelist, Blacklist, bypass apps, and DNS settings into a portable JSON backup string.
+* Under **Export / Import Configuration** in the **Settings** tab:
+* Tap **`EXPORT JSON`** to export Whitelists, Blacklists, bypass apps, and upstream DNS preferences into a backup JSON string.
+
+---
+
+## 9. iOS System-Wide Encrypted DNS (.mobileconfig) Profile Setup
+For iPhone & iPad users:
+* Navigate to the **Settings** tab.
+* Under **iOS Encrypted DNS Profile**, tap **`Install iOS Encrypted DNS Profile`**.
+* AegisNet will generate an Apple Encrypted DNS (`.mobileconfig`) payload and open Safari.
+* When iOS prompts **"Profile Downloaded"**, open the iPhone **Settings app** ➔ tap **Profile Downloaded** ➔ tap **Install**.
+* System-wide Encrypted DNS protection (DoH) will be active across Wi-Fi & Cellular networks without requiring a $99/yr Apple Developer Account!

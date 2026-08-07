@@ -1,10 +1,31 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../services/desktop_dns_proxy.dart';
 import 'ffi_bindings.dart';
 
 class AegisBridge {
   static const MethodChannel _vpnChannel = MethodChannel('com.aegisnet/vpn');
   static bool _useNativeFfi = false;
+
+  /// App Group container shared with the iOS PacketTunnel extension. Null
+  /// everywhere else, and on iOS until the native side hands it over.
+  static String? _sharedContainerPath;
+
+  /// Only iOS splits the engine across two processes, so only iOS needs the
+  /// snapshot files. Android runs the tunnel in-process and Dart mutations
+  /// already reach the filtering code directly.
+  static bool get _usesSharedContainer =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// Android and iOS are the only platforms that ship a real tunnel. Everywhere
+  /// else (web, desktop) the app runs as a demo with no native side, so a
+  /// missing channel there is expected rather than a failure.
+  static bool get _expectsNativeTunnel =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   // Memory fallback state
   static final Set<String> _whitelistedDomains = {};
@@ -28,37 +49,169 @@ class AegisBridge {
   /// Initialize Aegis Core Engine (Attempts native FFI load first)
   static Future<bool> initEngine() async {
     _useNativeFfi = AegisNativeBindings.initNativeLibrary();
+    if (_usesSharedContainer) {
+      await _resolveSharedContainer();
+    }
     return true;
   }
 
-  /// Start Local VPN Tunnel
-  static Future<bool> startVpn() async {
+  /// Ask the native side for the App Group container path — only Swift can
+  /// resolve it — then seed it with the current settings so a tunnel started
+  /// later has something to load.
+  static Future<void> _resolveSharedContainer() async {
     try {
-      final bool success = await _vpnChannel.invokeMethod('startVpn');
+      _sharedContainerPath =
+          await _vpnChannel.invokeMethod<String>('getSharedContainerPath');
+    } on MissingPluginException {
+      _sharedContainerPath = null;
+    } catch (_) {
+      _sharedContainerPath = null;
+    }
+    publishSettings();
+  }
+
+  static String? _sharedFile(String name) {
+    final base = _sharedContainerPath;
+    return base == null ? null : '$base/$name';
+  }
+
+  /// Where downloaded filter lists have to be written so the iOS tunnel
+  /// extension can read them. Null when there is no shared container, which is
+  /// every platform except iOS.
+  static String? get sharedContainerPath => _sharedContainerPath;
+
+  /// File name the extension expects for a category's filter list.
+  static String rulesFileNameFor(int categoryId) => 'rules_$categoryId.txt';
+
+  static Timer? _publishTimer;
+
+  /// Write the engine's settings where the tunnel extension will find them, and
+  /// nudge a running tunnel to reload. Without this the extension keeps
+  /// filtering with whatever it loaded when it started.
+  ///
+  /// Mutations arrive in bursts — seeding the stored allow/deny lists calls this
+  /// once per domain — so writes are coalesced rather than run per call.
+  static void publishSettings() {
+    if (!_useNativeFfi || !_usesSharedContainer) return;
+    _publishTimer?.cancel();
+    _publishTimer =
+        Timer(const Duration(milliseconds: 250), _publishSettingsNow);
+  }
+
+  static void _publishSettingsNow() {
+    _publishTimer = null;
+    final path = _sharedFile('settings.json');
+    if (path == null) return;
+
+    if (AegisNativeBindings.exportSettings(path) == 0) {
+      notifyTunnelReload();
+    }
+  }
+
+  /// Ask a running tunnel to re-read everything in the shared container. Also
+  /// used after downloaded filter lists are written, which do not go through
+  /// the settings snapshot.
+  static void notifyTunnelReload() {
+    if (!_usesSharedContainer) return;
+    unawaited(
+      _vpnChannel.invokeMethod('reloadTunnelConfig').catchError((_) => null),
+    );
+  }
+
+  /// Why the last [startVpn] failed, as reported by the native side, or null
+  /// after a successful start. Vendor ROMs (MIUI in particular) refuse the
+  /// tunnel in ways the app cannot work around, so the reason has to reach the
+  /// user rather than being swallowed into a bare `false`.
+  static String? lastVpnError;
+
+  /// Start Local VPN Tunnel / Desktop DNS Proxy
+  static Future<bool> startVpn({List<String> bypassApps = const []}) async {
+    try {
+      final bool success = await _vpnChannel.invokeMethod('startVpn', {
+        'bypassApps': bypassApps,
+      });
+      lastVpnError = success ? null : 'tunnel_refused';
       return success;
     } on MissingPluginException {
-      return true;
+      if (!kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.windows ||
+              defaultTargetPlatform == TargetPlatform.macOS ||
+              defaultTargetPlatform == TargetPlatform.linux)) {
+        final started = await startDesktopDnsProxy();
+        lastVpnError = started ? null : 'desktop_proxy_failed';
+        return started;
+      }
+      lastVpnError = _expectsNativeTunnel ? 'no_native_handler' : null;
+      return !_expectsNativeTunnel;
+    } on PlatformException catch (e) {
+      // The native side names the failure: consent_dialog_unavailable,
+      // consent_denied, tunnel_not_established, tunnel_start_timeout, ...
+      lastVpnError = e.code;
+      return false;
     } catch (e) {
+      lastVpnError = e.toString();
       return false;
     }
   }
 
-  /// Stop Local VPN Tunnel
+  /// Opens the system's Private DNS settings. Buried several levels deep on
+  /// most ROMs, so pointing the user at it beats describing the path.
+  static Future<void> openPrivateDnsSettings() async {
+    try {
+      await _vpnChannel.invokeMethod('openPrivateDnsSettings');
+    } catch (_) {}
+  }
+
+  /// Everything the native side can observe about why filtering may not be
+  /// working on this device (consent state, tunnel state, engine presence,
+  /// Private DNS mode). Empty where there is no native handler.
+  static Future<Map<String, dynamic>> getVpnDiagnostics() async {
+    try {
+      final raw = await _vpnChannel
+          .invokeMapMethod<String, dynamic>('getVpnDiagnostics');
+      return raw ?? <String, dynamic>{};
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
+  /// Stop Local VPN Tunnel / Desktop DNS Proxy
   static Future<bool> stopVpn() async {
     try {
       final bool success = await _vpnChannel.invokeMethod('stopVpn');
       return success;
     } on MissingPluginException {
+      stopDesktopDnsProxy();
       return true;
     } catch (e) {
       return false;
     }
   }
 
-  /// Load raw rules text into engine
-  static int loadRulesText(String content) {
+  /// Where the desktop resolver ended up, or null when it is not running.
+  /// Desktop has no VpnService equivalent, so this never means the machine is
+  /// protected — only that queries sent here are filtered.
+  static DesktopProxyStatus? desktopProxyStatus;
+
+  /// Starts the local DNS resolver used on desktop.
+  static Future<bool> startDesktopDnsProxy() async {
+    final status = await DesktopDnsProxy.start();
+    desktopProxyStatus = status.running ? status : null;
+    return status.running;
+  }
+
+  /// Stops the local desktop resolver.
+  static void stopDesktopDnsProxy() {
+    desktopProxyStatus = null;
+    unawaited(DesktopDnsProxy.stop());
+  }
+
+  /// Load raw rules text into engine. [categoryId] follows the same mapping
+  /// as [setCategory] (0: Ads, 1: Trackers, 2: Malware, 3: Adult); defaults to
+  /// Ads since that's what every current caller loads.
+  static int loadRulesText(String content, {int categoryId = 0}) {
     if (_useNativeFfi) {
-      return AegisNativeBindings.loadRules(content);
+      return AegisNativeBindings.loadRules(content, categoryId);
     } else {
       int added = 0;
       for (final line in content.split('\n')) {
@@ -102,6 +255,7 @@ class AegisBridge {
     }
     _whitelistedDomains.add(clean);
     _blacklistedDomains.remove(clean);
+    publishSettings();
   }
 
   /// Add domain to Blacklist
@@ -112,6 +266,7 @@ class AegisBridge {
     }
     _blacklistedDomains.add(clean);
     _whitelistedDomains.remove(clean);
+    publishSettings();
   }
 
   /// Remove domain from Whitelist
@@ -121,6 +276,7 @@ class AegisBridge {
       AegisNativeBindings.removeWhitelist(clean);
     }
     _whitelistedDomains.remove(clean);
+    publishSettings();
   }
 
   /// Remove domain from Blacklist
@@ -130,6 +286,7 @@ class AegisBridge {
       AegisNativeBindings.removeBlacklist(clean);
     }
     _blacklistedDomains.remove(clean);
+    publishSettings();
   }
 
   /// Enable/disable a rule category on the engine.
@@ -138,11 +295,29 @@ class AegisBridge {
     if (_useNativeFfi) {
       AegisNativeBindings.setCategory(categoryId, enabled);
     }
+    publishSettings();
+  }
+
+  /// Point the engine's upstream DoH resolver at a new host/IP/URL.
+  static void setUpstreamDns(String upstream) {
+    if (_useNativeFfi) {
+      AegisNativeBindings.setUpstreamDns(upstream);
+    }
+    publishSettings();
   }
 
   /// Get live filtering statistics summary
   static Map<String, dynamic> getStats() {
     if (_useNativeFfi) {
+      // On iOS the tunnel runs in another process, so the only real counters
+      // are the ones it publishes; adopt them before reading our own.
+      if (_usesSharedContainer) {
+        final statsPath = _sharedFile('stats.json');
+        if (statsPath != null) {
+          AegisNativeBindings.importStats(statsPath);
+        }
+      }
+
       final jsonStr = AegisNativeBindings.getStatsJson();
       if (jsonStr != null && jsonStr.isNotEmpty) {
         try {
@@ -164,6 +339,20 @@ class AegisBridge {
       'block_rate_percentage': rate,
       'estimated_data_saved_bytes': savedBytes,
     };
+  }
+
+  /// Get recent DNS query log items from native engine
+  static List<Map<String, dynamic>> getRecentLogs({int limit = 50}) {
+    if (_useNativeFfi) {
+      final jsonStr = AegisNativeBindings.getRecentLogsJson(limit);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        try {
+          final List<dynamic> list = jsonDecode(jsonStr);
+          return list.cast<Map<String, dynamic>>();
+        } catch (_) {}
+      }
+    }
+    return [];
   }
 
   /// Record simulated query

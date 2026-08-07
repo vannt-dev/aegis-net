@@ -2,14 +2,18 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
+    <!-- There is no VPN foreground-service type; Android 14+ requires one, and
+         specialUse is what the platform directs VPN apps to declare. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 13+ hides the ongoing tunnel notification without this. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:label="AegisNet"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -24,13 +28,20 @@
             </intent-filter>
         </activity>
 
+        <!-- exported must be true: the platform resolves and binds this service
+             itself (consent dialog label, always-on VPN). BIND_VPN_SERVICE is a
+             signature permission, so only the system can reach it either way. -->
         <service
             android:name=".AegisVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
-            android:exported="false">
+            android:exported="true"
+            android:foregroundServiceType="specialUse">
             <intent-filter>
                 <action android:name="android.net.VpnService"/>
             </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the on-device DNS filtering tunnel that blocks ads and trackers" />
         </service>
 
         <meta-data
