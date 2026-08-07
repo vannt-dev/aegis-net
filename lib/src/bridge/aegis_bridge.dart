@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../services/desktop_dns_proxy.dart';
 import 'ffi_bindings.dart';
 
 class AegisBridge {
@@ -117,31 +118,92 @@ class AegisBridge {
     );
   }
 
-  /// Start Local VPN Tunnel
-  static Future<bool> startVpn() async {
+  /// Why the last [startVpn] failed, as reported by the native side, or null
+  /// after a successful start. Vendor ROMs (MIUI in particular) refuse the
+  /// tunnel in ways the app cannot work around, so the reason has to reach the
+  /// user rather than being swallowed into a bare `false`.
+  static String? lastVpnError;
+
+  /// Start Local VPN Tunnel / Desktop DNS Proxy
+  static Future<bool> startVpn({List<String> bypassApps = const []}) async {
     try {
-      final bool success = await _vpnChannel.invokeMethod('startVpn');
+      final bool success = await _vpnChannel.invokeMethod('startVpn', {
+        'bypassApps': bypassApps,
+      });
+      lastVpnError = success ? null : 'tunnel_refused';
       return success;
     } on MissingPluginException {
-      // On Android/iOS an absent channel means the native handler never
-      // registered, so no tunnel is running. Reporting success here would make
-      // the UI claim protection that does not exist.
+      if (!kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.windows ||
+              defaultTargetPlatform == TargetPlatform.macOS ||
+              defaultTargetPlatform == TargetPlatform.linux)) {
+        final started = await startDesktopDnsProxy();
+        lastVpnError = started ? null : 'desktop_proxy_failed';
+        return started;
+      }
+      lastVpnError = _expectsNativeTunnel ? 'no_native_handler' : null;
       return !_expectsNativeTunnel;
+    } on PlatformException catch (e) {
+      // The native side names the failure: consent_dialog_unavailable,
+      // consent_denied, tunnel_not_established, tunnel_start_timeout, ...
+      lastVpnError = e.code;
+      return false;
     } catch (e) {
+      lastVpnError = e.toString();
       return false;
     }
   }
 
-  /// Stop Local VPN Tunnel
+  /// Opens the system's Private DNS settings. Buried several levels deep on
+  /// most ROMs, so pointing the user at it beats describing the path.
+  static Future<void> openPrivateDnsSettings() async {
+    try {
+      await _vpnChannel.invokeMethod('openPrivateDnsSettings');
+    } catch (_) {}
+  }
+
+  /// Everything the native side can observe about why filtering may not be
+  /// working on this device (consent state, tunnel state, engine presence,
+  /// Private DNS mode). Empty where there is no native handler.
+  static Future<Map<String, dynamic>> getVpnDiagnostics() async {
+    try {
+      final raw = await _vpnChannel
+          .invokeMapMethod<String, dynamic>('getVpnDiagnostics');
+      return raw ?? <String, dynamic>{};
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
+  /// Stop Local VPN Tunnel / Desktop DNS Proxy
   static Future<bool> stopVpn() async {
     try {
       final bool success = await _vpnChannel.invokeMethod('stopVpn');
       return success;
     } on MissingPluginException {
-      return !_expectsNativeTunnel;
+      stopDesktopDnsProxy();
+      return true;
     } catch (e) {
       return false;
     }
+  }
+
+  /// Where the desktop resolver ended up, or null when it is not running.
+  /// Desktop has no VpnService equivalent, so this never means the machine is
+  /// protected — only that queries sent here are filtered.
+  static DesktopProxyStatus? desktopProxyStatus;
+
+  /// Starts the local DNS resolver used on desktop.
+  static Future<bool> startDesktopDnsProxy() async {
+    final status = await DesktopDnsProxy.start();
+    desktopProxyStatus = status.running ? status : null;
+    return status.running;
+  }
+
+  /// Stops the local desktop resolver.
+  static void stopDesktopDnsProxy() {
+    desktopProxyStatus = null;
+    unawaited(DesktopDnsProxy.stop());
   }
 
   /// Load raw rules text into engine. [categoryId] follows the same mapping
@@ -277,6 +339,20 @@ class AegisBridge {
       'block_rate_percentage': rate,
       'estimated_data_saved_bytes': savedBytes,
     };
+  }
+
+  /// Get recent DNS query log items from native engine
+  static List<Map<String, dynamic>> getRecentLogs({int limit = 50}) {
+    if (_useNativeFfi) {
+      final jsonStr = AegisNativeBindings.getRecentLogsJson(limit);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        try {
+          final List<dynamic> list = jsonDecode(jsonStr);
+          return list.cast<Map<String, dynamic>>();
+        } catch (_) {}
+      }
+    }
+    return [];
   }
 
   /// Record simulated query

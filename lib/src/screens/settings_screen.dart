@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
+import '../bridge/aegis_bridge.dart';
 import '../services/dns_benchmark_service.dart';
+import '../services/ios_doh_profile_service.dart';
 import '../i18n/app_strings.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
@@ -11,6 +14,40 @@ const Color emeraldDarkColor = Color(0xFF065F46);
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  /// Vendor ROMs (MIUI above all) block the tunnel in ways the app cannot work
+  /// around and cannot detect from Dart. This dumps what the native side can
+  /// see, so a user on a device we cannot reproduce on can report it.
+  Future<void> _showVpnDiagnostics(BuildContext context) async {
+    final diagnostics = await AegisBridge.getVpnDiagnostics();
+    if (!context.mounted) return;
+
+    final rows = diagnostics.isEmpty
+        ? {'status': 'no native tunnel on this platform'}
+        : diagnostics;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        title: Text(AppStrings.get('vpn_diagnostics'),
+            style: const TextStyle(color: Colors.white, fontSize: 16)),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            rows.entries.map((e) => '${e.key}: ${e.value}').join('\n'),
+            style: const TextStyle(
+                color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CLOSE'),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _runDnsBenchmark(BuildContext context, VpnProvider vpn) async {
     showDialog(
@@ -314,6 +351,83 @@ class SettingsScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 24),
+
+          // Android VPN diagnostics. Only Android has a vendor layer that can
+          // refuse the tunnel without telling the app why.
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: accent,
+                side: BorderSide(color: accent.withValues(alpha: 0.5)),
+              ),
+              icon: const Icon(Icons.medical_information_outlined, size: 16),
+              label: Text(AppStrings.get('vpn_diagnostics'),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 12)),
+              onPressed: () => _showVpnDiagnostics(context),
+            ),
+            const SizedBox(height: 24),
+          ],
+
+          // iOS Encrypted DNS Profile (.mobileconfig) Setup. iOS-only: on any
+          // other platform the profile is meaningless and the loopback server
+          // it starts has nothing to serve.
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
+            Text(
+              'iOS Encrypted DNS Profile (No \$99 Dev Account Required)',
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.bold, color: accent),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF161B22),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Generate & install a native Apple Encrypted DNS (.mobileconfig) profile for system-wide DoH protection on iOS without requiring \$99/yr Network Extension entitlements.',
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accent,
+                      foregroundColor: Colors.black,
+                    ),
+                    icon: const Icon(Icons.verified_user, size: 16),
+                    label: const Text('Install iOS Encrypted DNS Profile',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 12)),
+                    onPressed: () async {
+                      final dohUrl = vpn.upstreamDns.contains('(')
+                          ? RegExp(r'\(([^)]+)\)')
+                                  .firstMatch(vpn.upstreamDns)
+                                  ?.group(1) ??
+                              IosDohProfileService.defaultDohUrl
+                          : vpn.upstreamDns;
+                      final ok = await IosDohProfileService.installProfile(
+                          dohUrl: dohUrl);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ok
+                                ? 'Profile generated! Review & Install in iOS Settings > Profile Downloaded.'
+                                : 'Failed to generate profile.'),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
 
           // Backup & Restore
           Text(

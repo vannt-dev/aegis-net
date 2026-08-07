@@ -1,5 +1,6 @@
 import Flutter
 import NetworkExtension
+import UIKit
 
 /// Bridges the Flutter `com.aegisnet/vpn` MethodChannel to iOS's
 /// `NETunnelProviderManager`, the iOS equivalent of Android's MainActivity VPN
@@ -27,7 +28,28 @@ final class VpnManager {
             case "isVpnPrepared": self?.isPrepared(result)
             case "getSharedContainerPath": self?.sharedContainerPath(result)
             case "reloadTunnelConfig": self?.reloadTunnelConfig(result)
+            case "openUrl": self?.openUrl(call, result: result)
             default: result(FlutterMethodNotImplemented)
+            }
+        }
+    }
+
+    /// Opens the loopback URL Dart is serving the .mobileconfig profile from.
+    /// Safari downloads it and routes it to Settings > Profile Downloaded —
+    /// iOS will not install a profile opened as a `file:` URL, so the payload
+    /// is generated and served entirely on the Dart side.
+    private func openUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let urlString = args["url"] as? String,
+              let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            result(false)
+            return
+        }
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url, options: [:]) { success in
+                result(success)
             }
         }
     }

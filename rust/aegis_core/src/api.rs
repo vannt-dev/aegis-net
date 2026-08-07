@@ -284,12 +284,113 @@ pub extern "C" fn aegis_get_stats_json() -> *mut c_char {
     CString::new(json).unwrap().into_raw()
 }
 
+/// Get recent DNS query log items as JSON string
+#[no_mangle]
+pub extern "C" fn aegis_get_recent_logs_json(limit: c_int) -> *mut c_char {
+    let limit_val = if limit <= 0 { 50 } else { limit as usize };
+    let logs = STATS_ENGINE.get_recent_logs(limit_val);
+    let json = serde_json::to_string(&logs).unwrap_or_else(|_| "[]".to_string());
+    CString::new(json).unwrap().into_raw()
+}
+
 /// Free string allocated by Rust
 #[no_mangle]
 pub extern "C" fn aegis_free_string(ptr: *mut c_char) {
     if !ptr.is_null() {
         unsafe {
             let _ = CString::from_raw(ptr);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::thread;
+
+    /// IPv4+UDP+DNS frame carrying an A query for `host`, aimed at port 53.
+    fn dns_packet(host: &str, txid: u16) -> Vec<u8> {
+        let mut dns = vec![
+            (txid >> 8) as u8,
+            (txid & 0xff) as u8,
+            0x01,
+            0x00, // RD
+            0x00,
+            0x01, // QDCOUNT
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+        ];
+        for label in host.split('.') {
+            dns.push(label.len() as u8);
+            dns.extend_from_slice(label.as_bytes());
+        }
+        dns.extend_from_slice(&[0x00, 0x00, 0x01, 0x00, 0x01]); // root, A, IN
+
+        let total = 20 + 8 + dns.len();
+        let mut p = vec![0u8; total];
+        p[0] = 0x45;
+        p[2..4].copy_from_slice(&(total as u16).to_be_bytes());
+        p[8] = 64;
+        p[9] = 17; // UDP
+        p[12..16].copy_from_slice(&[10, 0, 0, 2]);
+        p[16..20].copy_from_slice(&[10, 0, 0, 3]);
+        let csum = crate::packet::internet_checksum(&p[..20]);
+        p[10..12].copy_from_slice(&csum.to_be_bytes());
+        p[20..22].copy_from_slice(&40000u16.to_be_bytes());
+        p[22..24].copy_from_slice(&53u16.to_be_bytes());
+        p[24..26].copy_from_slice(&((8 + dns.len()) as u16).to_be_bytes());
+        p[28..].copy_from_slice(&dns);
+        p
+    }
+
+    /// The tunnel loop hands packets to a pool of threads so a slow upstream
+    /// lookup cannot stall every other query behind it. That is only sound if
+    /// the engine tolerates concurrent callers, which is what this pins down:
+    /// rule lookups, the stats ring and response building all run at once.
+    #[test]
+    fn process_ip_packet_is_safe_from_many_threads_at_once() {
+        const THREADS: usize = 8;
+        const PER_THREAD: usize = 50;
+
+        let handles: Vec<_> = (0..THREADS)
+            .map(|t| {
+                thread::spawn(move || {
+                    for i in 0..PER_THREAD {
+                        let txid = (t * PER_THREAD + i) as u16;
+                        // A seeded ad domain: answered from the rule engine, so
+                        // the test never touches the network.
+                        let packet = dns_packet("doubleclick.net", txid);
+                        let mut out = vec![0u8; packet.len() + 1500];
+
+                        let n = super::aegis_process_ip_packet(
+                            packet.as_ptr(),
+                            packet.len(),
+                            out.as_mut_ptr(),
+                            out.len(),
+                        );
+
+                        assert!(n > 0, "blocked query produced no reply");
+                        let reply = crate::packet::parse_ipv4_udp(&out[..n])
+                            .expect("reply is not a valid IPv4/UDP packet");
+
+                        // Every reply must carry its own transaction id back —
+                        // a torn or shared buffer would show up here.
+                        assert_eq!(
+                            u16::from_be_bytes([reply.payload[0], reply.payload[1]]),
+                            txid,
+                        );
+                        // RCODE 3 = NXDOMAIN, the blocked answer.
+                        assert_eq!(reply.payload[3] & 0x0f, 3);
+                    }
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().expect("a worker thread panicked");
         }
     }
 }

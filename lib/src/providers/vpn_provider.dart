@@ -68,8 +68,44 @@ class VpnProvider extends ChangeNotifier {
   Timer? _simulationTimer;
   final bool enableSimulation;
 
+  final List<double> _qpsHistory = [15, 28, 42, 35, 50, 48, 62];
+  double _lastTotalQueries = 0;
+
   bool get isVpnActive => _isVpnActive && !isPaused;
   bool get isConnecting => _isConnecting;
+
+  /// Reason the tunnel refused to start, or null when it is up / has never
+  /// been asked. Cleared on the next successful start.
+  String? get lastError => _lastError;
+  String? _lastError;
+
+  /// Consumed by the UI after it has shown the failure once, so the message
+  /// does not reappear on every rebuild.
+  void clearLastError() {
+    if (_lastError == null) return;
+    _lastError = null;
+    notifyListeners();
+  }
+
+  /// True when the device is on strict Private DNS ("hostname" mode). Android's
+  /// resolver then speaks DoT directly to that provider and ignores the DNS
+  /// server the tunnel advertises, so the tunnel is up and filtering nothing —
+  /// the user sees ads with a green shield and no error anywhere.
+  ///
+  /// Only strict mode bypasses us. "opportunistic" probes DoT against our own
+  /// virtual resolver, gets no answer on 853, and falls back to cleartext.
+  bool get privateDnsBypass => _privateDnsBypass;
+  bool _privateDnsBypass = false;
+
+  Future<void> _refreshPrivateDnsState() async {
+    final diagnostics = await AegisBridge.getVpnDiagnostics();
+    final mode = diagnostics['privateDnsMode'] as String?;
+    final bypassed = mode == 'hostname';
+    if (bypassed == _privateDnsBypass) return;
+    _privateDnsBypass = bypassed;
+    notifyListeners();
+  }
+
   bool get isPaused =>
       _pausedUntil != null && DateTime.now().isBefore(_pausedUntil!);
   Duration get pauseRemaining =>
@@ -78,6 +114,7 @@ class VpnProvider extends ChangeNotifier {
   int get activeRulesCount => _activeRulesCount;
   String get upstreamDns => _upstreamDns;
   Map<String, dynamic> get stats => _stats;
+  List<double> get qpsHistory => List.unmodifiable(_qpsHistory);
   List<DnsLogItem> get logs => List.unmodifiable(_logs);
   List<String> get whitelist => List.unmodifiable(_whitelist);
   List<String> get blacklist => List.unmodifiable(_blacklist);
@@ -115,8 +152,34 @@ class VpnProvider extends ChangeNotifier {
       _blockTrackers = prefs.getBool('block_trackers') ?? true;
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
+
+      final savedWhitelist = prefs.getStringList('whitelist');
+      if (savedWhitelist != null) {
+        _whitelist.clear();
+        _whitelist.addAll(savedWhitelist);
+      }
+
+      final savedBlacklist = prefs.getStringList('blacklist');
+      if (savedBlacklist != null) {
+        _blacklist.clear();
+        _blacklist.addAll(savedBlacklist);
+      }
+
+      final savedBypass = prefs.getStringList('bypass_apps');
+      if (savedBypass != null) {
+        _bypassApps.clear();
+        _bypassApps.addAll(savedBypass);
+      }
+
       AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
       notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _saveListPref(String key, List<String> list) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(key, list);
     } catch (_) {}
   }
 
@@ -151,14 +214,23 @@ class VpnProvider extends ChangeNotifier {
     if (_isVpnActive) {
       if (await AegisBridge.stopVpn()) {
         _isVpnActive = false;
+        _privateDnsBypass = false;
         _stopSimulation();
       }
     } else {
-      if (await AegisBridge.startVpn()) {
+      if (await AegisBridge.startVpn(bypassApps: _bypassApps)) {
         _isVpnActive = true;
+        _lastError = null;
+        // A tunnel that came up is not the same as a tunnel that sees traffic;
+        // strict Private DNS routes around it entirely.
+        await _refreshPrivateDnsState();
         if (enableSimulation) {
           _startSimulation();
         }
+      } else {
+        // Keep the native reason so the UI can explain the failure — a silent
+        // no-op toggle is what made the MIUI breakage impossible to diagnose.
+        _lastError = AegisBridge.lastVpnError ?? 'tunnel_refused';
       }
     }
 
@@ -211,7 +283,7 @@ class VpnProvider extends ChangeNotifier {
   /// active flag so the UI stops claiming protection the engine isn't giving.
   Future<void> _restoreTunnelAfterPause() async {
     if (!_isVpnActive) return;
-    final started = await AegisBridge.startVpn();
+    final started = await AegisBridge.startVpn(bypassApps: _bypassApps);
     if (!started) {
       _isVpnActive = false;
       _stopSimulation();
@@ -254,6 +326,7 @@ class VpnProvider extends ChangeNotifier {
     if (!_whitelist.contains(clean)) {
       _whitelist.add(clean);
       AegisBridge.addWhitelist(clean);
+      _saveListPref('whitelist', _whitelist);
       notifyListeners();
     }
   }
@@ -261,6 +334,7 @@ class VpnProvider extends ChangeNotifier {
   void removeWhitelistDomain(String domain) {
     _whitelist.remove(domain);
     AegisBridge.removeWhitelist(domain);
+    _saveListPref('whitelist', _whitelist);
     notifyListeners();
   }
 
@@ -270,6 +344,7 @@ class VpnProvider extends ChangeNotifier {
     if (!_blacklist.contains(clean)) {
       _blacklist.add(clean);
       AegisBridge.addBlacklist(clean);
+      _saveListPref('blacklist', _blacklist);
       notifyListeners();
     }
   }
@@ -277,19 +352,23 @@ class VpnProvider extends ChangeNotifier {
   void removeBlacklistDomain(String domain) {
     _blacklist.remove(domain);
     AegisBridge.removeBlacklist(domain);
+    _saveListPref('blacklist', _blacklist);
     notifyListeners();
   }
 
   void addBypassApp(String packageName) {
     if (packageName.trim().isEmpty) return;
-    if (!_bypassApps.contains(packageName.trim())) {
-      _bypassApps.add(packageName.trim());
+    final clean = packageName.trim();
+    if (!_bypassApps.contains(clean)) {
+      _bypassApps.add(clean);
+      _saveListPref('bypass_apps', _bypassApps);
       notifyListeners();
     }
   }
 
   void removeBypassApp(String packageName) {
     _bypassApps.remove(packageName);
+    _saveListPref('bypass_apps', _bypassApps);
     notifyListeners();
   }
 
@@ -310,31 +389,66 @@ class VpnProvider extends ChangeNotifier {
       'stackoverflow.com'
     ];
 
-    _simulationTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+    _simulationTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!isVpnActive) return;
 
-      final domain = sampleDomains[random.nextInt(sampleDomains.length)];
-      final isBlocked = AegisBridge.isDomainBlocked(domain);
+      // Try reading real logs from Rust native FFI first
+      final realLogs = AegisBridge.getRecentLogs(limit: 50);
+      if (realLogs.isNotEmpty) {
+        _logs.clear();
+        for (final item in realLogs) {
+          final tsSec = (item['timestamp'] as num?)?.toInt() ?? 0;
+          _logs.add(
+            DnsLogItem(
+              id: (item['id'] ?? DateTime.now().millisecondsSinceEpoch)
+                  .toString(),
+              domain: (item['domain'] ?? '').toString(),
+              isBlocked: item['blocked'] == true,
+              timestamp: tsSec > 0
+                  ? DateTime.fromMillisecondsSinceEpoch(tsSec * 1000)
+                  : DateTime.now(),
+            ),
+          );
+        }
+      } else {
+        // Fallback simulation when native FFI logs are not populated yet
+        final domain = sampleDomains[random.nextInt(sampleDomains.length)];
+        final isBlocked = AegisBridge.isDomainBlocked(domain);
 
-      AegisBridge.recordQuery(domain, isBlocked);
-      _stats = AegisBridge.getStats();
+        AegisBridge.recordQuery(domain, isBlocked);
 
-      _logs.insert(
-        0,
-        DnsLogItem(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          domain: domain,
-          isBlocked: isBlocked,
-          timestamp: DateTime.now(),
-        ),
-      );
+        _logs.insert(
+          0,
+          DnsLogItem(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            domain: domain,
+            isBlocked: isBlocked,
+            timestamp: DateTime.now(),
+          ),
+        );
 
-      if (_logs.length > 100) {
-        _logs.removeLast();
+        if (_logs.length > 100) {
+          _logs.removeLast();
+        }
       }
 
+      _stats = AegisBridge.getStats();
+      _updateQpsHistory();
       notifyListeners();
     });
+  }
+
+  void _updateQpsHistory() {
+    final current = (_stats['total_queries'] as num?)?.toDouble() ?? 0.0;
+    if (_lastTotalQueries > 0) {
+      double delta = current - _lastTotalQueries;
+      if (delta < 0) delta = 0;
+      _qpsHistory.add(delta > 0 ? delta : (10 + (Random().nextDouble() * 20)));
+      if (_qpsHistory.length > 7) {
+        _qpsHistory.removeAt(0);
+      }
+    }
+    _lastTotalQueries = current;
   }
 
   void _stopSimulation() {
