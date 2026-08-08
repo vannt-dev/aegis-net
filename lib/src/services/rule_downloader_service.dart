@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
 
 class FilterSource {
@@ -20,6 +21,24 @@ class FilterSource {
     this.categoryId = 0,
     this.isEnabled = true,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'url': url,
+        'description': description,
+        'categoryId': categoryId,
+        'isEnabled': isEnabled,
+      };
+
+  factory FilterSource.fromJson(Map<String, dynamic> json) => FilterSource(
+        id: json['id'] as String? ?? '',
+        name: json['name'] as String? ?? 'Custom List',
+        url: json['url'] as String? ?? '',
+        description: json['description'] as String? ?? 'User custom blocklist',
+        categoryId: json['categoryId'] as int? ?? 0,
+        isEnabled: json['isEnabled'] as bool? ?? true,
+      );
 }
 
 class RuleDownloaderService {
@@ -37,6 +56,46 @@ class RuleDownloaderService {
       description: 'Consolidated host file blocking adservers and malware.',
     ),
   ];
+
+  static List<FilterSource> _customSources = [];
+
+  static List<FilterSource> get allSources =>
+      [...defaultSources, ..._customSources];
+
+  /// Load custom filter sources from SharedPreferences
+  static Future<void> loadCustomSources() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = prefs.getStringList('custom_filter_sources') ?? [];
+      _customSources = jsonList
+          .map((s) =>
+              FilterSource.fromJson(jsonDecode(s) as Map<String, dynamic>))
+          .toList();
+    } catch (_) {}
+  }
+
+  /// Add a custom filter list URL
+  static Future<bool> addCustomSource(FilterSource source) async {
+    _customSources.add(source);
+    return _saveCustomSources();
+  }
+
+  /// Remove a custom filter list URL
+  static Future<bool> removeCustomSource(String id) async {
+    _customSources.removeWhere((s) => s.id == id);
+    return _saveCustomSources();
+  }
+
+  static Future<bool> _saveCustomSources() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList =
+          _customSources.map((s) => jsonEncode(s.toJson())).toList();
+      return await prefs.setStringList('custom_filter_sources', jsonList);
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Download filter list content from HTTP URL
   static Future<String?> fetchFilterContent(String url) async {
@@ -56,14 +115,13 @@ class RuleDownloaderService {
     return null;
   }
 
-  /// Download all enabled filter lists and update Rust Engine
+  /// Download all enabled filter lists (default + custom) and update Rust Engine
   static Future<int> syncAllFilters() async {
+    await loadCustomSources();
     int totalLoaded = 0;
-    // Category id -> concatenated list text, kept so the iOS tunnel extension
-    // can reload the same rules in its own process.
     final byCategory = <int, StringBuffer>{};
 
-    for (final source in defaultSources) {
+    for (final source in allSources) {
       if (source.isEnabled) {
         final content = await fetchFilterContent(source.url);
         if (content != null && content.isNotEmpty) {
@@ -80,8 +138,6 @@ class RuleDownloaderService {
     return totalLoaded;
   }
 
-  /// Filter lists run to hundreds of thousands of lines, so they are handed to
-  /// the extension as plain text files rather than through a snapshot.
   static Future<void> _publishToSharedContainer(
       Map<int, StringBuffer> byCategory) async {
     final container = AegisBridge.sharedContainerPath;
@@ -94,14 +150,9 @@ class RuleDownloaderService {
             File('$container/${AegisBridge.rulesFileNameFor(entry.key)}');
         await file.writeAsString(entry.value.toString(), flush: true);
         wrote = true;
-      } catch (_) {
-        // A container write failure must not fail the sync; the app's own
-        // engine already has the rules.
-      }
+      } catch (_) {}
     }
 
-    // Filter lists bypass the settings snapshot, so nothing else would tell a
-    // running tunnel that new rules are on disk.
     if (wrote) {
       AegisBridge.notifyTunnelReload();
     }
