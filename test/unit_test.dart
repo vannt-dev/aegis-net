@@ -53,6 +53,33 @@ void main() {
       expect(AegisBridge.isDomainBlocked('google.com'), isTrue);
     });
 
+    test('Custom host mapping in AegisBridge and VpnProvider', () {
+      final provider = VpnProvider(enableSimulation: false);
+      provider.addCustomHost('myrouter.local', '192.168.1.1');
+      expect(provider.customHosts['myrouter.local'], equals('192.168.1.1'));
+
+      provider.removeCustomHost('myrouter.local');
+      expect(provider.customHosts.containsKey('myrouter.local'), isFalse);
+    });
+
+    test('Top blocked & allowed domains getters in VpnProvider', () {
+      final provider = VpnProvider(enableSimulation: false);
+      expect(provider.topBlockedDomains, isNotEmpty);
+      expect(provider.topAllowedDomains, isNotEmpty);
+      expect(provider.topBlockedDomains.first['domain'], isNotNull);
+      expect(provider.topAllowedDomains.first['domain'], isNotNull);
+    });
+
+    test('Schedule settings management in VpnProvider', () {
+      final provider = VpnProvider(enableSimulation: false);
+      expect(provider.scheduleEnabled, isFalse);
+
+      provider.setSchedule(enabled: true, startHour: 23, endHour: 7);
+      expect(provider.scheduleEnabled, isTrue);
+      expect(provider.quietHoursStart, equals(23));
+      expect(provider.quietHoursEnd, equals(7));
+    });
+
     test('AegisBridge whitelist removal restores blocking', () {
       expect(AegisBridge.isDomainBlocked('aniview.com'), isTrue);
 

@@ -17,18 +17,23 @@ class _RulesScreenState extends State<RulesScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _domainInputController = TextEditingController();
+  final TextEditingController _customHostDomainController =
+      TextEditingController();
+  final TextEditingController _customHostIpController = TextEditingController();
   bool _isSyncing = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _domainInputController.dispose();
+    _customHostDomainController.dispose();
+    _customHostIpController.dispose();
     super.dispose();
   }
 
@@ -146,8 +151,9 @@ class _RulesScreenState extends State<RulesScreen>
           labelColor: Colors.cyanAccent,
           unselectedLabelColor: Colors.grey,
           tabs: const [
-            Tab(text: 'Filter Preset Lists'),
+            Tab(text: 'Filter Presets'),
             Tab(text: 'Custom Rules'),
+            Tab(text: 'Local DNS Hosts'),
           ],
         ),
       ),
@@ -283,6 +289,132 @@ class _RulesScreenState extends State<RulesScreen>
                                       color: Colors.grey),
                                   onPressed: () =>
                                       vpn.removeWhitelistDomain(domain),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+
+          // Local DNS Hosts Override Tab
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Local DNS Host Mapping (Domain -> IP)',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Override DNS resolution locally without remote server lookup.',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextField(
+                        controller: _customHostDomainController,
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: 'Domain (e.g. myrouter.local)',
+                          hintStyle: TextStyle(color: Colors.grey.shade600),
+                          filled: true,
+                          fillColor: const Color(0xFF161B22),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Colors.white24),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: _customHostIpController,
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: 'IP (192.168.1.1)',
+                          hintStyle: TextStyle(color: Colors.grey.shade600),
+                          filled: true,
+                          fillColor: const Color(0xFF161B22),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Colors.white24),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.cyan.shade700,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 12),
+                      ),
+                      onPressed: () {
+                        vpn.addCustomHost(
+                          _customHostDomainController.text,
+                          _customHostIpController.text,
+                        );
+                        _customHostDomainController.clear();
+                        _customHostIpController.clear();
+                      },
+                      child: const Text('MAP',
+                          style: TextStyle(color: Colors.white, fontSize: 11)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Active Custom Mappings',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.cyanAccent),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: vpn.customHosts.isEmpty
+                      ? Center(
+                          child: Text('No custom host mappings defined',
+                              style: TextStyle(color: Colors.grey.shade500)))
+                      : ListView.builder(
+                          itemCount: vpn.customHosts.length,
+                          itemBuilder: (context, index) {
+                            final entry =
+                                vpn.customHosts.entries.elementAt(index);
+                            return Material(
+                              color: Colors.transparent,
+                              child: ListTile(
+                                title: Text(entry.key,
+                                    style:
+                                        const TextStyle(color: Colors.white)),
+                                subtitle: Text('-> ${entry.value}',
+                                    style: const TextStyle(
+                                        color: Colors.cyanAccent,
+                                        fontSize: 12)),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.grey),
+                                  onPressed: () =>
+                                      vpn.removeCustomHost(entry.key),
                                 ),
                               ),
                             );
