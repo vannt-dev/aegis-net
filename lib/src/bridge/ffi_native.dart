@@ -15,6 +15,14 @@ typedef AegisLoadRulesDart = int Function(
 typedef AegisAddDomainC = Void Function(Pointer<Utf8> domain);
 typedef AegisAddDomainDart = void Function(Pointer<Utf8> domain);
 
+typedef AegisAddCustomHostC = Void Function(
+    Pointer<Utf8> domain, Pointer<Utf8> ip);
+typedef AegisAddCustomHostDart = void Function(
+    Pointer<Utf8> domain, Pointer<Utf8> ip);
+
+typedef AegisRemoveCustomHostC = Void Function(Pointer<Utf8> domain);
+typedef AegisRemoveCustomHostDart = void Function(Pointer<Utf8> domain);
+
 typedef AegisIsBlockedC = Int32 Function(Pointer<Utf8> domain);
 typedef AegisIsBlockedDart = int Function(Pointer<Utf8> domain);
 
@@ -60,6 +68,8 @@ class AegisNativeBindings {
   static AegisAddDomainDart? _addBlacklist;
   static AegisAddDomainDart? _removeWhitelist;
   static AegisAddDomainDart? _removeBlacklist;
+  static AegisAddCustomHostDart? _addCustomHost;
+  static AegisRemoveCustomHostDart? _removeCustomHost;
   static AegisIsBlockedDart? _isDomainBlocked;
   static AegisSetCategoryDart? _setCategory;
   static AegisSetUpstreamDnsDart? _setUpstreamDns;
@@ -104,6 +114,12 @@ class AegisNativeBindings {
         _removeBlacklist = _lib!
             .lookupFunction<AegisAddDomainC, AegisAddDomainDart>(
                 'aegis_remove_blacklist');
+        _addCustomHost = _lib!
+            .lookupFunction<AegisAddCustomHostC, AegisAddCustomHostDart>(
+                'aegis_add_custom_host');
+        _removeCustomHost = _lib!
+            .lookupFunction<AegisRemoveCustomHostC, AegisRemoveCustomHostDart>(
+                'aegis_remove_custom_host');
         _isDomainBlocked = _lib!
             .lookupFunction<AegisIsBlockedC, AegisIsBlockedDart>(
                 'aegis_is_domain_blocked');
@@ -182,6 +198,22 @@ class AegisNativeBindings {
     final ptr = domain.toNativeUtf8();
     _removeBlacklist!(ptr);
     malloc.free(ptr);
+  }
+
+  static void addCustomHost(String domain, String ip) {
+    if (!_isLoaded || _addCustomHost == null) return;
+    final ptrDomain = domain.toNativeUtf8();
+    final ptrIp = ip.toNativeUtf8();
+    _addCustomHost!(ptrDomain, ptrIp);
+    malloc.free(ptrDomain);
+    malloc.free(ptrIp);
+  }
+
+  static void removeCustomHost(String domain) {
+    if (!_isLoaded || _removeCustomHost == null) return;
+    final ptrDomain = domain.toNativeUtf8();
+    _removeCustomHost!(ptrDomain);
+    malloc.free(ptrDomain);
   }
 
   static void setCategory(int categoryId, bool enabled) {

@@ -109,7 +109,8 @@ pub fn export_stats(stats: &StatisticsEngine, path: &Path) -> Result<(), Snapsho
 
 pub fn import_stats(stats: &StatisticsEngine, path: &Path) -> Result<(), SnapshotError> {
     let json = fs::read_to_string(path).map_err(|_| SnapshotError::Io)?;
-    let summary: StatsSummary = serde_json::from_str(&json).map_err(|_| SnapshotError::Malformed)?;
+    let summary: StatsSummary =
+        serde_json::from_str(&json).map_err(|_| SnapshotError::Malformed)?;
     stats.apply_summary(&summary);
     Ok(())
 }
@@ -134,7 +135,11 @@ mod tests {
 
     fn temp_path(name: &str) -> std::path::PathBuf {
         let mut path = std::env::temp_dir();
-        path.push(format!("aegis_shared_state_{}_{}", std::process::id(), name));
+        path.push(format!(
+            "aegis_shared_state_{}_{}",
+            std::process::id(),
+            name
+        ));
         path
     }
 
@@ -251,8 +256,11 @@ mod tests {
     #[test]
     fn rules_load_from_a_file_like_they_do_from_text() {
         let path = temp_path("rules.txt");
-        fs::write(&path, "# comment\n0.0.0.0 ads.example.com\nmalware.example.org\n")
-            .expect("write");
+        fs::write(
+            &path,
+            "# comment\n0.0.0.0 ads.example.com\nmalware.example.org\n",
+        )
+        .expect("write");
 
         let (engine, _filter) = engine_pair();
         assert!(!engine.is_blocked("ads.example.com"));

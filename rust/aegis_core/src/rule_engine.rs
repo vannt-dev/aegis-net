@@ -1,7 +1,7 @@
-use std::collections::HashSet;
-use std::sync::RwLock;
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::sync::RwLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RuleCategory {
@@ -11,16 +11,152 @@ pub enum RuleCategory {
     Adult,
 }
 
+#[derive(Default, Debug)]
+struct TrieNode {
+    is_terminal: bool,
+    children: HashMap<String, TrieNode>,
+}
+
+/// Compact Domain Trie for high-performance sub-microsecond matching and low memory usage.
+#[derive(Default, Debug)]
+pub struct DomainTrie {
+    root: TrieNode,
+    count: usize,
+}
+
+impl DomainTrie {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, domain: &str) -> bool {
+        let clean = domain.trim_end_matches('.').to_lowercase();
+        if clean.is_empty() {
+            return false;
+        }
+        let labels: Vec<&str> = clean.split('.').rev().collect();
+        let mut current = &mut self.root;
+        for label in labels {
+            current = current.children.entry(label.to_string()).or_default();
+        }
+        if !current.is_terminal {
+            current.is_terminal = true;
+            self.count += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn remove(&mut self, domain: &str) -> bool {
+        let clean = domain.trim_end_matches('.').to_lowercase();
+        if clean.is_empty() {
+            return false;
+        }
+        let labels: Vec<&str> = clean.split('.').rev().collect();
+
+        fn remove_rec(node: &mut TrieNode, labels: &[&str], depth: usize) -> (bool, bool) {
+            if depth == labels.len() {
+                if node.is_terminal {
+                    node.is_terminal = false;
+                    return (true, node.children.is_empty());
+                }
+                return (false, false);
+            }
+            let label = labels[depth];
+            if let Some(child) = node.children.get_mut(label) {
+                let (removed, delete_child) = remove_rec(child, labels, depth + 1);
+                if delete_child {
+                    node.children.remove(label);
+                }
+                let empty_now = !node.is_terminal && node.children.is_empty();
+                (removed, empty_now)
+            } else {
+                (false, false)
+            }
+        }
+
+        let (removed, _) = remove_rec(&mut self.root, &labels, 0);
+        if removed {
+            self.count -= 1;
+        }
+        removed
+    }
+
+    pub fn matches(&self, domain: &str) -> bool {
+        let clean = domain.trim_end_matches('.').to_lowercase();
+        if clean.is_empty() {
+            return false;
+        }
+        let labels: Vec<&str> = clean.split('.').rev().collect();
+        let mut current = &self.root;
+        for label in labels {
+            if current.is_terminal {
+                return true;
+            }
+            match current.children.get(label) {
+                Some(next) => current = next,
+                None => return false,
+            }
+        }
+        current.is_terminal
+    }
+
+    pub fn clear(&mut self) {
+        self.root.children.clear();
+        self.root.is_terminal = false;
+        self.count = 0;
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        fn shrink_rec(node: &mut TrieNode) {
+            node.children.shrink_to_fit();
+            for child in node.children.values_mut() {
+                shrink_rec(child);
+            }
+        }
+        shrink_rec(&mut self.root);
+    }
+
+    pub fn to_vec(&self) -> Vec<String> {
+        let mut result = Vec::new();
+        fn collect_rec(node: &TrieNode, path: &mut Vec<String>, out: &mut Vec<String>) {
+            if node.is_terminal {
+                let mut rev_path = path.clone();
+                rev_path.reverse();
+                out.push(rev_path.join("."));
+            }
+            for (label, child) in &node.children {
+                path.push(label.clone());
+                collect_rec(child, path, out);
+                path.pop();
+            }
+        }
+        collect_rec(&self.root, &mut Vec::new(), &mut result);
+        result.sort();
+        result
+    }
+
+    pub fn len(&self) -> usize {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+}
+
 /// High-performance Domain Rule Matcher for AegisNet with Categories
 pub struct RuleEngine {
-    ads_rules: RwLock<HashSet<String>>,
-    tracker_rules: RwLock<HashSet<String>>,
-    malware_rules: RwLock<HashSet<String>>,
-    adult_rules: RwLock<HashSet<String>>,
+    ads_rules: RwLock<DomainTrie>,
+    tracker_rules: RwLock<DomainTrie>,
+    malware_rules: RwLock<DomainTrie>,
+    adult_rules: RwLock<DomainTrie>,
 
     enabled_categories: RwLock<HashSet<RuleCategory>>,
-    allowed_domains: RwLock<HashSet<String>>,
-    blocked_exact: RwLock<HashSet<String>>,
+    allowed_domains: RwLock<DomainTrie>,
+    blocked_exact: RwLock<DomainTrie>,
+    custom_hosts: RwLock<HashMap<String, String>>,
 }
 
 impl RuleEngine {
@@ -31,13 +167,14 @@ impl RuleEngine {
         enabled.insert(RuleCategory::Malware);
 
         let engine = Self {
-            ads_rules: RwLock::new(HashSet::new()),
-            tracker_rules: RwLock::new(HashSet::new()),
-            malware_rules: RwLock::new(HashSet::new()),
-            adult_rules: RwLock::new(HashSet::new()),
+            ads_rules: RwLock::new(DomainTrie::new()),
+            tracker_rules: RwLock::new(DomainTrie::new()),
+            malware_rules: RwLock::new(DomainTrie::new()),
+            adult_rules: RwLock::new(DomainTrie::new()),
             enabled_categories: RwLock::new(enabled),
-            allowed_domains: RwLock::new(HashSet::new()),
-            blocked_exact: RwLock::new(HashSet::new()),
+            allowed_domains: RwLock::new(DomainTrie::new()),
+            blocked_exact: RwLock::new(DomainTrie::new()),
+            custom_hosts: RwLock::new(HashMap::new()),
         };
 
         engine.seed_default_rules();
@@ -46,22 +183,28 @@ impl RuleEngine {
 
     fn seed_default_rules(&self) {
         let mut ads = self.ads_rules.write().unwrap();
-        ads.insert("doubleclick.net".to_string());
-        ads.insert("googleadservices.com".to_string());
-        ads.insert("pagead2.googlesyndication.com".to_string());
-        ads.insert("aniview.com".to_string());
-        ads.insert("adnxs.com".to_string());
+        ads.insert("doubleclick.net");
+        ads.insert("googleadservices.com");
+        ads.insert("pagead2.googlesyndication.com");
+        ads.insert("aniview.com");
+        ads.insert("adnxs.com");
+        ads.insert("ad.doubleclick.net");
+        ads.insert("static.doubleclick.net");
+        ads.insert("ads.youtube.com");
 
         let mut trackers = self.tracker_rules.write().unwrap();
-        trackers.insert("graph.facebook.com".to_string());
-        trackers.insert("telemetry.applovin.com".to_string());
-        trackers.insert("tracking.vungle.com".to_string());
-        trackers.insert("analytics.google.com".to_string());
+        trackers.insert("graph.facebook.com");
+        trackers.insert("telemetry.applovin.com");
+        trackers.insert("tracking.vungle.com");
+        trackers.insert("analytics.google.com");
+        trackers.insert("s.youtube.com");
+        trackers.insert("video-stats.l.google.com");
+        trackers.insert("youtubei.googleapis.com");
 
         let mut malware = self.malware_rules.write().unwrap();
-        malware.insert("crypto-miner.org".to_string());
-        malware.insert("bad-malware-site.net".to_string());
-        malware.insert("phishing-login.com".to_string());
+        malware.insert("crypto-miner.org");
+        malware.insert("bad-malware-site.net");
+        malware.insert("phishing-login.com");
     }
 
     pub fn set_category_enabled(&self, category: RuleCategory, enabled: bool) {
@@ -91,26 +234,47 @@ impl RuleEngine {
                 continue;
             }
 
-            // `@@||domain^` exception rules (AdGuard/EasyList) override every
-            // category, so they belong in the whitelist, not the category set.
             if let Some(domain) = Self::parse_exception_line(line) {
-                allowed.insert(domain);
-                count += 1;
+                if allowed.insert(&domain) {
+                    count += 1;
+                }
                 continue;
             }
 
             if let Some(domain) = Self::parse_rule_line(line) {
-                rules.insert(domain);
-                count += 1;
+                if rules.insert(&domain) {
+                    count += 1;
+                }
             }
         }
+
+        rules.shrink_to_fit();
+        allowed.shrink_to_fit();
 
         info!("Loaded {} rules into category {:?}", count, category);
         count
     }
 
-    /// Parse an AdGuard/EasyList exception rule (`@@||domain^`), which
-    /// un-blocks a domain regardless of which category blocked it.
+    pub fn add_custom_host(&self, domain: &str, ip: &str) {
+        let mut hosts = self.custom_hosts.write().unwrap();
+        hosts.insert(
+            domain.trim_end_matches('.').to_lowercase(),
+            ip.trim().to_string(),
+        );
+    }
+
+    pub fn remove_custom_host(&self, domain: &str) {
+        let mut hosts = self.custom_hosts.write().unwrap();
+        hosts.remove(&domain.trim_end_matches('.').to_lowercase());
+    }
+
+    pub fn get_custom_host(&self, domain: &str) -> Option<String> {
+        let hosts = self.custom_hosts.read().unwrap();
+        hosts
+            .get(&domain.trim_end_matches('.').to_lowercase())
+            .cloned()
+    }
+
     fn parse_exception_line(line: &str) -> Option<String> {
         if line.starts_with("@@||") && line.ends_with('^') {
             let domain = &line[4..line.len() - 1];
@@ -120,8 +284,6 @@ impl RuleEngine {
     }
 
     fn parse_rule_line(line: &str) -> Option<String> {
-        // Exception rules are handled by `parse_exception_line` above; never
-        // fall through and treat an unmatched `@@`-prefixed line as a block rule.
         if line.starts_with("@@") {
             return None;
         }
@@ -148,25 +310,24 @@ impl RuleEngine {
 
     pub fn add_whitelist(&self, domain: &str) {
         let mut allowed = self.allowed_domains.write().unwrap();
-        allowed.insert(domain.to_lowercase());
+        allowed.insert(domain);
     }
 
     pub fn add_blacklist(&self, domain: &str) {
         let mut blocked = self.blocked_exact.write().unwrap();
-        blocked.insert(domain.to_lowercase());
+        blocked.insert(domain);
     }
 
     pub fn remove_whitelist(&self, domain: &str) {
         let mut allowed = self.allowed_domains.write().unwrap();
-        allowed.remove(&domain.to_lowercase());
+        allowed.remove(domain);
     }
 
     pub fn remove_blacklist(&self, domain: &str) {
         let mut blocked = self.blocked_exact.write().unwrap();
-        blocked.remove(&domain.to_lowercase());
+        blocked.remove(domain);
     }
 
-    /// Categories currently enabled, sorted for a stable snapshot on disk.
     pub fn enabled_categories(&self) -> Vec<RuleCategory> {
         let enabled = self.enabled_categories.read().unwrap();
         let mut categories: Vec<RuleCategory> = enabled.iter().copied().collect();
@@ -175,16 +336,13 @@ impl RuleEngine {
     }
 
     pub fn whitelist(&self) -> Vec<String> {
-        Self::sorted(&self.allowed_domains)
+        self.allowed_domains.read().unwrap().to_vec()
     }
 
     pub fn blacklist(&self) -> Vec<String> {
-        Self::sorted(&self.blocked_exact)
+        self.blocked_exact.read().unwrap().to_vec()
     }
 
-    /// Replace the user lists and category toggles wholesale. Used when a
-    /// process adopts a snapshot produced by the other one, where "not in the
-    /// snapshot" has to mean "removed", not "left alone".
     pub fn replace_user_state(
         &self,
         categories: &[RuleCategory],
@@ -199,26 +357,24 @@ impl RuleEngine {
         {
             let mut allowed = self.allowed_domains.write().unwrap();
             allowed.clear();
-            allowed.extend(whitelist.iter().map(|d| d.to_lowercase()));
+            for d in whitelist {
+                allowed.insert(d);
+            }
         }
         let mut blocked = self.blocked_exact.write().unwrap();
         blocked.clear();
-        blocked.extend(blacklist.iter().map(|d| d.to_lowercase()));
-    }
-
-    fn sorted(set: &RwLock<HashSet<String>>) -> Vec<String> {
-        let mut items: Vec<String> = set.read().unwrap().iter().cloned().collect();
-        items.sort();
-        items
+        for d in blacklist {
+            blocked.insert(d);
+        }
     }
 
     pub fn is_blocked(&self, domain: &str) -> bool {
         let clean_domain = domain.trim_end_matches('.').to_lowercase();
 
-        // 1. Check Whitelist (covers the domain and any of its subdomains)
+        // 1. Check Whitelist (covers domain & subdomains via Trie)
         {
             let allowed = self.allowed_domains.read().unwrap();
-            if Self::set_matches_domain(&allowed, &clean_domain) {
+            if allowed.matches(&clean_domain) {
                 return false;
             }
         }
@@ -226,7 +382,7 @@ impl RuleEngine {
         // 2. Check Blacklist
         {
             let exact = self.blocked_exact.read().unwrap();
-            if exact.contains(&clean_domain) {
+            if exact.matches(&clean_domain) {
                 return true;
             }
         }
@@ -234,47 +390,30 @@ impl RuleEngine {
         // 3. Check Enabled Categories
         let enabled = self.enabled_categories.read().unwrap();
 
-        if enabled.contains(&RuleCategory::Ads) && self.matches_set(&self.ads_rules, &clean_domain) {
+        if enabled.contains(&RuleCategory::Ads)
+            && self.ads_rules.read().unwrap().matches(&clean_domain)
+        {
             return true;
         }
 
-        if enabled.contains(&RuleCategory::Trackers) && self.matches_set(&self.tracker_rules, &clean_domain) {
+        if enabled.contains(&RuleCategory::Trackers)
+            && self.tracker_rules.read().unwrap().matches(&clean_domain)
+        {
             return true;
         }
 
-        if enabled.contains(&RuleCategory::Malware) && self.matches_set(&self.malware_rules, &clean_domain) {
+        if enabled.contains(&RuleCategory::Malware)
+            && self.malware_rules.read().unwrap().matches(&clean_domain)
+        {
             return true;
         }
 
-        if enabled.contains(&RuleCategory::Adult) && self.matches_set(&self.adult_rules, &clean_domain) {
+        if enabled.contains(&RuleCategory::Adult)
+            && self.adult_rules.read().unwrap().matches(&clean_domain)
+        {
             return true;
         }
 
-        false
-    }
-
-    fn matches_set(&self, set: &RwLock<HashSet<String>>, domain: &str) -> bool {
-        let rules = set.read().unwrap();
-        Self::set_matches_domain(&rules, domain)
-    }
-
-    /// Returns true if `domain` equals a rule in `rules`, or is a subdomain of one.
-    /// Performs zero heap allocations during subdomain hierarchy traversal.
-    fn set_matches_domain(rules: &HashSet<String>, domain: &str) -> bool {
-        if rules.contains(domain) {
-            return true;
-        }
-
-        let mut slice = domain;
-        while let Some(pos) = slice.find('.') {
-            slice = &slice[pos + 1..];
-            if slice.is_empty() {
-                break;
-            }
-            if rules.contains(slice) {
-                return true;
-            }
-        }
         false
     }
 
@@ -285,12 +424,26 @@ impl RuleEngine {
         self.adult_rules.write().unwrap().clear();
         self.allowed_domains.write().unwrap().clear();
         self.blocked_exact.write().unwrap().clear();
+        self.custom_hosts.write().unwrap().clear();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_custom_hosts_mapping() {
+        let engine = RuleEngine::new();
+        engine.add_custom_host("myrouter.local", "192.168.1.1");
+        assert_eq!(
+            engine.get_custom_host("myrouter.local"),
+            Some("192.168.1.1".to_string())
+        );
+
+        engine.remove_custom_host("myrouter.local");
+        assert_eq!(engine.get_custom_host("myrouter.local"), None);
+    }
 
     #[test]
     fn test_seed_rules_blocking() {
@@ -314,22 +467,20 @@ mod tests {
     #[test]
     fn test_disabling_category_stops_blocking() {
         let engine = RuleEngine::new();
-        assert!(engine.is_blocked("doubleclick.net")); // Ads enabled by default
+        assert!(engine.is_blocked("doubleclick.net"));
 
         engine.set_category_enabled(RuleCategory::Ads, false);
-        assert!(!engine.is_blocked("doubleclick.net")); // category off -> allowed
+        assert!(!engine.is_blocked("doubleclick.net"));
 
         engine.set_category_enabled(RuleCategory::Ads, true);
-        assert!(engine.is_blocked("doubleclick.net")); // re-enabled -> blocked
+        assert!(engine.is_blocked("doubleclick.net"));
     }
 
     #[test]
     fn test_whitelist_covers_subdomains() {
         let engine = RuleEngine::new();
-        // graph.facebook.com is a seeded tracker rule
         assert!(engine.is_blocked("graph.facebook.com"));
 
-        // Whitelisting the parent domain should allow all its subdomains
         engine.add_whitelist("facebook.com");
         assert!(!engine.is_blocked("graph.facebook.com"));
         assert!(!engine.is_blocked("facebook.com"));
@@ -377,21 +528,10 @@ mod tests {
     #[test]
     fn test_malformed_exception_line_is_ignored() {
         let engine = RuleEngine::new();
-        // Not a well-formed `@@||domain^` rule; must not leak into the block set.
         let count = engine.load_rules_text("@@not-a-real-rule.com", RuleCategory::Ads);
         assert_eq!(count, 0);
         assert!(!engine.is_blocked("not-a-real-rule.com"));
     }
-
-    // --- TLD boundary -------------------------------------------------------
-    //
-    // `set_matches_domain` walks every parent label including the last one, so a
-    // rule holding a bare TLD covers the whole TLD. That is deliberate: `||zip^`
-    // is how AdGuard lists express "block all of .zip", and stopping one label
-    // short would make such a rule match only the literal string "zip" — that is,
-    // nothing a resolver ever sees. The tests below pin the behaviour down in
-    // both directions, because the same matcher backs the block sets and the
-    // whitelist, and nothing else in the suite covers the last label.
 
     #[test]
     fn test_tld_rule_blocks_every_domain_under_it() {
@@ -402,31 +542,24 @@ mod tests {
         assert!(engine.is_blocked("foo.bar.zip"));
         assert!(engine.is_blocked("invoice.zip"));
         assert!(engine.is_blocked("zip"));
-        // A neighbouring TLD is untouched.
         assert!(!engine.is_blocked("invoice.example"));
     }
 
     #[test]
     fn test_tld_exception_unblocks_every_domain_under_it() {
         let engine = RuleEngine::new();
-        // graph.facebook.com is a seeded tracker rule.
         assert!(engine.is_blocked("graph.facebook.com"));
 
         let count = engine.load_rules_text("@@||com^", RuleCategory::Ads);
         assert_eq!(count, 1);
 
-        // The exception lands in the whitelist, which outranks every category.
         assert!(!engine.is_blocked("graph.facebook.com"));
-        // A domain outside .com keeps its verdict.
         assert!(engine.is_blocked("doubleclick.net"));
     }
 
     #[test]
     fn test_bare_tld_needs_the_adguard_syntax_to_load() {
         let engine = RuleEngine::new();
-        // A plain line has to contain a dot to be read as a domain, so a stray
-        // "com" in a list cannot silently swallow every .com. Only the explicit
-        // `||com^` form does, which takes an author who meant it.
         let count = engine.load_rules_text("com", RuleCategory::Ads);
         assert_eq!(count, 0);
         assert!(!engine.is_blocked("example.com"));
@@ -441,7 +574,6 @@ mod tests {
         assert!(engine.is_blocked("example.com"));
         assert!(engine.is_blocked("ads.example.com"));
         assert!(engine.is_blocked("a.b.c.example.com"));
-        // Sibling domains sharing only the TLD must not be caught.
         assert!(!engine.is_blocked("notexample.com"));
         assert!(!engine.is_blocked("example.org"));
     }

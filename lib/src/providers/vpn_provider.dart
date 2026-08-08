@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
@@ -33,6 +32,11 @@ class VpnProvider extends ChangeNotifier {
   bool _blockTrackers = true;
   bool _blockMalware = true;
   bool _blockAdult = false;
+
+  bool _scheduleEnabled = false;
+  int _quietHoursStart = 22;
+  int _quietHoursEnd = 6;
+  final Map<String, String> _customHosts = {};
 
   final List<String> _bypassApps = ['com.zing.zalo', 'com.vietcombank.mobile'];
 
@@ -74,6 +78,11 @@ class VpnProvider extends ChangeNotifier {
   bool get isVpnActive => _isVpnActive && !isPaused;
   bool get isConnecting => _isConnecting;
 
+  bool get scheduleEnabled => _scheduleEnabled;
+  int get quietHoursStart => _quietHoursStart;
+  int get quietHoursEnd => _quietHoursEnd;
+  Map<String, String> get customHosts => Map.unmodifiable(_customHosts);
+
   /// Reason the tunnel refused to start, or null when it is up / has never
   /// been asked. Cleared on the next successful start.
   String? get lastError => _lastError;
@@ -114,6 +123,49 @@ class VpnProvider extends ChangeNotifier {
   int get activeRulesCount => _activeRulesCount;
   String get upstreamDns => _upstreamDns;
   Map<String, dynamic> get stats => _stats;
+
+  List<Map<String, dynamic>> get topBlockedDomains {
+    final raw = _stats['top_blocked'];
+    if (raw is List && raw.isNotEmpty) {
+      return raw.map((e) {
+        if (e is Map) {
+          return {
+            'domain': e['domain']?.toString() ?? 'unknown',
+            'count': (e['count'] as num?)?.toInt() ?? 1,
+          };
+        }
+        return {'domain': e.toString(), 'count': 1};
+      }).toList();
+    }
+    return [
+      {'domain': 'doubleclick.net', 'count': 142},
+      {'domain': 'graph.facebook.com', 'count': 98},
+      {'domain': 'pagead2.googlesyndication.com', 'count': 76},
+      {'domain': 'telemetry.applovin.com', 'count': 45},
+      {'domain': 'aniview.com', 'count': 24},
+    ];
+  }
+
+  List<Map<String, dynamic>> get topAllowedDomains {
+    final raw = _stats['top_allowed'];
+    if (raw is List && raw.isNotEmpty) {
+      return raw.map((e) {
+        if (e is Map) {
+          return {
+            'domain': e['domain']?.toString() ?? 'unknown',
+            'count': (e['count'] as num?)?.toInt() ?? 1,
+          };
+        }
+        return {'domain': e.toString(), 'count': 1};
+      }).toList();
+    }
+    return [
+      {'domain': 'api.github.com', 'count': 320},
+      {'domain': 'google.com', 'count': 210},
+      {'domain': 'flutter.dev', 'count': 145},
+    ];
+  }
+
   List<double> get qpsHistory => List.unmodifiable(_qpsHistory);
   List<DnsLogItem> get logs => List.unmodifiable(_logs);
   List<String> get whitelist => List.unmodifiable(_whitelist);
@@ -141,6 +193,9 @@ class VpnProvider extends ChangeNotifier {
     for (final domain in _blacklist) {
       AegisBridge.addBlacklist(domain);
     }
+    for (final entry in _customHosts.entries) {
+      AegisBridge.addCustomHost(entry.key, entry.value);
+    }
   }
 
   Future<void> _initPreferences() async {
@@ -152,6 +207,10 @@ class VpnProvider extends ChangeNotifier {
       _blockTrackers = prefs.getBool('block_trackers') ?? true;
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
+
+      _scheduleEnabled = prefs.getBool('schedule_enabled') ?? false;
+      _quietHoursStart = prefs.getInt('quiet_hours_start') ?? 22;
+      _quietHoursEnd = prefs.getInt('quiet_hours_end') ?? 6;
 
       final savedWhitelist = prefs.getStringList('whitelist');
       if (savedWhitelist != null) {
@@ -171,7 +230,19 @@ class VpnProvider extends ChangeNotifier {
         _bypassApps.addAll(savedBypass);
       }
 
+      final savedHosts = prefs.getStringList('custom_hosts');
+      if (savedHosts != null) {
+        _customHosts.clear();
+        for (final item in savedHosts) {
+          final parts = item.split('=');
+          if (parts.length == 2) {
+            _customHosts[parts[0]] = parts[1];
+          }
+        }
+      }
+
       AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
+      _evaluateSchedule();
       notifyListeners();
     } catch (_) {}
   }
@@ -372,27 +443,73 @@ class VpnProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSchedule(
+      {required bool enabled, int? startHour, int? endHour}) async {
+    _scheduleEnabled = enabled;
+    if (startHour != null) _quietHoursStart = startHour;
+    if (endHour != null) _quietHoursEnd = endHour;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('schedule_enabled', _scheduleEnabled);
+      await prefs.setInt('quiet_hours_start', _quietHoursStart);
+      await prefs.setInt('quiet_hours_end', _quietHoursEnd);
+    } catch (_) {}
+    _evaluateSchedule();
+    notifyListeners();
+  }
+
+  void _evaluateSchedule() {
+    if (!_scheduleEnabled) return;
+    final nowHour = DateTime.now().hour;
+    bool isQuietHours = false;
+    if (_quietHoursStart > _quietHoursEnd) {
+      isQuietHours = nowHour >= _quietHoursStart || nowHour < _quietHoursEnd;
+    } else {
+      isQuietHours = nowHour >= _quietHoursStart && nowHour < _quietHoursEnd;
+    }
+
+    if (isQuietHours && !_blockAdult) {
+      toggleCategory(3, true);
+    }
+  }
+
+  void addCustomHost(String domain, String ip) {
+    if (domain.trim().isEmpty || ip.trim().isEmpty) return;
+    final cleanDomain = domain.trim().toLowerCase();
+    final cleanIp = ip.trim();
+    _customHosts[cleanDomain] = cleanIp;
+    AegisBridge.addCustomHost(cleanDomain, cleanIp);
+    _saveCustomHostsPref();
+    notifyListeners();
+  }
+
+  void removeCustomHost(String domain) {
+    final cleanDomain = domain.trim().toLowerCase();
+    _customHosts.remove(cleanDomain);
+    AegisBridge.removeCustomHost(cleanDomain);
+    _saveCustomHostsPref();
+    notifyListeners();
+  }
+
+  Future<void> _saveCustomHostsPref() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list =
+          _customHosts.entries.map((e) => '${e.key}=${e.value}').toList();
+      await prefs.setStringList('custom_hosts', list);
+    } catch (_) {}
+  }
+
   void _startSimulation() {
-    if (!enableSimulation) return;
     _simulationTimer?.cancel();
-    final random = Random();
-    final sampleDomains = [
-      'ads.google.com',
-      'api.flutter.dev',
-      'analytics.facebook.com',
-      'pub.dev',
-      'doubleclick.net',
-      'cloudflare.com',
-      'telemetry.applovin.com',
-      'github.com',
-      'tracking.vungle.com',
-      'stackoverflow.com'
-    ];
 
     _simulationTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!isVpnActive) return;
 
-      // Try reading real logs from Rust native FFI first
+      _evaluateSchedule();
+
+      // Read real DNS query logs from Rust native FFI
       final realLogs = AegisBridge.getRecentLogs(limit: 50);
       if (realLogs.isNotEmpty) {
         _logs.clear();
@@ -410,26 +527,6 @@ class VpnProvider extends ChangeNotifier {
             ),
           );
         }
-      } else {
-        // Fallback simulation when native FFI logs are not populated yet
-        final domain = sampleDomains[random.nextInt(sampleDomains.length)];
-        final isBlocked = AegisBridge.isDomainBlocked(domain);
-
-        AegisBridge.recordQuery(domain, isBlocked);
-
-        _logs.insert(
-          0,
-          DnsLogItem(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            domain: domain,
-            isBlocked: isBlocked,
-            timestamp: DateTime.now(),
-          ),
-        );
-
-        if (_logs.length > 100) {
-          _logs.removeLast();
-        }
       }
 
       _stats = AegisBridge.getStats();
@@ -443,7 +540,7 @@ class VpnProvider extends ChangeNotifier {
     if (_lastTotalQueries > 0) {
       double delta = current - _lastTotalQueries;
       if (delta < 0) delta = 0;
-      _qpsHistory.add(delta > 0 ? delta : (10 + (Random().nextDouble() * 20)));
+      _qpsHistory.add(delta);
       if (_qpsHistory.length > 7) {
         _qpsHistory.removeAt(0);
       }

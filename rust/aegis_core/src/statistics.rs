@@ -1,7 +1,7 @@
-use std::collections::VecDeque;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DnsLogEntry {
@@ -12,18 +12,28 @@ pub struct DnsLogEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DomainCount {
+    pub domain: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatsSummary {
     pub total_queries: u64,
     pub blocked_queries: u64,
     pub allowed_queries: u64,
     pub block_rate_percentage: f64,
     pub estimated_data_saved_bytes: u64,
+    pub top_blocked: Vec<DomainCount>,
+    pub top_allowed: Vec<DomainCount>,
 }
 
 pub struct StatisticsEngine {
     total_queries: AtomicU64,
     blocked_queries: AtomicU64,
     logs: RwLock<VecDeque<DnsLogEntry>>,
+    blocked_counts: RwLock<HashMap<String, u64>>,
+    allowed_counts: RwLock<HashMap<String, u64>>,
     max_log_capacity: usize,
     counter_id: AtomicU64,
 }
@@ -34,6 +44,8 @@ impl StatisticsEngine {
             total_queries: AtomicU64::new(0),
             blocked_queries: AtomicU64::new(0),
             logs: RwLock::new(VecDeque::with_capacity(max_log_capacity)),
+            blocked_counts: RwLock::new(HashMap::new()),
+            allowed_counts: RwLock::new(HashMap::new()),
             max_log_capacity,
             counter_id: AtomicU64::new(1),
         }
@@ -41,8 +53,15 @@ impl StatisticsEngine {
 
     pub fn record_request(&self, domain: &str, blocked: bool) {
         self.total_queries.fetch_add(1, Ordering::Relaxed);
+        let domain_str = domain.to_string();
+
         if blocked {
             self.blocked_queries.fetch_add(1, Ordering::Relaxed);
+            let mut counts = self.blocked_counts.write().unwrap();
+            *counts.entry(domain_str.clone()).or_insert(0) += 1;
+        } else {
+            let mut counts = self.allowed_counts.write().unwrap();
+            *counts.entry(domain_str.clone()).or_insert(0) += 1;
         }
 
         let timestamp = std::time::SystemTime::now()
@@ -55,7 +74,7 @@ impl StatisticsEngine {
         let entry = DnsLogEntry {
             id,
             timestamp,
-            domain: domain.to_string(),
+            domain: domain_str,
             blocked,
         };
 
@@ -80,12 +99,32 @@ impl StatisticsEngine {
         // Estimate ~150KB saved per blocked ad request
         let data_saved = blocked * 150 * 1024;
 
+        let get_top = |counts_lock: &RwLock<HashMap<String, u64>>| -> Vec<DomainCount> {
+            let counts = counts_lock.read().unwrap();
+            let mut items: Vec<(String, u64)> =
+                counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
+            items.sort_by(|a, b| b.1.cmp(&a.1));
+            items
+                .into_iter()
+                .take(5)
+                .map(|(d, c)| DomainCount {
+                    domain: d,
+                    count: c,
+                })
+                .collect()
+        };
+
+        let top_blocked = get_top(&self.blocked_counts);
+        let top_allowed = get_top(&self.allowed_counts);
+
         StatsSummary {
             total_queries: total,
             blocked_queries: blocked,
             allowed_queries: allowed,
             block_rate_percentage: block_rate,
             estimated_data_saved_bytes: data_saved,
+            top_blocked,
+            top_allowed,
         }
     }
 
@@ -108,5 +147,7 @@ impl StatisticsEngine {
         self.total_queries.store(0, Ordering::Relaxed);
         self.blocked_queries.store(0, Ordering::Relaxed);
         self.logs.write().unwrap().clear();
+        self.blocked_counts.write().unwrap().clear();
+        self.allowed_counts.write().unwrap().clear();
     }
 }

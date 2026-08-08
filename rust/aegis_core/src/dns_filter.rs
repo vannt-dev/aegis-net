@@ -1,10 +1,10 @@
-use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
-use log::{info, debug, warn};
-use lazy_static::lazy_static;
+use crate::cache::DnsCache;
 use crate::rule_engine::RuleEngine;
 use crate::statistics::StatisticsEngine;
-use crate::cache::DnsCache;
+use lazy_static::lazy_static;
+use log::{debug, info, warn};
+use std::net::SocketAddr;
+use std::sync::{Arc, RwLock};
 
 lazy_static! {
     static ref DOH_AGENT: ureq::Agent = ureq::AgentBuilder::new()
@@ -50,6 +50,15 @@ impl DnsFilterService {
         let question = Self::extract_question(payload);
 
         if let Some((domain, qtype)) = question {
+            // 0. Check Custom Host Override
+            if let Some(custom_ip_str) = self.rule_engine.get_custom_host(&domain) {
+                if let Ok(ip_addr) = custom_ip_str.parse::<std::net::Ipv4Addr>() {
+                    info!("CUSTOM HOST Override: {} -> {}", domain, custom_ip_str);
+                    self.stats_engine.record_request(&domain, false);
+                    return Self::build_ip_response(payload, ip_addr.octets());
+                }
+            }
+
             // 1. Check SafeSearch Enforcement
             if self.safesearch_enabled {
                 if let Some(safe_resp) = Self::handle_safesearch_rewrite(&domain, payload) {
@@ -93,7 +102,10 @@ impl DnsFilterService {
                 // explicitly so callers fail fast — and never cache it, or the
                 // domain stays broken for the whole TTL after the upstream
                 // recovers.
-                warn!("Upstream DoH unreachable for {}; answering SERVFAIL", domain);
+                warn!(
+                    "Upstream DoH unreachable for {}; answering SERVFAIL",
+                    domain
+                );
                 return Self::build_servfail_response(payload);
             }
 
@@ -284,6 +296,10 @@ impl DnsFilterService {
     fn doh_endpoint(upstream: &str) -> String {
         if upstream.starts_with("http://") || upstream.starts_with("https://") {
             upstream.to_string()
+        } else if upstream.starts_with("tls://") {
+            format!("https://{}/dns-query", &upstream[6..])
+        } else if upstream.starts_with("dot://") {
+            format!("https://{}/dns-query", &upstream[6..])
         } else {
             format!("https://{}/dns-query", upstream)
         }
@@ -298,7 +314,8 @@ impl DnsFilterService {
         let upstream = self.upstream_dns.read().unwrap().clone();
         let endpoint = Self::doh_endpoint(&upstream);
 
-        let response = DOH_AGENT.post(&endpoint)
+        let response = DOH_AGENT
+            .post(&endpoint)
             .set("Content-Type", "application/dns-message")
             .set("Accept", "application/dns-message")
             .send_bytes(payload);
@@ -306,7 +323,12 @@ impl DnsFilterService {
         match response {
             Ok(resp) => {
                 let mut buf = Vec::new();
-                if resp.into_reader().take(65_535).read_to_end(&mut buf).is_ok() {
+                if resp
+                    .into_reader()
+                    .take(65_535)
+                    .read_to_end(&mut buf)
+                    .is_ok()
+                {
                     buf
                 } else {
                     vec![]
@@ -324,9 +346,9 @@ mod tests {
     #[test]
     fn test_dns_domain_extraction() {
         let mock_packet = vec![
-            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-            0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00, 0x01,
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, b'e',
+            b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00,
+            0x01,
         ];
 
         let question = DnsFilterService::extract_question(&mock_packet);
@@ -352,16 +374,17 @@ mod tests {
         // Look-alike / attacker domains must NOT be rewritten.
         assert!(DnsFilterService::handle_safesearch_rewrite("evilgoogle.com", &query).is_none());
         assert!(
-            DnsFilterService::handle_safesearch_rewrite("google.com.attacker.net", &query).is_none()
+            DnsFilterService::handle_safesearch_rewrite("google.com.attacker.net", &query)
+                .is_none()
         );
     }
 
     #[test]
     fn test_extract_question_returns_domain_and_qtype() {
         let packet = vec![
-            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-            0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00, 0x01,
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, b'e',
+            b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00,
+            0x01,
         ];
 
         let (domain, qtype) = DnsFilterService::extract_question(&packet).unwrap();
@@ -406,13 +429,22 @@ mod tests {
             DnsFilterService::doh_endpoint("https://cloudflare-dns.com/dns-query"),
             "https://cloudflare-dns.com/dns-query"
         );
+        // DoT endpoints (tls:// or dot://) are normalized.
+        assert_eq!(
+            DnsFilterService::doh_endpoint("tls://1.1.1.1"),
+            "https://1.1.1.1/dns-query"
+        );
+        assert_eq!(
+            DnsFilterService::doh_endpoint("dot://dns.adguard.com"),
+            "https://dns.adguard.com/dns-query"
+        );
     }
 
     #[test]
     fn test_blocked_response_is_nxdomain() {
         let mock_packet = vec![
-            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x03, b'a', b'd', b's', 0x00, 0x00, 0x01, 0x00, 0x01,
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, b'a',
+            b'd', b's', 0x00, 0x00, 0x01, 0x00, 0x01,
         ];
 
         let response = DnsFilterService::build_blocked_response(&mock_packet);
@@ -434,8 +466,8 @@ mod tests {
     #[test]
     fn test_servfail_response_is_distinct_from_nxdomain() {
         let mock_packet = vec![
-            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x03, b'a', b'b', b'c', 0x00, 0x00, 0x01, 0x00, 0x01,
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, b'a',
+            b'b', b'c', 0x00, 0x00, 0x01, 0x00, 0x01,
         ];
 
         let response = DnsFilterService::build_servfail_response(&mock_packet);
@@ -461,9 +493,9 @@ mod tests {
         );
 
         let query = vec![
-            0xaa, 0xbb, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-            0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00, 0x01,
+            0xaa, 0xbb, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, b'e',
+            b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00,
+            0x01,
         ];
 
         let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
@@ -471,7 +503,10 @@ mod tests {
 
         // Dropping the packet black-holes the query: every client on the device
         // then retries until it times out, with no signal that DNS is down.
-        assert!(!response.is_empty(), "upstream failure must not drop the query");
+        assert!(
+            !response.is_empty(),
+            "upstream failure must not drop the query"
+        );
         assert_eq!(response[3] & 0x0f, 0x02, "expected SERVFAIL");
         assert_eq!(&response[0..2], &query[0..2]);
     }
@@ -485,9 +520,8 @@ mod tests {
         );
 
         let query = vec![
-            0x11, 0x22, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x05, b'c', b'a', b'c', b'h', b'e', 0x03, b'n', b'e', b't', 0x00,
-            0x00, 0x01, 0x00, 0x01,
+            0x11, 0x22, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, b'c',
+            b'a', b'c', b'h', b'e', 0x03, b'n', b'e', b't', 0x00, 0x00, 0x01, 0x00, 0x01,
         ];
         let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
 

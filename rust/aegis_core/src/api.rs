@@ -1,12 +1,12 @@
+use crate::dns_filter::DnsFilterService;
+use crate::rule_engine::{RuleCategory, RuleEngine};
+use crate::shared_state;
+use crate::statistics::StatisticsEngine;
+use lazy_static::lazy_static;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::path::Path;
 use std::sync::Arc;
-use lazy_static::lazy_static;
-use crate::rule_engine::{RuleEngine, RuleCategory};
-use crate::statistics::StatisticsEngine;
-use crate::dns_filter::DnsFilterService;
-use crate::shared_state;
 
 lazy_static! {
     static ref RULE_ENGINE: Arc<RuleEngine> = Arc::new(RuleEngine::new());
@@ -47,7 +47,9 @@ pub extern "C" fn aegis_set_category(category_id: c_int, enabled: c_int) {
 /// bare host/IP or a full `https://.../dns-query` URL.
 #[no_mangle]
 pub extern "C" fn aegis_set_upstream_dns(upstream_ptr: *const c_char) {
-    if upstream_ptr.is_null() { return; }
+    if upstream_ptr.is_null() {
+        return;
+    }
     if let Ok(upstream) = unsafe { CStr::from_ptr(upstream_ptr) }.to_str() {
         DNS_FILTER.set_upstream_dns(upstream);
     }
@@ -80,7 +82,10 @@ fn path_from_ptr(path_ptr: *const c_char) -> Option<&'static Path> {
     if path_ptr.is_null() {
         return None;
     }
-    unsafe { CStr::from_ptr(path_ptr) }.to_str().ok().map(Path::new)
+    unsafe { CStr::from_ptr(path_ptr) }
+        .to_str()
+        .ok()
+        .map(Path::new)
 }
 
 /// Write the engine's user settings to `path` for the other process to pick up.
@@ -159,7 +164,9 @@ pub extern "C" fn aegis_import_stats(path_ptr: *const c_char) -> c_int {
 /// Add domain to Whitelist
 #[no_mangle]
 pub extern "C" fn aegis_add_whitelist(domain_ptr: *const c_char) {
-    if domain_ptr.is_null() { return; }
+    if domain_ptr.is_null() {
+        return;
+    }
     if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
         RULE_ENGINE.add_whitelist(domain);
     }
@@ -168,7 +175,9 @@ pub extern "C" fn aegis_add_whitelist(domain_ptr: *const c_char) {
 /// Add domain to Blacklist
 #[no_mangle]
 pub extern "C" fn aegis_add_blacklist(domain_ptr: *const c_char) {
-    if domain_ptr.is_null() { return; }
+    if domain_ptr.is_null() {
+        return;
+    }
     if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
         RULE_ENGINE.add_blacklist(domain);
     }
@@ -177,7 +186,9 @@ pub extern "C" fn aegis_add_blacklist(domain_ptr: *const c_char) {
 /// Remove domain from Whitelist
 #[no_mangle]
 pub extern "C" fn aegis_remove_whitelist(domain_ptr: *const c_char) {
-    if domain_ptr.is_null() { return; }
+    if domain_ptr.is_null() {
+        return;
+    }
     if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
         RULE_ENGINE.remove_whitelist(domain);
     }
@@ -186,18 +197,51 @@ pub extern "C" fn aegis_remove_whitelist(domain_ptr: *const c_char) {
 /// Remove domain from Blacklist
 #[no_mangle]
 pub extern "C" fn aegis_remove_blacklist(domain_ptr: *const c_char) {
-    if domain_ptr.is_null() { return; }
+    if domain_ptr.is_null() {
+        return;
+    }
     if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
         RULE_ENGINE.remove_blacklist(domain);
+    }
+}
+
+/// Add custom host mapping (e.g. domain -> IP)
+#[no_mangle]
+pub extern "C" fn aegis_add_custom_host(domain_ptr: *const c_char, ip_ptr: *const c_char) {
+    if domain_ptr.is_null() || ip_ptr.is_null() {
+        return;
+    }
+    if let (Ok(domain), Ok(ip)) = (
+        unsafe { CStr::from_ptr(domain_ptr) }.to_str(),
+        unsafe { CStr::from_ptr(ip_ptr) }.to_str(),
+    ) {
+        RULE_ENGINE.add_custom_host(domain, ip);
+    }
+}
+
+/// Remove custom host mapping
+#[no_mangle]
+pub extern "C" fn aegis_remove_custom_host(domain_ptr: *const c_char) {
+    if domain_ptr.is_null() {
+        return;
+    }
+    if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
+        RULE_ENGINE.remove_custom_host(domain);
     }
 }
 
 /// Check if domain is blocked
 #[no_mangle]
 pub extern "C" fn aegis_is_domain_blocked(domain_ptr: *const c_char) -> c_int {
-    if domain_ptr.is_null() { return 0; }
+    if domain_ptr.is_null() {
+        return 0;
+    }
     if let Ok(domain) = unsafe { CStr::from_ptr(domain_ptr) }.to_str() {
-        if RULE_ENGINE.is_blocked(domain) { 1 } else { 0 }
+        if RULE_ENGINE.is_blocked(domain) {
+            1
+        } else {
+            0
+        }
     } else {
         0
     }
@@ -248,32 +292,57 @@ pub extern "C" fn aegis_process_ip_packet(
     }
 
     let packet = unsafe { std::slice::from_raw_parts(in_buf, in_len) };
-
-    // Only DNS (UDP port 53) queries are handled here.
-    let parsed = match crate::packet::parse_ipv4_udp(packet) {
-        Some(p) if p.dst_port == 53 => p,
-        _ => return 0,
-    };
-
     let dummy_client: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let dns_response = DNS_FILTER.handle_dns_payload(parsed.payload, dummy_client);
-    if dns_response.is_empty() {
-        return 0;
+
+    // Check IPv4 UDP port 53
+    if let Some(p) = crate::packet::parse_ipv4_udp(packet) {
+        if p.dst_port == 53 {
+            let dns_response = DNS_FILTER.handle_dns_payload(p.payload, dummy_client);
+            if dns_response.is_empty() {
+                return 0;
+            }
+
+            let reply = match crate::packet::build_ipv4_udp_response(packet, &dns_response) {
+                Some(r) => r,
+                None => return 0,
+            };
+
+            if reply.len() > out_max_len {
+                return 0;
+            }
+
+            unsafe {
+                std::ptr::copy_nonoverlapping(reply.as_ptr(), out_buf, reply.len());
+            }
+            return reply.len();
+        }
     }
 
-    let reply = match crate::packet::build_ipv4_udp_response(packet, &dns_response) {
-        Some(r) => r,
-        None => return 0,
-    };
+    // Check IPv6 UDP port 53
+    if let Some(p) = crate::packet::parse_ipv6_udp(packet) {
+        if p.dst_port == 53 {
+            let dns_response = DNS_FILTER.handle_dns_payload(p.payload, dummy_client);
+            if dns_response.is_empty() {
+                return 0;
+            }
 
-    if reply.len() > out_max_len {
-        return 0;
+            let reply = match crate::packet::build_ipv6_udp_response(packet, &dns_response) {
+                Some(r) => r,
+                None => return 0,
+            };
+
+            if reply.len() > out_max_len {
+                return 0;
+            }
+
+            unsafe {
+                std::ptr::copy_nonoverlapping(reply.as_ptr(), out_buf, reply.len());
+            }
+            return reply.len();
+        }
     }
 
-    unsafe {
-        std::ptr::copy_nonoverlapping(reply.as_ptr(), out_buf, reply.len());
-    }
-    reply.len()
+    0
 }
 
 /// Get current statistics as JSON string

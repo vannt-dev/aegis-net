@@ -17,18 +17,23 @@ class _RulesScreenState extends State<RulesScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _domainInputController = TextEditingController();
+  final TextEditingController _customHostDomainController =
+      TextEditingController();
+  final TextEditingController _customHostIpController = TextEditingController();
   bool _isSyncing = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _domainInputController.dispose();
+    _customHostDomainController.dispose();
+    _customHostIpController.dispose();
     super.dispose();
   }
 
@@ -47,6 +52,69 @@ class _RulesScreenState extends State<RulesScreen>
         ),
       );
     }
+  }
+
+  void _showAddCustomSourceDialog() {
+    final nameCtrl = TextEditingController();
+    final urlCtrl = TextEditingController();
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        title: const Text('Add Custom Blocklist URL',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'List Name (e.g. OISD Basic)',
+                hintStyle: TextStyle(color: Colors.grey),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: urlCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'https://raw.githubusercontent.com/...',
+                hintStyle: TextStyle(color: Colors.grey),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              final url = urlCtrl.text.trim();
+              if (name.isNotEmpty && url.startsWith('http')) {
+                final source = FilterSource(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  name: name,
+                  url: url,
+                  description: 'User custom filter list',
+                );
+                await RuleDownloaderService.addCustomSource(source);
+                if (ctx.mounted) {
+                  setState(() {});
+                  Navigator.pop(ctx);
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: emeraldColor),
+            child: const Text('ADD LIST'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -83,39 +151,47 @@ class _RulesScreenState extends State<RulesScreen>
           labelColor: Colors.cyanAccent,
           unselectedLabelColor: Colors.grey,
           tabs: const [
-            Tab(text: 'Filter Preset Lists'),
+            Tab(text: 'Filter Presets'),
             Tab(text: 'Custom Rules'),
+            Tab(text: 'Local DNS Hosts'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Preset Filter Lists Tab
+          // Filter Sources Presets
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _buildPresetTile(
-                title: 'AdGuard Mobile Filter',
-                description: 'Blocks ads in Android & iOS apps (128,450 rules)',
-                enabled: true,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Subscribe to Filter Lists',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.add_link, size: 16),
+                    label: const Text('ADD URL'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.cyanAccent,
+                      side: const BorderSide(color: Colors.cyanAccent),
+                    ),
+                    onPressed: _showAddCustomSourceDialog,
+                  ),
+                ],
               ),
-              _buildPresetTile(
-                title: 'EasyList DNS',
-                description:
-                    'Primary ad-blocking list for app banners & popups',
-                enabled: true,
-              ),
-              _buildPresetTile(
-                title: 'StevenBlack Unified Hosts',
-                description: 'Combined fake news, spam, and telemetry hosts',
-                enabled: true,
-              ),
-              _buildPresetTile(
-                title: 'NoCoin & Crypto-Miner Block',
-                description:
-                    'Protects device battery from background mining scripts',
-                enabled: true,
+              const SizedBox(height: 12),
+              ...RuleDownloaderService.allSources.map(
+                (source) => _buildPresetTile(
+                  title: source.name,
+                  description: source.description,
+                  enabled: source.isEnabled,
+                ),
               ),
             ],
           ),
@@ -213,6 +289,132 @@ class _RulesScreenState extends State<RulesScreen>
                                       color: Colors.grey),
                                   onPressed: () =>
                                       vpn.removeWhitelistDomain(domain),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+
+          // Local DNS Hosts Override Tab
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Local DNS Host Mapping (Domain -> IP)',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Override DNS resolution locally without remote server lookup.',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextField(
+                        controller: _customHostDomainController,
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: 'Domain (e.g. myrouter.local)',
+                          hintStyle: TextStyle(color: Colors.grey.shade600),
+                          filled: true,
+                          fillColor: const Color(0xFF161B22),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Colors.white24),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: _customHostIpController,
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: 'IP (192.168.1.1)',
+                          hintStyle: TextStyle(color: Colors.grey.shade600),
+                          filled: true,
+                          fillColor: const Color(0xFF161B22),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Colors.white24),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.cyan.shade700,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 12),
+                      ),
+                      onPressed: () {
+                        vpn.addCustomHost(
+                          _customHostDomainController.text,
+                          _customHostIpController.text,
+                        );
+                        _customHostDomainController.clear();
+                        _customHostIpController.clear();
+                      },
+                      child: const Text('MAP',
+                          style: TextStyle(color: Colors.white, fontSize: 11)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Active Custom Mappings',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.cyanAccent),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: vpn.customHosts.isEmpty
+                      ? Center(
+                          child: Text('No custom host mappings defined',
+                              style: TextStyle(color: Colors.grey.shade500)))
+                      : ListView.builder(
+                          itemCount: vpn.customHosts.length,
+                          itemBuilder: (context, index) {
+                            final entry =
+                                vpn.customHosts.entries.elementAt(index);
+                            return Material(
+                              color: Colors.transparent,
+                              child: ListTile(
+                                title: Text(entry.key,
+                                    style:
+                                        const TextStyle(color: Colors.white)),
+                                subtitle: Text('-> ${entry.value}',
+                                    style: const TextStyle(
+                                        color: Colors.cyanAccent,
+                                        fontSize: 12)),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.grey),
+                                  onPressed: () =>
+                                      vpn.removeCustomHost(entry.key),
                                 ),
                               ),
                             );
