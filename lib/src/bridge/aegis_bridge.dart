@@ -289,6 +289,31 @@ class AegisBridge {
     publishSettings();
   }
 
+  static final Map<String, String> _customHosts = {};
+
+  /// Add custom DNS host mapping (Local DNS Override e.g. domain -> IP)
+  static void addCustomHost(String domain, String ip) {
+    final cleanDomain = domain.trim().toLowerCase();
+    final cleanIp = ip.trim();
+    if (_useNativeFfi) {
+      AegisNativeBindings.addCustomHost(cleanDomain, cleanIp);
+    }
+    _customHosts[cleanDomain] = cleanIp;
+    publishSettings();
+  }
+
+  /// Remove custom DNS host mapping
+  static void removeCustomHost(String domain) {
+    final cleanDomain = domain.trim().toLowerCase();
+    if (_useNativeFfi) {
+      AegisNativeBindings.removeCustomHost(cleanDomain);
+    }
+    _customHosts.remove(cleanDomain);
+    publishSettings();
+  }
+
+  static Map<String, String> get customHosts => Map.unmodifiable(_customHosts);
+
   /// Enable/disable a rule category on the engine.
   /// (0: Ads, 1: Trackers, 2: Malware, 3: Adult)
   static void setCategory(int categoryId, bool enabled) {

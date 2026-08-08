@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DnsLogEntry {
@@ -101,9 +101,17 @@ impl StatisticsEngine {
 
         let get_top = |counts_lock: &RwLock<HashMap<String, u64>>| -> Vec<DomainCount> {
             let counts = counts_lock.read().unwrap();
-            let mut items: Vec<(String, u64)> = counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
+            let mut items: Vec<(String, u64)> =
+                counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
             items.sort_by(|a, b| b.1.cmp(&a.1));
-            items.into_iter().take(5).map(|(d, c)| DomainCount { domain: d, count: c }).collect()
+            items
+                .into_iter()
+                .take(5)
+                .map(|(d, c)| DomainCount {
+                    domain: d,
+                    count: c,
+                })
+                .collect()
         };
 
         let top_blocked = get_top(&self.blocked_counts);

@@ -1,7 +1,7 @@
-use std::collections::HashSet;
-use std::sync::RwLock;
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::sync::RwLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RuleCategory {
@@ -21,6 +21,7 @@ pub struct RuleEngine {
     enabled_categories: RwLock<HashSet<RuleCategory>>,
     allowed_domains: RwLock<HashSet<String>>,
     blocked_exact: RwLock<HashSet<String>>,
+    custom_hosts: RwLock<HashMap<String, String>>,
 }
 
 impl RuleEngine {
@@ -38,6 +39,7 @@ impl RuleEngine {
             enabled_categories: RwLock::new(enabled),
             allowed_domains: RwLock::new(HashSet::new()),
             blocked_exact: RwLock::new(HashSet::new()),
+            custom_hosts: RwLock::new(HashMap::new()),
         };
 
         engine.seed_default_rules();
@@ -111,8 +113,31 @@ impl RuleEngine {
             }
         }
 
+        rules.shrink_to_fit();
+        allowed.shrink_to_fit();
+
         info!("Loaded {} rules into category {:?}", count, category);
         count
+    }
+
+    pub fn add_custom_host(&self, domain: &str, ip: &str) {
+        let mut hosts = self.custom_hosts.write().unwrap();
+        hosts.insert(
+            domain.trim_end_matches('.').to_lowercase(),
+            ip.trim().to_string(),
+        );
+    }
+
+    pub fn remove_custom_host(&self, domain: &str) {
+        let mut hosts = self.custom_hosts.write().unwrap();
+        hosts.remove(&domain.trim_end_matches('.').to_lowercase());
+    }
+
+    pub fn get_custom_host(&self, domain: &str) -> Option<String> {
+        let hosts = self.custom_hosts.read().unwrap();
+        hosts
+            .get(&domain.trim_end_matches('.').to_lowercase())
+            .cloned()
     }
 
     /// Parse an AdGuard/EasyList exception rule (`@@||domain^`), which
@@ -240,19 +265,26 @@ impl RuleEngine {
         // 3. Check Enabled Categories
         let enabled = self.enabled_categories.read().unwrap();
 
-        if enabled.contains(&RuleCategory::Ads) && self.matches_set(&self.ads_rules, &clean_domain) {
+        if enabled.contains(&RuleCategory::Ads) && self.matches_set(&self.ads_rules, &clean_domain)
+        {
             return true;
         }
 
-        if enabled.contains(&RuleCategory::Trackers) && self.matches_set(&self.tracker_rules, &clean_domain) {
+        if enabled.contains(&RuleCategory::Trackers)
+            && self.matches_set(&self.tracker_rules, &clean_domain)
+        {
             return true;
         }
 
-        if enabled.contains(&RuleCategory::Malware) && self.matches_set(&self.malware_rules, &clean_domain) {
+        if enabled.contains(&RuleCategory::Malware)
+            && self.matches_set(&self.malware_rules, &clean_domain)
+        {
             return true;
         }
 
-        if enabled.contains(&RuleCategory::Adult) && self.matches_set(&self.adult_rules, &clean_domain) {
+        if enabled.contains(&RuleCategory::Adult)
+            && self.matches_set(&self.adult_rules, &clean_domain)
+        {
             return true;
         }
 
@@ -291,12 +323,26 @@ impl RuleEngine {
         self.adult_rules.write().unwrap().clear();
         self.allowed_domains.write().unwrap().clear();
         self.blocked_exact.write().unwrap().clear();
+        self.custom_hosts.write().unwrap().clear();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_custom_hosts_mapping() {
+        let engine = RuleEngine::new();
+        engine.add_custom_host("myrouter.local", "192.168.1.1");
+        assert_eq!(
+            engine.get_custom_host("myrouter.local"),
+            Some("192.168.1.1".to_string())
+        );
+
+        engine.remove_custom_host("myrouter.local");
+        assert_eq!(engine.get_custom_host("myrouter.local"), None);
+    }
 
     #[test]
     fn test_seed_rules_blocking() {

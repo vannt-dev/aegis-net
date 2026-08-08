@@ -125,7 +125,7 @@ pub fn build_ipv4_udp_response(request: &[u8], new_payload: &[u8]) -> Option<Vec
     out[2..4].copy_from_slice(&(total_len as u16).to_be_bytes());
     out[8] = 64; // TTL
     out[9] = 17; // UDP
-    // Swap source and destination.
+                 // Swap source and destination.
     out[12..16].copy_from_slice(&req.dst_ip);
     out[16..20].copy_from_slice(&req.src_ip);
     let ip_csum = internet_checksum(&out[..20]);

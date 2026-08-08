@@ -33,6 +33,11 @@ class VpnProvider extends ChangeNotifier {
   bool _blockMalware = true;
   bool _blockAdult = false;
 
+  bool _scheduleEnabled = false;
+  int _quietHoursStart = 22;
+  int _quietHoursEnd = 6;
+  final Map<String, String> _customHosts = {};
+
   final List<String> _bypassApps = ['com.zing.zalo', 'com.vietcombank.mobile'];
 
   Map<String, dynamic> _stats = {
@@ -72,6 +77,11 @@ class VpnProvider extends ChangeNotifier {
 
   bool get isVpnActive => _isVpnActive && !isPaused;
   bool get isConnecting => _isConnecting;
+
+  bool get scheduleEnabled => _scheduleEnabled;
+  int get quietHoursStart => _quietHoursStart;
+  int get quietHoursEnd => _quietHoursEnd;
+  Map<String, String> get customHosts => Map.unmodifiable(_customHosts);
 
   /// Reason the tunnel refused to start, or null when it is up / has never
   /// been asked. Cleared on the next successful start.
@@ -140,6 +150,9 @@ class VpnProvider extends ChangeNotifier {
     for (final domain in _blacklist) {
       AegisBridge.addBlacklist(domain);
     }
+    for (final entry in _customHosts.entries) {
+      AegisBridge.addCustomHost(entry.key, entry.value);
+    }
   }
 
   Future<void> _initPreferences() async {
@@ -151,6 +164,10 @@ class VpnProvider extends ChangeNotifier {
       _blockTrackers = prefs.getBool('block_trackers') ?? true;
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
+
+      _scheduleEnabled = prefs.getBool('schedule_enabled') ?? false;
+      _quietHoursStart = prefs.getInt('quiet_hours_start') ?? 22;
+      _quietHoursEnd = prefs.getInt('quiet_hours_end') ?? 6;
 
       final savedWhitelist = prefs.getStringList('whitelist');
       if (savedWhitelist != null) {
@@ -170,7 +187,19 @@ class VpnProvider extends ChangeNotifier {
         _bypassApps.addAll(savedBypass);
       }
 
+      final savedHosts = prefs.getStringList('custom_hosts');
+      if (savedHosts != null) {
+        _customHosts.clear();
+        for (final item in savedHosts) {
+          final parts = item.split('=');
+          if (parts.length == 2) {
+            _customHosts[parts[0]] = parts[1];
+          }
+        }
+      }
+
       AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
+      _evaluateSchedule();
       notifyListeners();
     } catch (_) {}
   }
@@ -371,11 +400,71 @@ class VpnProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSchedule(
+      {required bool enabled, int? startHour, int? endHour}) async {
+    _scheduleEnabled = enabled;
+    if (startHour != null) _quietHoursStart = startHour;
+    if (endHour != null) _quietHoursEnd = endHour;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('schedule_enabled', _scheduleEnabled);
+      await prefs.setInt('quiet_hours_start', _quietHoursStart);
+      await prefs.setInt('quiet_hours_end', _quietHoursEnd);
+    } catch (_) {}
+    _evaluateSchedule();
+    notifyListeners();
+  }
+
+  void _evaluateSchedule() {
+    if (!_scheduleEnabled) return;
+    final nowHour = DateTime.now().hour;
+    bool isQuietHours = false;
+    if (_quietHoursStart > _quietHoursEnd) {
+      isQuietHours = nowHour >= _quietHoursStart || nowHour < _quietHoursEnd;
+    } else {
+      isQuietHours = nowHour >= _quietHoursStart && nowHour < _quietHoursEnd;
+    }
+
+    if (isQuietHours && !_blockAdult) {
+      toggleCategory(3, true);
+    }
+  }
+
+  void addCustomHost(String domain, String ip) {
+    if (domain.trim().isEmpty || ip.trim().isEmpty) return;
+    final cleanDomain = domain.trim().toLowerCase();
+    final cleanIp = ip.trim();
+    _customHosts[cleanDomain] = cleanIp;
+    AegisBridge.addCustomHost(cleanDomain, cleanIp);
+    _saveCustomHostsPref();
+    notifyListeners();
+  }
+
+  void removeCustomHost(String domain) {
+    final cleanDomain = domain.trim().toLowerCase();
+    _customHosts.remove(cleanDomain);
+    AegisBridge.removeCustomHost(cleanDomain);
+    _saveCustomHostsPref();
+    notifyListeners();
+  }
+
+  Future<void> _saveCustomHostsPref() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list =
+          _customHosts.entries.map((e) => '${e.key}=${e.value}').toList();
+      await prefs.setStringList('custom_hosts', list);
+    } catch (_) {}
+  }
+
   void _startSimulation() {
     _simulationTimer?.cancel();
 
     _simulationTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!isVpnActive) return;
+
+      _evaluateSchedule();
 
       // Read real DNS query logs from Rust native FFI
       final realLogs = AegisBridge.getRecentLogs(limit: 50);
