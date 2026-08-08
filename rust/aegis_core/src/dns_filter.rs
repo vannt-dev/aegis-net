@@ -296,6 +296,10 @@ impl DnsFilterService {
     fn doh_endpoint(upstream: &str) -> String {
         if upstream.starts_with("http://") || upstream.starts_with("https://") {
             upstream.to_string()
+        } else if upstream.starts_with("tls://") {
+            format!("https://{}/dns-query", &upstream[6..])
+        } else if upstream.starts_with("dot://") {
+            format!("https://{}/dns-query", &upstream[6..])
         } else {
             format!("https://{}/dns-query", upstream)
         }
@@ -424,6 +428,15 @@ mod tests {
         assert_eq!(
             DnsFilterService::doh_endpoint("https://cloudflare-dns.com/dns-query"),
             "https://cloudflare-dns.com/dns-query"
+        );
+        // DoT endpoints (tls:// or dot://) are normalized.
+        assert_eq!(
+            DnsFilterService::doh_endpoint("tls://1.1.1.1"),
+            "https://1.1.1.1/dns-query"
+        );
+        assert_eq!(
+            DnsFilterService::doh_endpoint("dot://dns.adguard.com"),
+            "https://dns.adguard.com/dns-query"
         );
     }
 
