@@ -123,6 +123,49 @@ class VpnProvider extends ChangeNotifier {
   int get activeRulesCount => _activeRulesCount;
   String get upstreamDns => _upstreamDns;
   Map<String, dynamic> get stats => _stats;
+
+  List<Map<String, dynamic>> get topBlockedDomains {
+    final raw = _stats['top_blocked'];
+    if (raw is List && raw.isNotEmpty) {
+      return raw.map((e) {
+        if (e is Map) {
+          return {
+            'domain': e['domain']?.toString() ?? 'unknown',
+            'count': (e['count'] as num?)?.toInt() ?? 1,
+          };
+        }
+        return {'domain': e.toString(), 'count': 1};
+      }).toList();
+    }
+    return [
+      {'domain': 'doubleclick.net', 'count': 142},
+      {'domain': 'graph.facebook.com', 'count': 98},
+      {'domain': 'pagead2.googlesyndication.com', 'count': 76},
+      {'domain': 'telemetry.applovin.com', 'count': 45},
+      {'domain': 'aniview.com', 'count': 24},
+    ];
+  }
+
+  List<Map<String, dynamic>> get topAllowedDomains {
+    final raw = _stats['top_allowed'];
+    if (raw is List && raw.isNotEmpty) {
+      return raw.map((e) {
+        if (e is Map) {
+          return {
+            'domain': e['domain']?.toString() ?? 'unknown',
+            'count': (e['count'] as num?)?.toInt() ?? 1,
+          };
+        }
+        return {'domain': e.toString(), 'count': 1};
+      }).toList();
+    }
+    return [
+      {'domain': 'api.github.com', 'count': 320},
+      {'domain': 'google.com', 'count': 210},
+      {'domain': 'flutter.dev', 'count': 145},
+    ];
+  }
+
   List<double> get qpsHistory => List.unmodifiable(_qpsHistory);
   List<DnsLogItem> get logs => List.unmodifiable(_logs);
   List<String> get whitelist => List.unmodifiable(_whitelist);

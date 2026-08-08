@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../providers/theme_provider.dart';
+import '../providers/vpn_provider.dart';
 
 class AnalyticsScreen extends StatelessWidget {
   const AnalyticsScreen({super.key});
@@ -9,15 +10,11 @@ class AnalyticsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
+    final vpn = context.watch<VpnProvider>();
     final accent = theme.primaryAccent;
 
-    final topBlocked = [
-      {'domain': 'doubleclick.net', 'count': 142},
-      {'domain': 'graph.facebook.com', 'count': 98},
-      {'domain': 'pagead2.googlesyndication.com', 'count': 76},
-      {'domain': 'telemetry.applovin.com', 'count': 45},
-      {'domain': 'aniview.com', 'count': 24},
-    ];
+    final topBlocked = vpn.topBlockedDomains;
+    final topAllowed = vpn.topAllowedDomains;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
@@ -42,8 +39,8 @@ class AnalyticsScreen extends StatelessWidget {
           const SizedBox(height: 12),
           Column(
             children: topBlocked.map((item) {
-              final domain = item['domain'] as String;
-              final count = item['count'] as int;
+              final domain = item['domain'].toString();
+              final count = (item['count'] as num?)?.toInt() ?? 0;
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding:
@@ -79,6 +76,64 @@ class AnalyticsScreen extends StatelessWidget {
                         '$count blocked',
                         style: TextStyle(
                             color: Colors.redAccent.shade200,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Top Allowed / Requested Domains
+          Text(
+            'Top Requested Domains',
+            style: TextStyle(
+                fontSize: 15, fontWeight: FontWeight.bold, color: accent),
+          ),
+          const SizedBox(height: 12),
+          Column(
+            children: topAllowed.map((item) {
+              final domain = item['domain'].toString();
+              final count = (item['count'] as num?)?.toInt() ?? 0;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161B22),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle_outline_rounded,
+                            color: Color(0xFF10B981), size: 18),
+                        const SizedBox(width: 10),
+                        Text(domain,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13)),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '$count queries',
+                        style: const TextStyle(
+                            color: Color(0xFF10B981),
                             fontWeight: FontWeight.bold,
                             fontSize: 11),
                       ),

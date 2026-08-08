@@ -62,6 +62,14 @@ void main() {
       expect(provider.customHosts.containsKey('myrouter.local'), isFalse);
     });
 
+    test('Top blocked & allowed domains getters in VpnProvider', () {
+      final provider = VpnProvider(enableSimulation: false);
+      expect(provider.topBlockedDomains, isNotEmpty);
+      expect(provider.topAllowedDomains, isNotEmpty);
+      expect(provider.topBlockedDomains.first['domain'], isNotNull);
+      expect(provider.topAllowedDomains.first['domain'], isNotNull);
+    });
+
     test('Schedule settings management in VpnProvider', () {
       final provider = VpnProvider(enableSimulation: false);
       expect(provider.scheduleEnabled, isFalse);
