@@ -7,6 +7,7 @@ import '../providers/theme_provider.dart';
 import '../bridge/aegis_bridge.dart';
 import '../services/dns_benchmark_service.dart';
 import '../services/config_sync_service.dart';
+import '../services/parental_control_service.dart';
 import '../services/ios_doh_profile_service.dart';
 import '../i18n/app_strings.dart';
 
@@ -358,6 +359,123 @@ class SettingsScreen extends StatelessWidget {
             'Configuration Backup & Restore',
             style: TextStyle(
                 fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          const SizedBox(height: 24),
+
+          // Scheduled Parental Controls Section
+          StatefulBuilder(
+            builder: (context, setScheduleState) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161B22),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.schedule_rounded,
+                                color: Colors.amberAccent, size: 18),
+                            SizedBox(width: 8),
+                            Text(
+                              'Scheduled Parental Controls',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white),
+                            ),
+                          ],
+                        ),
+                        Switch(
+                          value: ParentalControlService.isScheduleEnabled,
+                          activeThumbColor: Colors.amberAccent,
+                          onChanged: (val) async {
+                            await ParentalControlService.saveSchedule(
+                              enabled: val,
+                              start: ParentalControlService.startSchedule,
+                              end: ParentalControlService.endSchedule,
+                            );
+                            setScheduleState(() {});
+                          },
+                        ),
+                      ],
+                    ),
+                    if (ParentalControlService.isScheduleEnabled) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        'Enforces Adult & Malware protection from ${ParentalControlService.startSchedule.format(context)} to ${ParentalControlService.endSchedule.format(context)}.',
+                        style: TextStyle(
+                            color: Colors.grey.shade400, fontSize: 12),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                final time = await showTimePicker(
+                                  context: context,
+                                  initialTime:
+                                      ParentalControlService.startSchedule,
+                                );
+                                if (time != null) {
+                                  await ParentalControlService.saveSchedule(
+                                    enabled: true,
+                                    start: time,
+                                    end: ParentalControlService.endSchedule,
+                                  );
+                                  setScheduleState(() {});
+                                }
+                              },
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.amberAccent,
+                                side:
+                                    const BorderSide(color: Colors.amberAccent),
+                              ),
+                              child: Text(
+                                  'Start: ${ParentalControlService.startSchedule.format(context)}'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                final time = await showTimePicker(
+                                  context: context,
+                                  initialTime:
+                                      ParentalControlService.endSchedule,
+                                );
+                                if (time != null) {
+                                  await ParentalControlService.saveSchedule(
+                                    enabled: true,
+                                    start: ParentalControlService.startSchedule,
+                                    end: time,
+                                  );
+                                  setScheduleState(() {});
+                                }
+                              },
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.amberAccent,
+                                side:
+                                    const BorderSide(color: Colors.amberAccent),
+                              ),
+                              child: Text(
+                                  'End: ${ParentalControlService.endSchedule.format(context)}'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
           ),
           const SizedBox(height: 10),
           Row(
