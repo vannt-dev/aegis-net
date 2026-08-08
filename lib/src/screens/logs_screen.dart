@@ -17,6 +17,7 @@ class LogsScreen extends StatefulWidget {
 
 class _LogsScreenState extends State<LogsScreen> {
   String _searchQuery = '';
+  String _statusFilter = 'all'; // 'all', 'blocked', 'allowed'
 
   void _exportLogsCsv(List<DnsLogItem> logs) {
     final StringBuffer csv = StringBuffer();
@@ -40,10 +41,14 @@ class _LogsScreenState extends State<LogsScreen> {
     final theme = context.watch<ThemeProvider>();
     final accent = theme.primaryAccent;
 
-    final logs = vpn.logs
-        .where((log) =>
-            log.domain.toLowerCase().contains(_searchQuery.toLowerCase()))
-        .toList();
+    final logs = vpn.logs.where((log) {
+      final matchesSearch =
+          log.domain.toLowerCase().contains(_searchQuery.toLowerCase());
+      if (!matchesSearch) return false;
+      if (_statusFilter == 'blocked') return log.isBlocked;
+      if (_statusFilter == 'allowed') return !log.isBlocked;
+      return true;
+    }).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
@@ -67,7 +72,7 @@ class _LogsScreenState extends State<LogsScreen> {
         children: [
           // Search Field
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
             child: TextField(
               onChanged: (val) => setState(() => _searchQuery = val),
               style: const TextStyle(color: Colors.white),
@@ -87,7 +92,20 @@ class _LogsScreenState extends State<LogsScreen> {
             ),
           ),
 
-          // Logs List
+          // Status Filter Chips
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Row(
+              children: [
+                _buildFilterChip('all', 'ALL LOGS', accent),
+                const SizedBox(width: 8),
+                _buildFilterChip('blocked', 'BLOCKED', Colors.redAccent),
+                const SizedBox(width: 8),
+                _buildFilterChip('allowed', 'ALLOWED', emeraldColor),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
           Expanded(
             child: logs.isEmpty
                 ? Center(
@@ -167,6 +185,35 @@ class _LogsScreenState extends State<LogsScreen> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String value, String label, Color color) {
+    final isSelected = _statusFilter == value;
+    return InkWell(
+      onTap: () => setState(() => _statusFilter = value),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? color.withValues(alpha: 0.2)
+              : const Color(0xFF161B22),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? color : Colors.white12,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? color : Colors.grey,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }
