@@ -51,12 +51,18 @@ impl RuleEngine {
         ads.insert("pagead2.googlesyndication.com".to_string());
         ads.insert("aniview.com".to_string());
         ads.insert("adnxs.com".to_string());
+        ads.insert("ad.doubleclick.net".to_string());
+        ads.insert("static.doubleclick.net".to_string());
+        ads.insert("ads.youtube.com".to_string());
 
         let mut trackers = self.tracker_rules.write().unwrap();
         trackers.insert("graph.facebook.com".to_string());
         trackers.insert("telemetry.applovin.com".to_string());
         trackers.insert("tracking.vungle.com".to_string());
         trackers.insert("analytics.google.com".to_string());
+        trackers.insert("s.youtube.com".to_string());
+        trackers.insert("video-stats.l.google.com".to_string());
+        trackers.insert("youtubei.googleapis.com".to_string());
 
         let mut malware = self.malware_rules.write().unwrap();
         malware.insert("crypto-miner.org".to_string());

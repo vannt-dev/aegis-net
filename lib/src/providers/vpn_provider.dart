@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
@@ -373,26 +372,12 @@ class VpnProvider extends ChangeNotifier {
   }
 
   void _startSimulation() {
-    if (!enableSimulation) return;
     _simulationTimer?.cancel();
-    final random = Random();
-    final sampleDomains = [
-      'ads.google.com',
-      'api.flutter.dev',
-      'analytics.facebook.com',
-      'pub.dev',
-      'doubleclick.net',
-      'cloudflare.com',
-      'telemetry.applovin.com',
-      'github.com',
-      'tracking.vungle.com',
-      'stackoverflow.com'
-    ];
 
     _simulationTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!isVpnActive) return;
 
-      // Try reading real logs from Rust native FFI first
+      // Read real DNS query logs from Rust native FFI
       final realLogs = AegisBridge.getRecentLogs(limit: 50);
       if (realLogs.isNotEmpty) {
         _logs.clear();
@@ -410,26 +395,6 @@ class VpnProvider extends ChangeNotifier {
             ),
           );
         }
-      } else {
-        // Fallback simulation when native FFI logs are not populated yet
-        final domain = sampleDomains[random.nextInt(sampleDomains.length)];
-        final isBlocked = AegisBridge.isDomainBlocked(domain);
-
-        AegisBridge.recordQuery(domain, isBlocked);
-
-        _logs.insert(
-          0,
-          DnsLogItem(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            domain: domain,
-            isBlocked: isBlocked,
-            timestamp: DateTime.now(),
-          ),
-        );
-
-        if (_logs.length > 100) {
-          _logs.removeLast();
-        }
       }
 
       _stats = AegisBridge.getStats();
@@ -443,7 +408,7 @@ class VpnProvider extends ChangeNotifier {
     if (_lastTotalQueries > 0) {
       double delta = current - _lastTotalQueries;
       if (delta < 0) delta = 0;
-      _qpsHistory.add(delta > 0 ? delta : (10 + (Random().nextDouble() * 20)));
+      _qpsHistory.add(delta);
       if (_qpsHistory.length > 7) {
         _qpsHistory.removeAt(0);
       }

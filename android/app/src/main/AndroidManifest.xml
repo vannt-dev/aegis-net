@@ -44,6 +44,17 @@
                 android:value="Runs the on-device DNS filtering tunnel that blocks ads and trackers" />
         </service>
 
+        <service
+            android:name=".AegisTileService"
+            android:icon="@drawable/ic_stat_aegis"
+            android:label="AegisNet Shield"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

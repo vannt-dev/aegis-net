@@ -49,6 +49,69 @@ class _RulesScreenState extends State<RulesScreen>
     }
   }
 
+  void _showAddCustomSourceDialog() {
+    final nameCtrl = TextEditingController();
+    final urlCtrl = TextEditingController();
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        title: const Text('Add Custom Blocklist URL',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'List Name (e.g. OISD Basic)',
+                hintStyle: TextStyle(color: Colors.grey),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: urlCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'https://raw.githubusercontent.com/...',
+                hintStyle: TextStyle(color: Colors.grey),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              final url = urlCtrl.text.trim();
+              if (name.isNotEmpty && url.startsWith('http')) {
+                final source = FilterSource(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  name: name,
+                  url: url,
+                  description: 'User custom filter list',
+                );
+                await RuleDownloaderService.addCustomSource(source);
+                if (ctx.mounted) {
+                  setState(() {});
+                  Navigator.pop(ctx);
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: emeraldColor),
+            child: const Text('ADD LIST'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final vpn = context.watch<VpnProvider>();
@@ -91,31 +154,38 @@ class _RulesScreenState extends State<RulesScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Preset Filter Lists Tab
+          // Filter Sources Presets
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _buildPresetTile(
-                title: 'AdGuard Mobile Filter',
-                description: 'Blocks ads in Android & iOS apps (128,450 rules)',
-                enabled: true,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Subscribe to Filter Lists',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.add_link, size: 16),
+                    label: const Text('ADD URL'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.cyanAccent,
+                      side: const BorderSide(color: Colors.cyanAccent),
+                    ),
+                    onPressed: _showAddCustomSourceDialog,
+                  ),
+                ],
               ),
-              _buildPresetTile(
-                title: 'EasyList DNS',
-                description:
-                    'Primary ad-blocking list for app banners & popups',
-                enabled: true,
-              ),
-              _buildPresetTile(
-                title: 'StevenBlack Unified Hosts',
-                description: 'Combined fake news, spam, and telemetry hosts',
-                enabled: true,
-              ),
-              _buildPresetTile(
-                title: 'NoCoin & Crypto-Miner Block',
-                description:
-                    'Protects device battery from background mining scripts',
-                enabled: true,
+              const SizedBox(height: 12),
+              ...RuleDownloaderService.allSources.map(
+                (source) => _buildPresetTile(
+                  title: source.name,
+                  description: source.description,
+                  enabled: source.isEnabled,
+                ),
               ),
             ],
           ),

@@ -31,9 +31,10 @@ class AegisVpnService : VpnService(), Runnable {
         /// a literal so the module still compiles against an older compileSdk.
         private const val FGS_TYPE_SPECIAL_USE = 1 shl 30
 
-        // Virtual DNS server the OS sends queries to; only this address is
+        // Virtual DNS servers the OS sends queries to; only these addresses are
         // routed into the TUN.
         private const val TUN_DNS_SERVER = "10.0.0.3"
+        private const val TUN_DNS_SERVER_V6 = "fd00:aegis::3"
 
         /// Concurrent upstream lookups allowed before queries start queueing.
         private const val WORKER_THREADS = 8
@@ -222,6 +223,20 @@ class AegisVpnService : VpnService(), Runnable {
                 .addAddress("10.0.0.2", 24)
                 .addDnsServer(TUN_DNS_SERVER)
                 .addRoute(TUN_DNS_SERVER, 32)
+                // Register IPv6 TUN & DNS Route to prevent IPv6 DNS leaks (especially on MIUI / Android 14)
+                .addAddress("fd00:aegis::2", 128)
+                .addDnsServer(TUN_DNS_SERVER_V6)
+                .addRoute(TUN_DNS_SERVER_V6, 128)
+                // Intercept common hardcoded public DNS addresses to prevent app DNS bypasses
+                .addRoute("8.8.8.8", 32)
+                .addRoute("8.8.4.4", 32)
+                .addRoute("1.1.1.1", 32)
+                .addRoute("1.0.0.1", 32)
+                .addRoute("9.9.9.9", 32)
+                .addRoute("2001:4860:4860::8888", 128)
+                .addRoute("2001:4860:4860::8844", 128)
+                .addRoute("2606:4700:4700::1111", 128)
+                .addRoute("2606:4700:4700::1001", 128)
 
             // Add disallowed apps for Split Tunneling
             for (pkg in bypassApps) {

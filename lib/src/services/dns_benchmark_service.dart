@@ -63,12 +63,7 @@ class DnsBenchmarkService {
       return stopwatch.elapsedMilliseconds;
     } catch (_) {
       stopwatch.stop();
-      // Simulated realistic fallback latency if TCP 53 port is blocked by ISP
-      if (ip == '1.1.1.1') return 12;
-      if (ip == '8.8.8.8') return 18;
-      if (ip == '94.140.14.14') return 24;
-      if (ip == '9.9.9.9') return 29;
-      return 35;
+      return -1;
     }
   }
 }
