@@ -56,6 +56,60 @@ pub fn parse_ipv4_udp(packet: &[u8]) -> Option<Ipv4UdpPacket<'_>> {
     })
 }
 
+/// A parsed view over an IPv6 + UDP datagram.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Ipv6UdpPacket<'a> {
+    pub src_ip: [u8; 16],
+    pub dst_ip: [u8; 16],
+    pub src_port: u16,
+    pub dst_port: u16,
+    pub payload: &'a [u8],
+}
+
+/// Parse an IPv6 packet carrying a UDP datagram.
+pub fn parse_ipv6_udp(packet: &[u8]) -> Option<Ipv6UdpPacket<'_>> {
+    if packet.len() < 48 {
+        return None;
+    }
+    // Version must be 6.
+    if packet[0] >> 4 != 6 {
+        return None;
+    }
+    // Next header must be UDP (17).
+    if packet[6] != 17 {
+        return None;
+    }
+
+    let payload_len = u16::from_be_bytes([packet[4], packet[5]]) as usize;
+    if 40 + payload_len > packet.len() || payload_len < 8 {
+        return None;
+    }
+
+    let mut src_ip = [0u8; 16];
+    let mut dst_ip = [0u8; 16];
+    src_ip.copy_from_slice(&packet[8..24]);
+    dst_ip.copy_from_slice(&packet[24..40]);
+
+    let udp = &packet[40..];
+    let src_port = u16::from_be_bytes([udp[0], udp[1]]);
+    let dst_port = u16::from_be_bytes([udp[2], udp[3]]);
+    let udp_len = u16::from_be_bytes([udp[4], udp[5]]) as usize;
+
+    if udp_len < 8 || 40 + udp_len > packet.len() {
+        return None;
+    }
+
+    let payload = &packet[48..40 + udp_len];
+
+    Some(Ipv6UdpPacket {
+        src_ip,
+        dst_ip,
+        src_port,
+        dst_port,
+        payload,
+    })
+}
+
 /// Build an IPv4/UDP reply to `request`, carrying `new_payload` as the UDP
 /// payload. Source/destination IPs and ports are swapped and all lengths and
 /// checksums are recomputed. Returns `None` if `request` is not IPv4/UDP.
@@ -83,6 +137,46 @@ pub fn build_ipv4_udp_response(request: &[u8], new_payload: &[u8]) -> Option<Vec
     out[24..26].copy_from_slice(&(udp_len as u16).to_be_bytes());
     // UDP checksum is optional over IPv4; 0 means "not computed".
     out[28..].copy_from_slice(new_payload);
+
+    Some(out)
+}
+
+/// Build an IPv6/UDP reply to `request`, carrying `new_payload` as the UDP
+/// payload. Source/destination IPs and ports are swapped.
+pub fn build_ipv6_udp_response(request: &[u8], new_payload: &[u8]) -> Option<Vec<u8>> {
+    let req = parse_ipv6_udp(request)?;
+
+    let udp_len = 8 + new_payload.len();
+    let total_len = 40 + udp_len;
+    let mut out = vec![0u8; total_len];
+
+    // IPv6 header
+    out[0] = 0x60; // Version 6
+    out[4..6].copy_from_slice(&(udp_len as u16).to_be_bytes());
+    out[6] = 17; // Next header: UDP
+    out[7] = 64; // Hop limit
+
+    // Swap src and dst IPv6 addresses
+    out[8..24].copy_from_slice(&req.dst_ip);
+    out[24..40].copy_from_slice(&req.src_ip);
+
+    // UDP header
+    out[40..42].copy_from_slice(&req.dst_port.to_be_bytes());
+    out[42..44].copy_from_slice(&req.src_port.to_be_bytes());
+    out[44..46].copy_from_slice(&(udp_len as u16).to_be_bytes());
+    out[48..].copy_from_slice(new_payload);
+
+    // Calculate IPv6 UDP checksum
+    let mut pseudo = Vec::with_capacity(40 + udp_len);
+    pseudo.extend_from_slice(&req.dst_ip);
+    pseudo.extend_from_slice(&req.src_ip);
+    pseudo.extend_from_slice(&(udp_len as u32).to_be_bytes());
+    pseudo.extend_from_slice(&[0, 0, 0, 17]);
+    pseudo.extend_from_slice(&out[40..]);
+
+    let csum = internet_checksum(&pseudo);
+    let csum_bytes = if csum == 0 { 0xFFFFu16 } else { csum }.to_be_bytes();
+    out[46..48].copy_from_slice(&csum_bytes);
 
     Some(out)
 }

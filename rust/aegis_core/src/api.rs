@@ -248,32 +248,57 @@ pub extern "C" fn aegis_process_ip_packet(
     }
 
     let packet = unsafe { std::slice::from_raw_parts(in_buf, in_len) };
-
-    // Only DNS (UDP port 53) queries are handled here.
-    let parsed = match crate::packet::parse_ipv4_udp(packet) {
-        Some(p) if p.dst_port == 53 => p,
-        _ => return 0,
-    };
-
     let dummy_client: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let dns_response = DNS_FILTER.handle_dns_payload(parsed.payload, dummy_client);
-    if dns_response.is_empty() {
-        return 0;
+
+    // Check IPv4 UDP port 53
+    if let Some(p) = crate::packet::parse_ipv4_udp(packet) {
+        if p.dst_port == 53 {
+            let dns_response = DNS_FILTER.handle_dns_payload(p.payload, dummy_client);
+            if dns_response.is_empty() {
+                return 0;
+            }
+
+            let reply = match crate::packet::build_ipv4_udp_response(packet, &dns_response) {
+                Some(r) => r,
+                None => return 0,
+            };
+
+            if reply.len() > out_max_len {
+                return 0;
+            }
+
+            unsafe {
+                std::ptr::copy_nonoverlapping(reply.as_ptr(), out_buf, reply.len());
+            }
+            return reply.len();
+        }
     }
 
-    let reply = match crate::packet::build_ipv4_udp_response(packet, &dns_response) {
-        Some(r) => r,
-        None => return 0,
-    };
+    // Check IPv6 UDP port 53
+    if let Some(p) = crate::packet::parse_ipv6_udp(packet) {
+        if p.dst_port == 53 {
+            let dns_response = DNS_FILTER.handle_dns_payload(p.payload, dummy_client);
+            if dns_response.is_empty() {
+                return 0;
+            }
 
-    if reply.len() > out_max_len {
-        return 0;
+            let reply = match crate::packet::build_ipv6_udp_response(packet, &dns_response) {
+                Some(r) => r,
+                None => return 0,
+            };
+
+            if reply.len() > out_max_len {
+                return 0;
+            }
+
+            unsafe {
+                std::ptr::copy_nonoverlapping(reply.as_ptr(), out_buf, reply.len());
+            }
+            return reply.len();
+        }
     }
 
-    unsafe {
-        std::ptr::copy_nonoverlapping(reply.as_ptr(), out_buf, reply.len());
-    }
-    reply.len()
+    0
 }
 
 /// Get current statistics as JSON string
