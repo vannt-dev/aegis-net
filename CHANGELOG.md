@@ -4,7 +4,127 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
-## [Unreleased]
+## [1.1.0] — 2026-08-12
+
+Android is verified on an Android 14 emulator: the tunnel establishes, a blocked
+domain answers NXDOMAIN (`ping doubleclick.net` → unknown host), a normal domain
+resolves through the DoH upstream (`ping example.com` → 172.66.147.243), and the
+dashboard shows the engine's own counters. **iOS is not verified** — the
+PacketTunnel target was only just added and none of its Swift has been compiled
+on a Mac yet. Treat this release as Android-only.
+
+### 🚨 Fixed — release blockers found by review
+
+- **The Android tunnel could not start at all.** The IPv6 ULA was written
+  `fd00:aegis::2`, which is not a valid IPv6 literal (`g`, `i` and `s` are not
+  hex digits), so `VpnService.Builder.addAddress` threw before `establish()` was
+  ever reached.
+- **DNS failed outright with the default upstream.** Routing public resolver IPs
+  (1.1.1.1, 8.8.8.8, 9.9.9.9, …) into the TUN to stop apps bypassing the filter
+  also captured the engine's *own* DoH traffic to `https://1.1.1.1/dns-query`,
+  where the DNS-only filter dropped it. Every lookup ended in SERVFAIL after a
+  5s timeout. The routes are removed; doing this properly needs a protected
+  upstream socket and is tracked in ROADMAP.md.
+- **Quick Settings tile crashed on Android 14+.** `startActivityAndCollapse(Intent)`
+  throws `UnsupportedOperationException` for apps targeting API 34, and the app
+  targets 36.
+- **Quick Settings tile crashed on Android 12+.** Tapping it with the app closed
+  called `startForegroundService` from the background, which is not an exempt
+  context for a tile click; the resulting `ForegroundServiceStartNotAllowedException`
+  went uncaught. It now falls back to opening the app.
+- **The service came back as a zombie after being killed.** `START_STICKY`
+  redelivers a null intent, which matched no branch, leaving the process alive
+  with no notification and no tunnel — the routine outcome on MIUI. It now
+  rebuilds the tunnel, using a bypass list persisted to storage so a process
+  kill does not silently route the user's excluded apps through the VPN.
+- **The tile reported stale state.** It kept showing "ON" after the tunnel went
+  down, including after MIUI revoked VPN consent.
+
+### 🌲 Rust Core Engine — DomainTrie Optimization & Custom Hosts
+
+- **DomainTrie prefix tree.** Replaced `HashSet<String>` domain matching with a
+  `DomainTrie` that stores one node per label, so a blocked zone costs one
+  terminal node instead of one entry per host. Note the behaviour change: the
+  user denylist now covers subdomains, where it used to match exact hosts only.
+- **DomainTrie memory fix.** The first version gave each node a
+  `HashMap<String, TrieNode>`, which measured at **2.5x–7.7x the memory of the
+  `HashSet` it replaced** — the opposite of the intended effect, because a
+  domain trie is mostly single-child chains and every one of them paid for a
+  hash table. Children are now a sorted `Vec<(Box<str>, TrieNode)>` searched by
+  binary search. Measured over 300k rules with a counting allocator:
+
+  | Rule shape | Before | After | `HashSet` baseline |
+  |---|---|---|---|
+  | 2-label, hosts-style | 44.4 MB | 17.6 MB | 17.5 MB |
+  | 3-label, unique second level | 142.2 MB | 31.9 MB | 18.4 MB |
+  | Many subdomains under 500 zones | 41.5 MB | 15.7 MB | 17.8 MB |
+
+  This is what made it a correctness issue rather than a tuning one: the iOS
+  PacketTunnel extension has a hard memory limit in the tens of MB, and the
+  default blocklists are large enough that the old layout got it killed.
+  Lookups are ~170 ns, so no speed claim is made either way — the trie's win is
+  that one rule covers a whole zone.
+- **Custom DNS Host Overrides (Local DNS Mapping).** Added local DNS mapping
+  support (`domain` -> `IP`, e.g. `myrouter.local` -> `192.168.1.1`) directly in
+  the Rust engine, with C-FFI exports `aegis_add_custom_host` and
+  `aegis_remove_custom_host`. Overrides answer A and AAAA with a record of the
+  matching family and NOERROR/empty otherwise, and travel in the settings
+  snapshot so the iOS extension honours them too.
+- **Bounded top-domain statistics.** The per-domain hit counters are capped at
+  2,000 names per direction, evicting the coldest half when full, and the top-5
+  is selected linearly instead of sorting and cloning the whole table on every
+  UI poll.
+
+### 🧹 Removed — numbers the UI invented
+
+Several screens filled empty state with realistic-looking sample data, which is
+indistinguishable from a measurement once it is rendered. All of it is gone; the
+screens now say they have no data yet.
+
+- Dashboard opened at 1,420 queries / 385 blocked / 27.1% / 55.1 MB on a fresh
+  install, and the query log came pre-seeded with three fabricated entries.
+- Analytics fell back to a hand-written top-blocked list (`doubleclick.net`
+  ×142, `api.github.com` ×320, …) whenever the engine had counted nothing.
+- "Hourly Query Distribution" drew seven hardcoded bars that never changed.
+  There is no hourly bucketing to plot, so the chart now shows the query-rate
+  history that does exist, retitled to match.
+- The dashboard's "Traffic & Latency" curve was seeded with
+  `[15, 28, 42, 35, 50, 48, 62]`, drawing convincing traffic on a device that
+  had never resolved anything, next to a hardcoded "14 ms (Ultra Fast)" that
+  was never measured — the engine does not time its lookups. The chart starts
+  empty and the badge reports the sample count instead.
+- Settings had an "Export / Import Configuration" button that built a JSON
+  string, discarded it, and reported "Config exported successfully: N bytes".
+  Removed — the Backup & Restore section does the real thing.
+
+### 🔢 Versioning
+
+- The settings footer hardcoded `v1.0.0` with nothing keeping it honest. It now
+  reads `kAppVersion`, and a test asserts that constant matches `pubspec.yaml`
+  — the release workflow runs the test before it builds.
+
+### 💻 Desktop Scaffolding & Desktop DNS Proxy
+
+- **Multi-Platform Desktop Shell.** Added native desktop scaffolding
+  (`windows/`, `macos/`, `linux/`) so the app compiles and runs as a native
+  desktop application.
+- **Desktop DNS Resolver Integration.** Connected `DesktopDnsProxy` through
+  `AegisBridge` and `VpnProvider` for desktop platforms.
+
+### ⏰ Quiet Hours Schedule Blocking & Custom Subscriptions
+
+- **Scheduled Parental Control.** Added `setSchedule` and quiet hours
+  evaluation (default 22:00 - 06:00) to automatically enforce Adult category
+  filters during quiet hours.
+- **Custom Hosts UI Tab.** Added a dedicated **Local DNS Hosts** tab in
+  `RulesScreen` for managing local DNS host overrides with real-time UI mapping.
+- **Status Filter Chips in Logs.** Added `ALL LOGS`, `BLOCKED`, and `ALLOWED`
+  filter chips in `LogsScreen` for fast real-time query log inspection.
+- **Full Configuration Backup.** Extended `ConfigSyncService` JSON
+  export/import to backup custom hosts, schedule settings, and custom filter
+  sources.
+- **Expanded Test Coverage.** Rust tests: **16 → 33**, Flutter unit & widget
+  tests: **7 → 28**.
 
 ### 🔴 Android — Real DNS filtering (verified on device)
 

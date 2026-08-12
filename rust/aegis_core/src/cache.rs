@@ -1,5 +1,5 @@
-use std::time::{Duration, Instant};
 use dashmap::DashMap;
+use std::time::{Duration, Instant};
 
 #[derive(Clone)]
 pub struct CachedDnsRecord {
@@ -33,7 +33,13 @@ impl DnsCache {
     /// Insert DNS payload into cache with TTL
     pub fn insert(&self, domain: String, payload: Vec<u8>) {
         let expires_at = Instant::now() + self.default_ttl;
-        self.cache.insert(domain, CachedDnsRecord { payload, expires_at });
+        self.cache.insert(
+            domain,
+            CachedDnsRecord {
+                payload,
+                expires_at,
+            },
+        );
     }
 
     /// Clear all cached entries

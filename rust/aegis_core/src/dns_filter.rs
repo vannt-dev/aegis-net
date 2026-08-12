@@ -1,10 +1,10 @@
-use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
-use log::{info, debug, warn};
-use lazy_static::lazy_static;
+use crate::cache::DnsCache;
 use crate::rule_engine::RuleEngine;
 use crate::statistics::StatisticsEngine;
-use crate::cache::DnsCache;
+use lazy_static::lazy_static;
+use log::{debug, info, warn};
+use std::net::SocketAddr;
+use std::sync::{Arc, RwLock};
 
 lazy_static! {
     static ref DOH_AGENT: ureq::Agent = ureq::AgentBuilder::new()
@@ -12,6 +12,10 @@ lazy_static! {
         .max_idle_connections(10)
         .build();
 }
+
+/// DNS QTYPE values this module answers directly.
+const QTYPE_A: u16 = 1;
+const QTYPE_AAAA: u16 = 28;
 
 pub struct DnsFilterService {
     rule_engine: Arc<RuleEngine>,
@@ -50,9 +54,24 @@ impl DnsFilterService {
         let question = Self::extract_question(payload);
 
         if let Some((domain, qtype)) = question {
+            // 0. Check Custom Host Override
+            if let Some(custom_ip_str) = self.rule_engine.get_custom_host(&domain) {
+                match Self::build_custom_host_response(payload, &custom_ip_str, qtype) {
+                    Some(resp) => {
+                        info!("CUSTOM HOST Override: {} -> {}", domain, custom_ip_str);
+                        self.stats_engine.record_request(&domain, false);
+                        return resp;
+                    }
+                    None => warn!(
+                        "Custom host for {} is not an IP address ({:?}); resolving normally",
+                        domain, custom_ip_str
+                    ),
+                }
+            }
+
             // 1. Check SafeSearch Enforcement
             if self.safesearch_enabled {
-                if let Some(safe_resp) = Self::handle_safesearch_rewrite(&domain, payload) {
+                if let Some(safe_resp) = Self::handle_safesearch_rewrite(&domain, payload, qtype) {
                     info!("SAFESEARCH Rewritten: {}", domain);
                     self.stats_engine.record_request(&domain, false);
                     return safe_resp;
@@ -93,7 +112,10 @@ impl DnsFilterService {
                 // explicitly so callers fail fast — and never cache it, or the
                 // domain stays broken for the whole TTL after the upstream
                 // recovers.
-                warn!("Upstream DoH unreachable for {}; answering SERVFAIL", domain);
+                warn!(
+                    "Upstream DoH unreachable for {}; answering SERVFAIL",
+                    domain
+                );
                 return Self::build_servfail_response(payload);
             }
 
@@ -115,7 +137,14 @@ impl DnsFilterService {
         resp
     }
 
-    fn handle_safesearch_rewrite(domain: &str, payload: &[u8]) -> Option<Vec<u8>> {
+    /// Point search-engine frontends at their SafeSearch address.
+    ///
+    /// Only A queries are rewritten to an address. An AAAA query for the same
+    /// host is answered NOERROR/empty rather than left to resolve upstream:
+    /// handing back the real IPv6 address would let the client reach the
+    /// unfiltered frontend over v6 and walk straight around the rewrite, which
+    /// now matters because the tunnel carries IPv6 DNS too.
+    fn handle_safesearch_rewrite(domain: &str, payload: &[u8], qtype: u16) -> Option<Vec<u8>> {
         let host = domain.trim_end_matches('.').to_lowercase();
 
         // Only exact search-frontend hostnames are rewritten. Matching broad
@@ -138,15 +167,18 @@ impl DnsFilterService {
         const DDG_SAFE_IP: [u8; 4] = [52, 142, 124, 215];
         const DDG_HOSTS: &[&str] = &["duckduckgo.com", "www.duckduckgo.com"];
 
-        if GOOGLE_HOSTS.contains(&host.as_str()) {
-            return Some(Self::build_ip_response(payload, GOOGLE_SAFE_IP));
-        }
+        let safe_ip = if GOOGLE_HOSTS.contains(&host.as_str()) {
+            GOOGLE_SAFE_IP
+        } else if DDG_HOSTS.contains(&host.as_str()) {
+            DDG_SAFE_IP
+        } else {
+            return None;
+        };
 
-        if DDG_HOSTS.contains(&host.as_str()) {
-            return Some(Self::build_ip_response(payload, DDG_SAFE_IP));
-        }
-
-        None
+        Some(match qtype {
+            QTYPE_A => Self::build_ip_response(payload, safe_ip),
+            _ => Self::build_empty_noerror_response(payload),
+        })
     }
 
     /// Parse the first DNS question, returning the queried domain and its QTYPE.
@@ -257,35 +289,95 @@ impl DnsFilterService {
         Some(offset + 4)
     }
 
-    fn build_ip_response(request: &[u8], ip: [u8; 4]) -> Vec<u8> {
-        if request.len() < 12 {
-            return vec![];
-        }
+    /// Answer with a single address record of `rtype` pointing at `ip`.
+    ///
+    /// The response is built from the header + question only, never from the
+    /// whole request: a request carrying an EDNS0 OPT record in its additional
+    /// section would otherwise put that OPT ahead of the answer we append, and
+    /// a client reading the first record of the answer section would find the
+    /// OPT instead of the address.
+    fn build_address_response(request: &[u8], rtype: u16, rdata: &[u8]) -> Vec<u8> {
+        let end = match Self::question_end_offset(request) {
+            Some(e) => e,
+            None => return vec![],
+        };
 
-        let mut response = request.to_vec();
-        response[2] = 0x81;
-        response[3] = 0x80;
-        response[6] = 0x00;
+        let mut response = request[..end].to_vec();
+        response[2] = 0x81; // QR=1, RD=1
+        response[3] = 0x80; // RA=1, RCODE=0 (NOERROR)
+        response[6] = 0x00; // ANCOUNT = 1
         response[7] = 0x01;
+        response[8] = 0x00; // NSCOUNT = 0
+        response[9] = 0x00;
+        response[10] = 0x00; // ARCOUNT = 0
+        response[11] = 0x00;
 
-        response.extend_from_slice(&[0xc0, 0x0c]);
-        response.extend_from_slice(&[0x00, 0x01]);
-        response.extend_from_slice(&[0x00, 0x01]);
-        response.extend_from_slice(&[0x00, 0x00, 0x01, 0x2c]);
-        response.extend_from_slice(&[0x00, 0x04]);
-        response.extend_from_slice(&ip);
+        response.extend_from_slice(&[0xc0, 0x0c]); // NAME: pointer to the question
+        response.extend_from_slice(&rtype.to_be_bytes()); // TYPE
+        response.extend_from_slice(&[0x00, 0x01]); // CLASS: IN
+        response.extend_from_slice(&[0x00, 0x00, 0x01, 0x2c]); // TTL: 300s
+        response.extend_from_slice(&(rdata.len() as u16).to_be_bytes()); // RDLENGTH
+        response.extend_from_slice(rdata);
 
         response
+    }
+
+    fn build_ip_response(request: &[u8], ip: [u8; 4]) -> Vec<u8> {
+        Self::build_address_response(request, QTYPE_A, &ip)
+    }
+
+    fn build_ipv6_response(request: &[u8], ip: [u8; 16]) -> Vec<u8> {
+        Self::build_address_response(request, QTYPE_AAAA, &ip)
+    }
+
+    /// Answer a query for a domain the user pinned to a fixed address.
+    ///
+    /// The override is authoritative for that name, so every question type is
+    /// answered here rather than forwarded: leaking an internal name like
+    /// `myrouter.local` to a public resolver is exactly what the override
+    /// exists to avoid. A/AAAA get the address when the family matches; a
+    /// family mismatch and every other QTYPE get NOERROR with no records,
+    /// which is how a resolver says "this name exists, just not for that".
+    ///
+    /// Returns `None` only when the stored value is not an IP at all, so a
+    /// typo in the mapping falls back to normal resolution instead of
+    /// black-holing the domain.
+    fn build_custom_host_response(request: &[u8], ip: &str, qtype: u16) -> Option<Vec<u8>> {
+        let addr: std::net::IpAddr = ip.parse().ok()?;
+
+        Some(match (addr, qtype) {
+            (std::net::IpAddr::V4(v4), QTYPE_A) => Self::build_ip_response(request, v4.octets()),
+            (std::net::IpAddr::V6(v6), QTYPE_AAAA) => {
+                Self::build_ipv6_response(request, v6.octets())
+            }
+            _ => Self::build_empty_noerror_response(request),
+        })
+    }
+
+    /// NOERROR with an empty answer section: the name resolves, but not to
+    /// anything of the type that was asked for.
+    fn build_empty_noerror_response(request: &[u8]) -> Vec<u8> {
+        Self::build_empty_response(request, 0x80) // RA=1, RCODE=0 (NOERROR)
     }
 
     /// Resolve the configured upstream into a full DoH endpoint URL. A bare
     /// host/IP is wrapped as `https://<host>/dns-query`; an explicit URL is
     /// used unchanged.
-    fn doh_endpoint(upstream: &str) -> String {
+    fn doh_endpoint(upstream: &str) -> Option<String> {
+        // `tls://` and `dot://` name DNS-over-TLS (RFC 7858), which runs its own
+        // protocol on port 853. Rewriting them to an https:// URL does not
+        // speak DoT — it just guesses that the same host also serves DoH on
+        // /dns-query, which is true for Cloudflare and AdGuard and false for
+        // plenty of others, and the ones where it is false fail as an opaque
+        // SERVFAIL. Reject the scheme until there is a real DoT transport.
+        if upstream.starts_with("tls://") || upstream.starts_with("dot://") {
+            return None;
+        }
+
         if upstream.starts_with("http://") || upstream.starts_with("https://") {
-            upstream.to_string()
+            Some(upstream.to_string())
         } else {
-            format!("https://{}/dns-query", upstream)
+            Some(format!("https://{}/dns-query", upstream))
         }
     }
 
@@ -296,9 +388,19 @@ impl DnsFilterService {
         use std::io::Read;
 
         let upstream = self.upstream_dns.read().unwrap().clone();
-        let endpoint = Self::doh_endpoint(&upstream);
+        let endpoint = match Self::doh_endpoint(&upstream) {
+            Some(e) => e,
+            None => {
+                warn!(
+                    "Upstream {:?} is not a DoH endpoint; DNS-over-TLS is not supported",
+                    upstream
+                );
+                return vec![];
+            }
+        };
 
-        let response = DOH_AGENT.post(&endpoint)
+        let response = DOH_AGENT
+            .post(&endpoint)
             .set("Content-Type", "application/dns-message")
             .set("Accept", "application/dns-message")
             .send_bytes(payload);
@@ -306,7 +408,12 @@ impl DnsFilterService {
         match response {
             Ok(resp) => {
                 let mut buf = Vec::new();
-                if resp.into_reader().take(65_535).read_to_end(&mut buf).is_ok() {
+                if resp
+                    .into_reader()
+                    .take(65_535)
+                    .read_to_end(&mut buf)
+                    .is_ok()
+                {
                     buf
                 } else {
                     vec![]
@@ -324,44 +431,180 @@ mod tests {
     #[test]
     fn test_dns_domain_extraction() {
         let mock_packet = vec![
-            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-            0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00, 0x01,
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, b'e',
+            b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00,
+            0x01,
         ];
 
         let question = DnsFilterService::extract_question(&mock_packet);
         assert_eq!(question, Some(("example.com".to_string(), 1)));
     }
 
+    /// A well-formed query for `example.com` with the given QTYPE.
+    fn query_with_qtype(qtype: u16) -> Vec<u8> {
+        let mut q = vec![
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, b'e',
+            b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00,
+        ];
+        q.extend_from_slice(&qtype.to_be_bytes());
+        q.extend_from_slice(&[0x00, 0x01]); // QCLASS: IN
+        q
+    }
+
+    /// (ANCOUNT, first answer's TYPE) for a response, or None with no answers.
+    fn first_answer_type(response: &[u8]) -> (u16, Option<u16>) {
+        let ancount = u16::from_be_bytes([response[6], response[7]]);
+        if ancount == 0 {
+            return (0, None);
+        }
+        let end = DnsFilterService::question_end_offset(response).expect("question");
+        // NAME (2, compressed pointer) then TYPE.
+        let rtype = u16::from_be_bytes([response[end + 2], response[end + 3]]);
+        (ancount, Some(rtype))
+    }
+
     #[test]
     fn test_safesearch_rewrites_search_host_only() {
-        // Minimal valid DNS header (>=12 bytes) is enough for response building.
-        let query = vec![
-            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
+        let query = query_with_qtype(QTYPE_A);
 
         // Search frontends SHOULD be rewritten to the SafeSearch IP.
-        assert!(DnsFilterService::handle_safesearch_rewrite("www.google.com", &query).is_some());
-        assert!(DnsFilterService::handle_safesearch_rewrite("google.com", &query).is_some());
-        assert!(DnsFilterService::handle_safesearch_rewrite("duckduckgo.com", &query).is_some());
+        assert!(
+            DnsFilterService::handle_safesearch_rewrite("www.google.com", &query, QTYPE_A)
+                .is_some()
+        );
+        assert!(
+            DnsFilterService::handle_safesearch_rewrite("google.com", &query, QTYPE_A).is_some()
+        );
+        assert!(
+            DnsFilterService::handle_safesearch_rewrite("duckduckgo.com", &query, QTYPE_A)
+                .is_some()
+        );
 
         // Non-search Google subdomains must NOT be rewritten (would break Gmail/Drive).
-        assert!(DnsFilterService::handle_safesearch_rewrite("mail.google.com", &query).is_none());
-        assert!(DnsFilterService::handle_safesearch_rewrite("drive.google.com", &query).is_none());
+        assert!(
+            DnsFilterService::handle_safesearch_rewrite("mail.google.com", &query, QTYPE_A)
+                .is_none()
+        );
+        assert!(
+            DnsFilterService::handle_safesearch_rewrite("drive.google.com", &query, QTYPE_A)
+                .is_none()
+        );
 
         // Look-alike / attacker domains must NOT be rewritten.
-        assert!(DnsFilterService::handle_safesearch_rewrite("evilgoogle.com", &query).is_none());
         assert!(
-            DnsFilterService::handle_safesearch_rewrite("google.com.attacker.net", &query).is_none()
+            DnsFilterService::handle_safesearch_rewrite("evilgoogle.com", &query, QTYPE_A)
+                .is_none()
         );
+        assert!(DnsFilterService::handle_safesearch_rewrite(
+            "google.com.attacker.net",
+            &query,
+            QTYPE_A
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn test_safesearch_does_not_leak_the_real_address_over_aaaa() {
+        let query = query_with_qtype(QTYPE_AAAA);
+
+        // Forwarding the AAAA would hand back the unfiltered frontend's real
+        // IPv6 address, letting the client route around the rewrite entirely.
+        let response =
+            DnsFilterService::handle_safesearch_rewrite("www.google.com", &query, QTYPE_AAAA)
+                .expect("AAAA for a rewritten host is answered locally");
+
+        assert_eq!(response[3] & 0x0f, 0x00, "expected NOERROR");
+        assert_eq!(first_answer_type(&response), (0, None));
+    }
+
+    #[test]
+    fn test_custom_host_answers_a_and_aaaa_with_matching_types() {
+        // An A query for a v4 mapping gets the address back as an A record.
+        let a_query = query_with_qtype(QTYPE_A);
+        let response =
+            DnsFilterService::build_custom_host_response(&a_query, "192.168.1.1", QTYPE_A)
+                .expect("a valid IP is answered");
+        assert_eq!(first_answer_type(&response), (1, Some(QTYPE_A)));
+        assert_eq!(&response[response.len() - 4..], &[192, 168, 1, 1]);
+
+        // A v6 mapping answers AAAA with a 16-byte AAAA record.
+        let aaaa_query = query_with_qtype(QTYPE_AAAA);
+        let response =
+            DnsFilterService::build_custom_host_response(&aaaa_query, "fd00::1", QTYPE_AAAA)
+                .expect("a valid IP is answered");
+        assert_eq!(first_answer_type(&response), (1, Some(QTYPE_AAAA)));
+        assert_eq!(
+            &response[response.len() - 16..],
+            &[0xfd, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01]
+        );
+    }
+
+    #[test]
+    fn test_custom_host_never_answers_the_wrong_record_type() {
+        // Handing an A record back for an AAAA question is a type mismatch the
+        // client cannot use; NOERROR with no records is the honest answer.
+        let aaaa_query = query_with_qtype(QTYPE_AAAA);
+        let response =
+            DnsFilterService::build_custom_host_response(&aaaa_query, "192.168.1.1", QTYPE_AAAA)
+                .expect("a valid IP is answered");
+
+        assert_eq!(response[3] & 0x0f, 0x00, "expected NOERROR");
+        assert_eq!(first_answer_type(&response), (0, None));
+
+        // The same holds for question types the override says nothing about,
+        // which are still answered here rather than leaked to a public
+        // resolver — the whole point of pinning an internal name.
+        const QTYPE_TXT: u16 = 16;
+        let txt_query = query_with_qtype(QTYPE_TXT);
+        let response =
+            DnsFilterService::build_custom_host_response(&txt_query, "192.168.1.1", QTYPE_TXT)
+                .expect("a valid IP is answered");
+        assert_eq!(first_answer_type(&response), (0, None));
+    }
+
+    #[test]
+    fn test_custom_host_with_a_malformed_ip_falls_back_to_resolving() {
+        // A typo in the mapping must not black-hole the domain.
+        let query = query_with_qtype(QTYPE_A);
+        assert_eq!(
+            DnsFilterService::build_custom_host_response(&query, "not-an-ip", QTYPE_A),
+            None
+        );
+    }
+
+    #[test]
+    fn test_answer_is_not_appended_behind_an_edns_opt_record() {
+        // A resolver that sends EDNS0 carries an OPT record in the additional
+        // section. Copying the whole request and appending the answer left the
+        // OPT sitting where the first answer record should be, so the client
+        // read the OPT as the address.
+        let mut query = query_with_qtype(QTYPE_A);
+        query[11] = 0x01; // ARCOUNT = 1
+        query.extend_from_slice(&[
+            0x00, // root NAME
+            0x00, 0x29, // TYPE: OPT
+            0x10, 0x00, // UDP payload size 4096
+            0x00, 0x00, 0x00, 0x00, // extended RCODE + flags
+            0x00, 0x00, // RDLENGTH 0
+        ]);
+
+        let response = DnsFilterService::build_ip_response(&query, [10, 0, 0, 1]);
+
+        assert_eq!(first_answer_type(&response), (1, Some(QTYPE_A)));
+        assert_eq!(
+            u16::from_be_bytes([response[10], response[11]]),
+            0,
+            "the OPT record must be dropped, not left in the response"
+        );
+        assert_eq!(&response[response.len() - 4..], &[10, 0, 0, 1]);
     }
 
     #[test]
     fn test_extract_question_returns_domain_and_qtype() {
         let packet = vec![
-            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-            0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00, 0x01,
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, b'e',
+            b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00,
+            0x01,
         ];
 
         let (domain, qtype) = DnsFilterService::extract_question(&packet).unwrap();
@@ -394,25 +637,36 @@ mod tests {
     fn test_doh_endpoint_normalization() {
         // A bare IP/host is turned into a full DoH URL.
         assert_eq!(
-            DnsFilterService::doh_endpoint("1.1.1.1"),
-            "https://1.1.1.1/dns-query"
+            DnsFilterService::doh_endpoint("1.1.1.1").as_deref(),
+            Some("https://1.1.1.1/dns-query")
         );
         assert_eq!(
-            DnsFilterService::doh_endpoint("dns.google"),
-            "https://dns.google/dns-query"
+            DnsFilterService::doh_endpoint("dns.google").as_deref(),
+            Some("https://dns.google/dns-query")
         );
         // An explicit URL is used verbatim.
         assert_eq!(
-            DnsFilterService::doh_endpoint("https://cloudflare-dns.com/dns-query"),
-            "https://cloudflare-dns.com/dns-query"
+            DnsFilterService::doh_endpoint("https://cloudflare-dns.com/dns-query").as_deref(),
+            Some("https://cloudflare-dns.com/dns-query")
+        );
+    }
+
+    #[test]
+    fn test_dot_upstreams_are_rejected_not_silently_rewritten() {
+        // Rewriting tls:// to https:// does not speak DoT; it gambles that the
+        // same host serves DoH on /dns-query. Refuse instead of guessing.
+        assert_eq!(DnsFilterService::doh_endpoint("tls://1.1.1.1"), None);
+        assert_eq!(
+            DnsFilterService::doh_endpoint("dot://dns.adguard.com"),
+            None
         );
     }
 
     #[test]
     fn test_blocked_response_is_nxdomain() {
         let mock_packet = vec![
-            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x03, b'a', b'd', b's', 0x00, 0x00, 0x01, 0x00, 0x01,
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, b'a',
+            b'd', b's', 0x00, 0x00, 0x01, 0x00, 0x01,
         ];
 
         let response = DnsFilterService::build_blocked_response(&mock_packet);
@@ -434,8 +688,8 @@ mod tests {
     #[test]
     fn test_servfail_response_is_distinct_from_nxdomain() {
         let mock_packet = vec![
-            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x03, b'a', b'b', b'c', 0x00, 0x00, 0x01, 0x00, 0x01,
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, b'a',
+            b'b', b'c', 0x00, 0x00, 0x01, 0x00, 0x01,
         ];
 
         let response = DnsFilterService::build_servfail_response(&mock_packet);
@@ -461,9 +715,9 @@ mod tests {
         );
 
         let query = vec![
-            0xaa, 0xbb, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-            0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00, 0x01,
+            0xaa, 0xbb, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, b'e',
+            b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00,
+            0x01,
         ];
 
         let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
@@ -471,7 +725,10 @@ mod tests {
 
         // Dropping the packet black-holes the query: every client on the device
         // then retries until it times out, with no signal that DNS is down.
-        assert!(!response.is_empty(), "upstream failure must not drop the query");
+        assert!(
+            !response.is_empty(),
+            "upstream failure must not drop the query"
+        );
         assert_eq!(response[3] & 0x0f, 0x02, "expected SERVFAIL");
         assert_eq!(&response[0..2], &query[0..2]);
     }
@@ -485,9 +742,8 @@ mod tests {
         );
 
         let query = vec![
-            0x11, 0x22, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x05, b'c', b'a', b'c', b'h', b'e', 0x03, b'n', b'e', b't', 0x00,
-            0x00, 0x01, 0x00, 0x01,
+            0x11, 0x22, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, b'c',
+            b'a', b'c', b'h', b'e', 0x03, b'n', b'e', b't', 0x00, 0x00, 0x01, 0x00, 0x01,
         ];
         let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
 

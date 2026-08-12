@@ -227,6 +227,21 @@ class AegisBridge {
     }
   }
 
+  /// Drop every rule that came from a downloaded filter list, restoring the
+  /// engine's built-in seeds. The user's allow/deny lists and host overrides
+  /// survive.
+  ///
+  /// Call before re-loading the lists during a sync: loading only ever
+  /// inserts, so without this a blocklist the user unsubscribed from keeps
+  /// blocking for the life of the process.
+  static void clearDownloadedRules() {
+    if (_useNativeFfi) {
+      AegisNativeBindings.clearDownloadedRules();
+    } else {
+      _loadedRules.clear();
+    }
+  }
+
   /// Check if a domain is blocked by current rule engine
   static bool isDomainBlocked(String domain) {
     final clean = domain.trim().toLowerCase();
@@ -288,6 +303,31 @@ class AegisBridge {
     _blacklistedDomains.remove(clean);
     publishSettings();
   }
+
+  static final Map<String, String> _customHosts = {};
+
+  /// Add custom DNS host mapping (Local DNS Override e.g. domain -> IP)
+  static void addCustomHost(String domain, String ip) {
+    final cleanDomain = domain.trim().toLowerCase();
+    final cleanIp = ip.trim();
+    if (_useNativeFfi) {
+      AegisNativeBindings.addCustomHost(cleanDomain, cleanIp);
+    }
+    _customHosts[cleanDomain] = cleanIp;
+    publishSettings();
+  }
+
+  /// Remove custom DNS host mapping
+  static void removeCustomHost(String domain) {
+    final cleanDomain = domain.trim().toLowerCase();
+    if (_useNativeFfi) {
+      AegisNativeBindings.removeCustomHost(cleanDomain);
+    }
+    _customHosts.remove(cleanDomain);
+    publishSettings();
+  }
+
+  static Map<String, String> get customHosts => Map.unmodifiable(_customHosts);
 
   /// Enable/disable a rule category on the engine.
   /// (0: Ads, 1: Trackers, 2: Malware, 3: Adult)

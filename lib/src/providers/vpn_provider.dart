@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
@@ -34,33 +33,43 @@ class VpnProvider extends ChangeNotifier {
   bool _blockMalware = true;
   bool _blockAdult = false;
 
+  /// Scheduled parental controls. Bounds are minutes since midnight so a
+  /// schedule can start at 22:30, which whole hours could not express.
+  bool _scheduleEnabled = false;
+  int _quietHoursStart = 22 * 60;
+  int _quietHoursEnd = 6 * 60;
+
+  /// What the Adult toggle was set to before the schedule forced it on, or
+  /// null when the schedule is not currently enforcing.
+  ///
+  /// Without this the schedule is one-way: it switches Adult filtering on at
+  /// 22:00 and nothing ever switches it back, so one night leaves the category
+  /// on permanently. Persisted, because the app can be killed inside the
+  /// window and reopened outside it.
+  bool? _blockAdultBeforeSchedule;
+
+  Timer? _scheduleTimer;
+
+  final Map<String, String> _customHosts = {};
+
   final List<String> _bypassApps = ['com.zing.zalo', 'com.vietcombank.mobile'];
 
+  /// Counters, zeroed until the engine reports its own.
+  ///
+  /// These were seeded with 1420 queries / 385 blocked / 27.1% / 55.1 MB, which
+  /// is what the dashboard showed on a fresh install before the tunnel had ever
+  /// run — invented numbers, indistinguishable on screen from a measurement.
   Map<String, dynamic> _stats = {
-    'total_queries': 1420,
-    'blocked_queries': 385,
-    'allowed_queries': 1035,
-    'block_rate_percentage': 27.1,
-    'estimated_data_saved_bytes': 57750000,
+    'total_queries': 0,
+    'blocked_queries': 0,
+    'allowed_queries': 0,
+    'block_rate_percentage': 0.0,
+    'estimated_data_saved_bytes': 0,
   };
 
-  final List<DnsLogItem> _logs = [
-    DnsLogItem(
-        id: '1',
-        domain: 'pagead2.googlesyndication.com',
-        isBlocked: true,
-        timestamp: DateTime.now().subtract(const Duration(seconds: 5))),
-    DnsLogItem(
-        id: '2',
-        domain: 'api.github.com',
-        isBlocked: false,
-        timestamp: DateTime.now().subtract(const Duration(seconds: 12))),
-    DnsLogItem(
-        id: '3',
-        domain: 'graph.facebook.com',
-        isBlocked: true,
-        timestamp: DateTime.now().subtract(const Duration(seconds: 20))),
-  ];
+  /// Query log, empty until the engine records something. Previously seeded
+  /// with three fabricated entries for the same reason as [_stats].
+  final List<DnsLogItem> _logs = [];
 
   final List<String> _whitelist = ['mybank.com', 'workplace.com'];
   final List<String> _blacklist = ['bad-tracker.net', 'crypto-miner.org'];
@@ -68,11 +77,25 @@ class VpnProvider extends ChangeNotifier {
   Timer? _simulationTimer;
   final bool enableSimulation;
 
-  final List<double> _qpsHistory = [15, 28, 42, 35, 50, 48, 62];
+  /// Queries-per-sample history driving the traffic chart. Starts empty; it was
+  /// seeded with `[15, 28, 42, 35, 50, 48, 62]`, which drew a convincing
+  /// traffic curve on a device that had never resolved anything.
+  final List<double> _qpsHistory = [];
   double _lastTotalQueries = 0;
 
   bool get isVpnActive => _isVpnActive && !isPaused;
   bool get isConnecting => _isConnecting;
+
+  bool get scheduleEnabled => _scheduleEnabled;
+
+  /// Quiet-hours bounds as minutes since midnight.
+  int get quietHoursStart => _quietHoursStart;
+  int get quietHoursEnd => _quietHoursEnd;
+
+  /// True while the schedule is actively forcing the Adult category on.
+  bool get scheduleEnforcing => _blockAdultBeforeSchedule != null;
+
+  Map<String, String> get customHosts => Map.unmodifiable(_customHosts);
 
   /// Reason the tunnel refused to start, or null when it is up / has never
   /// been asked. Cleared on the next successful start.
@@ -114,6 +137,31 @@ class VpnProvider extends ChangeNotifier {
   int get activeRulesCount => _activeRulesCount;
   String get upstreamDns => _upstreamDns;
   Map<String, dynamic> get stats => _stats;
+
+  /// Most-blocked domains the engine has seen, highest first.
+  ///
+  /// Empty until the engine has counted something. It used to fall back to a
+  /// hand-written list — plausible domains with plausible counts — which is
+  /// indistinguishable from real data on screen; an analytics view that
+  /// invents numbers is worse than one that admits it has none.
+  List<Map<String, dynamic>> get topBlockedDomains =>
+      _domainCounts(_stats['top_blocked']);
+
+  /// Most-resolved allowed domains, highest first. Empty until counted.
+  List<Map<String, dynamic>> get topAllowedDomains =>
+      _domainCounts(_stats['top_allowed']);
+
+  List<Map<String, dynamic>> _domainCounts(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => {
+              'domain': e['domain']?.toString() ?? 'unknown',
+              'count': (e['count'] as num?)?.toInt() ?? 0,
+            })
+        .toList();
+  }
+
   List<double> get qpsHistory => List.unmodifiable(_qpsHistory);
   List<DnsLogItem> get logs => List.unmodifiable(_logs);
   List<String> get whitelist => List.unmodifiable(_whitelist);
@@ -125,10 +173,36 @@ class VpnProvider extends ChangeNotifier {
   bool get blockMalware => _blockMalware;
   bool get blockAdult => _blockAdult;
 
+  /// Rule category ids, matching the Rust engine's `RuleCategory` ordering.
+  static const int _adultCategoryId = 3;
+
+  static const String _prefScheduleEnabled = 'schedule_enabled';
+  static const String _prefQuietStart = 'quiet_hours_start_minutes';
+  static const String _prefQuietEnd = 'quiet_hours_end_minutes';
+  static const String _prefScheduleRestore = 'schedule_prior_block_adult';
+
+  late final Future<void> _ready;
+
+  /// Completes once persisted settings have been loaded into this object.
+  ///
+  /// Loading is asynchronous but the constructor is not, so anything that
+  /// writes state has to wait for it — a setting changed while the load is
+  /// still in flight would otherwise be overwritten by the stored value a
+  /// moment later.
+  Future<void> get ready => _ready;
+
   VpnProvider({this.enableSimulation = true}) {
-    _initPreferences();
-    _bootstrapEngine();
+    _ready = _initialize();
     _startAutoSyncScheduler();
+    _startScheduleWatcher();
+  }
+
+  Future<void> _initialize() async {
+    await _initPreferences();
+    await _bootstrapEngine();
+    // Last, so a window that ended while the app was closed hands the Adult
+    // toggle back instead of leaving it forced on.
+    await _evaluateSchedule();
   }
 
   /// Initialize the core engine, then push the persisted allow/deny lists into
@@ -141,6 +215,20 @@ class VpnProvider extends ChangeNotifier {
     for (final domain in _blacklist) {
       AegisBridge.addBlacklist(domain);
     }
+    for (final entry in _customHosts.entries) {
+      AegisBridge.addCustomHost(entry.key, entry.value);
+    }
+  }
+
+  /// Re-read everything from storage and push it back into the engine.
+  ///
+  /// Restoring a config backup writes SharedPreferences behind this object's
+  /// back; without this the restore only takes effect on the next launch while
+  /// the UI still shows the previous lists.
+  Future<void> reloadFromPreferences() async {
+    await _initPreferences();
+    await _bootstrapEngine();
+    notifyListeners();
   }
 
   Future<void> _initPreferences() async {
@@ -152,6 +240,15 @@ class VpnProvider extends ChangeNotifier {
       _blockTrackers = prefs.getBool('block_trackers') ?? true;
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
+
+      _scheduleEnabled = prefs.getBool(_prefScheduleEnabled) ?? false;
+      // The bounds were whole hours before; migrate them once so an existing
+      // 22:00 -> 06:00 schedule does not come back as 00:22 -> 00:06.
+      _quietHoursStart = prefs.getInt(_prefQuietStart) ??
+          (prefs.getInt('quiet_hours_start') ?? 22) * 60;
+      _quietHoursEnd = prefs.getInt(_prefQuietEnd) ??
+          (prefs.getInt('quiet_hours_end') ?? 6) * 60;
+      _blockAdultBeforeSchedule = prefs.getBool(_prefScheduleRestore);
 
       final savedWhitelist = prefs.getStringList('whitelist');
       if (savedWhitelist != null) {
@@ -169,6 +266,17 @@ class VpnProvider extends ChangeNotifier {
       if (savedBypass != null) {
         _bypassApps.clear();
         _bypassApps.addAll(savedBypass);
+      }
+
+      final savedHosts = prefs.getStringList('custom_hosts');
+      if (savedHosts != null) {
+        _customHosts.clear();
+        for (final item in savedHosts) {
+          final parts = item.split('=');
+          if (parts.length == 2) {
+            _customHosts[parts[0]] = parts[1];
+          }
+        }
       }
 
       AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
@@ -291,10 +399,20 @@ class VpnProvider extends ChangeNotifier {
   }
 
   void toggleCategory(int categoryId, bool value) async {
+    await _applyCategory(categoryId, value);
+    notifyListeners();
+  }
+
+  /// Push a category toggle to the engine and to storage.
+  ///
+  /// Split out from [toggleCategory] so the schedule can flip a category
+  /// without the notify — it batches its own — while still going through one
+  /// path that keeps the UI, the native engine, and prefs in agreement.
+  Future<void> _applyCategory(int categoryId, bool value) async {
     if (categoryId == 0) _blockAds = value;
     if (categoryId == 1) _blockTrackers = value;
     if (categoryId == 2) _blockMalware = value;
-    if (categoryId == 3) _blockAdult = value;
+    if (categoryId == _adultCategoryId) _blockAdult = value;
 
     // Apply the change to the native rule engine, not just the UI.
     AegisBridge.setCategory(categoryId, value);
@@ -306,8 +424,6 @@ class VpnProvider extends ChangeNotifier {
       await prefs.setBool('block_malware', _blockMalware);
       await prefs.setBool('block_adult', _blockAdult);
     } catch (_) {}
-
-    notifyListeners();
   }
 
   void setUpstreamDns(String provider) async {
@@ -372,27 +488,153 @@ class VpnProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Update the schedule. Bounds are minutes since midnight; pass null to
+  /// leave one unchanged.
+  Future<void> setSchedule({
+    required bool enabled,
+    int? startMinutes,
+    int? endMinutes,
+  }) async {
+    await _ready;
+    _scheduleEnabled = enabled;
+    if (startMinutes != null) _quietHoursStart = startMinutes % (24 * 60);
+    if (endMinutes != null) _quietHoursEnd = endMinutes % (24 * 60);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefScheduleEnabled, _scheduleEnabled);
+      await prefs.setInt(_prefQuietStart, _quietHoursStart);
+      await prefs.setInt(_prefQuietEnd, _quietHoursEnd);
+    } catch (_) {}
+
+    await _evaluateSchedule();
+    notifyListeners();
+  }
+
+  /// True when `now` falls inside the quiet-hours window.
+  bool isWithinQuietHours(DateTime now) {
+    final minutes = now.hour * 60 + now.minute;
+    if (_quietHoursStart == _quietHoursEnd) return false;
+    if (_quietHoursStart < _quietHoursEnd) {
+      return minutes >= _quietHoursStart && minutes < _quietHoursEnd;
+    }
+    // Overnight window, e.g. 22:00 -> 06:00.
+    return minutes >= _quietHoursStart || minutes < _quietHoursEnd;
+  }
+
+  /// Force the Adult category on inside the window and hand the user's own
+  /// setting back when the window ends.
+  Future<void> _evaluateSchedule() async {
+    final shouldEnforce =
+        _scheduleEnabled && isWithinQuietHours(DateTime.now());
+
+    if (shouldEnforce && _blockAdultBeforeSchedule == null) {
+      _blockAdultBeforeSchedule = _blockAdult;
+      await _persistScheduleRestorePoint();
+      if (!_blockAdult) {
+        await _applyCategory(_adultCategoryId, true);
+      }
+      notifyListeners();
+      return;
+    }
+
+    if (!shouldEnforce && _blockAdultBeforeSchedule != null) {
+      final restoreTo = _blockAdultBeforeSchedule!;
+      _blockAdultBeforeSchedule = null;
+      await _persistScheduleRestorePoint();
+      if (_blockAdult != restoreTo) {
+        await _applyCategory(_adultCategoryId, restoreTo);
+      }
+      notifyListeners();
+    }
+  }
+
+  Future<void> _persistScheduleRestorePoint() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_blockAdultBeforeSchedule == null) {
+        await prefs.remove(_prefScheduleRestore);
+      } else {
+        await prefs.setBool(_prefScheduleRestore, _blockAdultBeforeSchedule!);
+      }
+    } catch (_) {}
+  }
+
+  /// Re-check the window on a timer. The schedule has to advance whether or
+  /// not the tunnel is up, so this does not ride along on the stats poll.
+  void _startScheduleWatcher() {
+    _scheduleTimer?.cancel();
+    _scheduleTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
+      await _ready;
+      await _evaluateSchedule();
+    });
+  }
+
+  /// True if `value` is an IPv4 or IPv6 literal the engine can answer with.
+  ///
+  /// Kept here rather than using `InternetAddress.tryParse` so the check works
+  /// on web too, where `dart:io` is unavailable.
+  static bool isValidIpAddress(String value) {
+    final ip = value.trim();
+    if (ip.isEmpty) return false;
+
+    if (ip.contains(':')) {
+      // IPv6: hex groups, at most one `::` run, up to 8 groups.
+      if (RegExp(r'[^0-9a-fA-F:]').hasMatch(ip)) return false;
+      if (ip.split('::').length > 2) return false;
+      final groups = ip.split(':').where((g) => g.isNotEmpty);
+      if (groups.length > 8) return false;
+      return groups.every((g) => g.length <= 4);
+    }
+
+    final octets = ip.split('.');
+    if (octets.length != 4) return false;
+    return octets.every((o) {
+      if (o.isEmpty || o.length > 3) return false;
+      final n = int.tryParse(o);
+      return n != null && n >= 0 && n <= 255;
+    });
+  }
+
+  /// Pin a domain to a fixed address. Returns false for input the engine
+  /// would silently ignore, so the caller can say so instead of showing a
+  /// mapping that never takes effect.
+  bool addCustomHost(String domain, String ip) {
+    final cleanDomain = domain.trim().toLowerCase();
+    final cleanIp = ip.trim();
+    if (cleanDomain.isEmpty || !isValidIpAddress(cleanIp)) return false;
+
+    _customHosts[cleanDomain] = cleanIp;
+    AegisBridge.addCustomHost(cleanDomain, cleanIp);
+    _saveCustomHostsPref();
+    notifyListeners();
+    return true;
+  }
+
+  void removeCustomHost(String domain) {
+    final cleanDomain = domain.trim().toLowerCase();
+    _customHosts.remove(cleanDomain);
+    AegisBridge.removeCustomHost(cleanDomain);
+    _saveCustomHostsPref();
+    notifyListeners();
+  }
+
+  Future<void> _saveCustomHostsPref() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list =
+          _customHosts.entries.map((e) => '${e.key}=${e.value}').toList();
+      await prefs.setStringList('custom_hosts', list);
+    } catch (_) {}
+  }
+
   void _startSimulation() {
-    if (!enableSimulation) return;
     _simulationTimer?.cancel();
-    final random = Random();
-    final sampleDomains = [
-      'ads.google.com',
-      'api.flutter.dev',
-      'analytics.facebook.com',
-      'pub.dev',
-      'doubleclick.net',
-      'cloudflare.com',
-      'telemetry.applovin.com',
-      'github.com',
-      'tracking.vungle.com',
-      'stackoverflow.com'
-    ];
 
     _simulationTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!isVpnActive) return;
 
-      // Try reading real logs from Rust native FFI first
+      // Read real DNS query logs from Rust native FFI
       final realLogs = AegisBridge.getRecentLogs(limit: 50);
       if (realLogs.isNotEmpty) {
         _logs.clear();
@@ -410,26 +652,6 @@ class VpnProvider extends ChangeNotifier {
             ),
           );
         }
-      } else {
-        // Fallback simulation when native FFI logs are not populated yet
-        final domain = sampleDomains[random.nextInt(sampleDomains.length)];
-        final isBlocked = AegisBridge.isDomainBlocked(domain);
-
-        AegisBridge.recordQuery(domain, isBlocked);
-
-        _logs.insert(
-          0,
-          DnsLogItem(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            domain: domain,
-            isBlocked: isBlocked,
-            timestamp: DateTime.now(),
-          ),
-        );
-
-        if (_logs.length > 100) {
-          _logs.removeLast();
-        }
       }
 
       _stats = AegisBridge.getStats();
@@ -443,7 +665,7 @@ class VpnProvider extends ChangeNotifier {
     if (_lastTotalQueries > 0) {
       double delta = current - _lastTotalQueries;
       if (delta < 0) delta = 0;
-      _qpsHistory.add(delta > 0 ? delta : (10 + (Random().nextDouble() * 20)));
+      _qpsHistory.add(delta);
       if (_qpsHistory.length > 7) {
         _qpsHistory.removeAt(0);
       }
@@ -460,6 +682,7 @@ class VpnProvider extends ChangeNotifier {
     _simulationTimer?.cancel();
     _pauseTimer?.cancel();
     _autoSyncTimer?.cancel();
+    _scheduleTimer?.cancel();
     super.dispose();
   }
 }

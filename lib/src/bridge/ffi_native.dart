@@ -15,11 +15,22 @@ typedef AegisLoadRulesDart = int Function(
 typedef AegisAddDomainC = Void Function(Pointer<Utf8> domain);
 typedef AegisAddDomainDart = void Function(Pointer<Utf8> domain);
 
+typedef AegisAddCustomHostC = Void Function(
+    Pointer<Utf8> domain, Pointer<Utf8> ip);
+typedef AegisAddCustomHostDart = void Function(
+    Pointer<Utf8> domain, Pointer<Utf8> ip);
+
+typedef AegisRemoveCustomHostC = Void Function(Pointer<Utf8> domain);
+typedef AegisRemoveCustomHostDart = void Function(Pointer<Utf8> domain);
+
 typedef AegisIsBlockedC = Int32 Function(Pointer<Utf8> domain);
 typedef AegisIsBlockedDart = int Function(Pointer<Utf8> domain);
 
 typedef AegisSetCategoryC = Void Function(Int32 categoryId, Int32 enabled);
 typedef AegisSetCategoryDart = void Function(int categoryId, int enabled);
+
+typedef AegisVoidC = Void Function();
+typedef AegisVoidDart = void Function();
 
 typedef AegisSetUpstreamDnsC = Void Function(Pointer<Utf8> upstream);
 typedef AegisSetUpstreamDnsDart = void Function(Pointer<Utf8> upstream);
@@ -60,8 +71,11 @@ class AegisNativeBindings {
   static AegisAddDomainDart? _addBlacklist;
   static AegisAddDomainDart? _removeWhitelist;
   static AegisAddDomainDart? _removeBlacklist;
+  static AegisAddCustomHostDart? _addCustomHost;
+  static AegisRemoveCustomHostDart? _removeCustomHost;
   static AegisIsBlockedDart? _isDomainBlocked;
   static AegisSetCategoryDart? _setCategory;
+  static AegisVoidDart? _clearDownloadedRules;
   static AegisSetUpstreamDnsDart? _setUpstreamDns;
   static AegisGetStatsDart? _getStatsJson;
   static AegisGetLogsDart? _getRecentLogsJson;
@@ -104,12 +118,20 @@ class AegisNativeBindings {
         _removeBlacklist = _lib!
             .lookupFunction<AegisAddDomainC, AegisAddDomainDart>(
                 'aegis_remove_blacklist');
+        _addCustomHost = _lib!
+            .lookupFunction<AegisAddCustomHostC, AegisAddCustomHostDart>(
+                'aegis_add_custom_host');
+        _removeCustomHost = _lib!
+            .lookupFunction<AegisRemoveCustomHostC, AegisRemoveCustomHostDart>(
+                'aegis_remove_custom_host');
         _isDomainBlocked = _lib!
             .lookupFunction<AegisIsBlockedC, AegisIsBlockedDart>(
                 'aegis_is_domain_blocked');
         _setCategory = _lib!
             .lookupFunction<AegisSetCategoryC, AegisSetCategoryDart>(
                 'aegis_set_category');
+        _clearDownloadedRules = _lib!.lookupFunction<AegisVoidC, AegisVoidDart>(
+            'aegis_clear_downloaded_rules');
         _setUpstreamDns = _lib!
             .lookupFunction<AegisSetUpstreamDnsC, AegisSetUpstreamDnsDart>(
                 'aegis_set_upstream_dns');
@@ -184,9 +206,30 @@ class AegisNativeBindings {
     malloc.free(ptr);
   }
 
+  static void addCustomHost(String domain, String ip) {
+    if (!_isLoaded || _addCustomHost == null) return;
+    final ptrDomain = domain.toNativeUtf8();
+    final ptrIp = ip.toNativeUtf8();
+    _addCustomHost!(ptrDomain, ptrIp);
+    malloc.free(ptrDomain);
+    malloc.free(ptrIp);
+  }
+
+  static void removeCustomHost(String domain) {
+    if (!_isLoaded || _removeCustomHost == null) return;
+    final ptrDomain = domain.toNativeUtf8();
+    _removeCustomHost!(ptrDomain);
+    malloc.free(ptrDomain);
+  }
+
   static void setCategory(int categoryId, bool enabled) {
     if (!_isLoaded || _setCategory == null) return;
     _setCategory!(categoryId, enabled ? 1 : 0);
+  }
+
+  static void clearDownloadedRules() {
+    if (!_isLoaded || _clearDownloadedRules == null) return;
+    _clearDownloadedRules!();
   }
 
   static void setUpstreamDns(String upstream) {

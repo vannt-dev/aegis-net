@@ -12,7 +12,10 @@ class AegisNativeBindings {
   static void addBlacklist(String domain) {}
   static void removeWhitelist(String domain) {}
   static void removeBlacklist(String domain) {}
+  static void addCustomHost(String domain, String ip) {}
+  static void removeCustomHost(String domain) {}
   static void setCategory(int categoryId, bool enabled) {}
+  static void clearDownloadedRules() {}
   static void setUpstreamDns(String upstream) {}
   static bool isDomainBlocked(String domain) => false;
   static String? getStatsJson() => null;
