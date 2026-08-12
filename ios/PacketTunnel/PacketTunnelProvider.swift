@@ -8,10 +8,51 @@ import NetworkExtension
 /// Runner app. See `ios/IOS_SETUP.md` for how to create that target in Xcode.
 class PacketTunnelProvider: NEPacketTunnelProvider {
 
-    /// Virtual DNS server the OS sends queries to. Only this address is routed
-    /// into the tunnel, so non-DNS traffic and the engine's own upstream DoH
-    /// lookups stay on the real network (mirrors the Android DNS-only routing).
+    /// Virtual DNS servers the OS sends queries to. Only these addresses are
+    /// routed into the tunnel, so non-DNS traffic and the engine's own upstream
+    /// DoH lookups stay on the real network (mirrors the Android DNS-only
+    /// routing).
+    ///
+    /// The v6 half matters on IPv6-only carrier networks, where advertising a
+    /// v4-only resolver leaves the system with nothing usable to ask.
     private let tunnelDnsServer = "10.0.0.3"
+    private let tunnelDnsServerV6 = "fd00:aeed::3"
+    private let tunnelAddressV6 = "fd00:aeed::2"
+
+    /// Concurrent upstream lookups before queries start being dropped,
+    /// mirroring `AegisVpnService.WORKER_THREADS` on Android.
+    private static let workerCount = 8
+
+    /// Filtering runs here, off the packetFlow callback. `aegis_process_ip_packet`
+    /// blocks for a whole upstream DoH round trip on a cache miss, so doing it
+    /// inline made every DNS query on the device wait behind one lookup.
+    private let filterQueue = DispatchQueue(
+        label: "com.aegisnet.tunnel.filter",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
+
+    /// Serialises writes back into the tunnel. Workers finish out of order and
+    /// two of them writing at once can interleave into a torn packet.
+    private let writeQueue = DispatchQueue(label: "com.aegisnet.tunnel.write")
+
+    /// Caps in-flight work so a stalled upstream cannot pile up unbounded
+    /// packets in an extension with a hard memory limit.
+    private let workerSlots = DispatchSemaphore(value: PacketTunnelProvider.workerCount)
+
+    /// Queries dropped because every worker was busy. Invisible otherwise, and
+    /// the difference between "the upstream is slow" and "we are dropping
+    /// traffic" is the first thing worth knowing when filtering misbehaves.
+    private var droppedUnderLoad: UInt64 = 0
+
+    /// Cleared by `stopTunnel` so the read loop stops re-arming itself.
+    private var isRunning = true
+    private let stateLock = NSLock()
+
+    private var running: Bool {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return isRunning }
+        set { stateLock.lock(); isRunning = newValue; stateLock.unlock() }
+    }
 
     /// Shared with the app; see ios/IOS_SETUP.md. This process has its own copy
     /// of the Rust engine, so the app's rules only arrive through these files.
@@ -44,6 +85,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             completionHandler(TunnelError.sharedContainerUnavailable)
             return
         }
+        _ = aegis_init()
+        running = true
         loadSharedState(from: container)
 
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
@@ -54,7 +97,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         ]
         settings.ipv4Settings = ipv4
 
-        let dns = NEDNSSettings(servers: [tunnelDnsServer])
+        // Without a v6 resolver the system has nothing to ask on IPv6-only
+        // carrier networks, and on dual-stack it can prefer a v6 resolver
+        // learned outside the tunnel — a DNS leak straight past the filter.
+        let ipv6 = NEIPv6Settings(addresses: [tunnelAddressV6], networkPrefixLengths: [128])
+        ipv6.includedRoutes = [
+            NEIPv6Route(destinationAddress: tunnelDnsServerV6, networkPrefixLength: 128)
+        ]
+        settings.ipv6Settings = ipv6
+
+        let dns = NEDNSSettings(servers: [tunnelDnsServer, tunnelDnsServerV6])
         dns.matchDomains = [""] // intercept every DNS query
         settings.dnsSettings = dns
 
@@ -76,8 +128,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let settingsPath = container.appendingPathComponent(settingsFileName).path
         let status = aegis_import_settings(settingsPath)
         if status != 0 {
+            // -3 is a version mismatch, which in practice means the app and
+            // this extension were built from different copies of the Rust
+            // engine. Filtering then runs on defaults only, so say so loudly.
             NSLog("[AegisTunnel] no usable settings snapshot (status \(status))")
         }
+
+        // Loading only inserts, and this runs again on every reload message,
+        // so start from a clean slate or an unsubscribed list keeps blocking
+        // for as long as the extension process lives.
+        aegis_clear_downloaded_rules()
 
         // Category ids match the Dart/Rust mapping: 0 Ads, 1 Trackers,
         // 2 Malware, 3 Adult.
@@ -117,40 +177,74 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         completionHandler?(Data("ok".utf8))
     }
 
+    /// Reads the tunnel and hands each packet to the filter pool.
+    ///
+    /// The read re-arms immediately; filtering does not happen here.
+    /// `aegis_process_ip_packet` blocks for the whole upstream DoH round trip
+    /// on a cache miss, so running it on this callback made every DNS query on
+    /// the device queue behind that one lookup. This mirrors the worker pool
+    /// `AegisVpnService` uses on Android.
     private func readPackets() {
         packetFlow.readPackets { [weak self] packets, protocols in
-            guard let self = self else { return }
-
-            var outPackets: [Data] = []
-            var outProtocols: [NSNumber] = []
+            guard let self = self, self.running else { return }
 
             for (index, packet) in packets.enumerated() {
-                // Hand each IPv4 packet to the Rust engine; a non-empty result
-                // is a synthesized DNS reply to write straight back.
-                var outBuf = [UInt8](repeating: 0, count: packet.count + 1500)
-                let written = packet.withUnsafeBytes { rawIn -> Int in
-                    guard let inBase = rawIn.bindMemory(to: UInt8.self).baseAddress else { return 0 }
-                    return outBuf.withUnsafeMutableBufferPointer { outPtr in
-                        Int(aegis_process_ip_packet(inBase, packet.count,
-                                                    outPtr.baseAddress, outPtr.count))
+                let proto = protocols[index]
+
+                // Bound the in-flight work: an extension has a hard memory
+                // limit, and a stalled upstream would otherwise let packets
+                // pile up until the process is killed.
+                //
+                // Dropping beats blocking here — this is a system callback,
+                // and stalling it would freeze the read loop for every query
+                // rather than just this one. A resolver under load drops too,
+                // and the client retries; just count it, or it is invisible.
+                guard self.workerSlots.wait(timeout: .now()) == .success else {
+                    self.droppedUnderLoad += 1
+                    if self.droppedUnderLoad % 100 == 1 {
+                        NSLog("[AegisTunnel] dropped \(self.droppedUnderLoad) queries under load")
+                    }
+                    continue
+                }
+
+                self.filterQueue.async {
+                    defer { self.workerSlots.signal() }
+                    guard self.running else { return }
+
+                    if let reply = self.filter(packet) {
+                        // Serialised: workers finish out of order.
+                        self.writeQueue.async {
+                            guard self.running else { return }
+                            self.packetFlow.writePackets([reply], withProtocols: [proto])
+                        }
                     }
                 }
-                if written > 0 {
-                    outPackets.append(Data(outBuf.prefix(written)))
-                    outProtocols.append(protocols[index])
-                }
-            }
-
-            if !outPackets.isEmpty {
-                self.packetFlow.writePackets(outPackets, withProtocols: outProtocols)
             }
 
             self.readPackets()
         }
     }
 
+    /// Run one packet through the Rust engine. Returns the synthesized DNS
+    /// reply, or nil when the packet is not a DNS query we answer.
+    private func filter(_ packet: Data) -> Data? {
+        var outBuf = [UInt8](repeating: 0, count: packet.count + 1500)
+        let written = packet.withUnsafeBytes { rawIn -> Int in
+            guard let inBase = rawIn.bindMemory(to: UInt8.self).baseAddress else { return 0 }
+            return outBuf.withUnsafeMutableBufferPointer { outPtr in
+                Int(aegis_process_ip_packet(inBase, packet.count,
+                                            outPtr.baseAddress, outPtr.count))
+            }
+        }
+        return written > 0 ? Data(outBuf.prefix(written)) : nil
+    }
+
     override func stopTunnel(with reason: NEProviderStopReason,
                              completionHandler: @escaping () -> Void) {
+        // Stops the read loop re-arming and makes in-flight workers drop their
+        // results instead of writing into a torn-down tunnel.
+        running = false
+
         statsTimer?.cancel()
         statsTimer = nil
 
