@@ -350,12 +350,63 @@ impl RuleEngine {
 
     /// Parse an AdGuard/EasyList exception rule (`@@||domain^`), which
     /// un-blocks a domain regardless of which category blocked it.
+    ///
+    /// The trailing `^` is optional here for the same reason it is optional on
+    /// a block rule. `@@` alone is not enough: `@@not-a-real-rule.com` is not
+    /// an exception rule, and treating it as one would silently un-block a
+    /// domain — over-blocking is bad, but wrongly *allowing* something is
+    /// worse for a filter.
     fn parse_exception_line(line: &str) -> Option<String> {
-        if line.starts_with("@@||") && line.ends_with('^') {
-            let domain = &line[4..line.len() - 1];
-            return Some(domain.to_lowercase());
+        if let Some(body) = line.strip_prefix("@@||") {
+            return Self::extract_hostname(body, false);
         }
         None
+    }
+
+    /// Pull a bare hostname out of an AdGuard/EasyList rule body.
+    ///
+    /// Returns `None` for everything the DNS matcher cannot represent —
+    /// wildcards, regex, and rules narrowed to a URL path or a resource type.
+    /// Those used to reach a catch-all branch that stored the raw line as
+    /// though it were a domain. Measured against the lists actually shipped:
+    /// 669 such entries in the AdGuard DNS filter and 17,779 in EasyList, none
+    /// of which can match any query, every one of them counted in the "rules
+    /// loaded" figure shown to the user.
+    ///
+    /// `require_dot` separates the two syntaxes. `||zip^` deliberately blocks a
+    /// whole TLD, so the `||` form has to accept a dotless name; a bare line
+    /// has to look like a domain first, or every stray word in a list becomes
+    /// a rule.
+    fn extract_hostname(body: &str, require_dot: bool) -> Option<String> {
+        // A network rule stops describing the hostname at the first of these:
+        // the `^` separator, a path, `$` modifiers, or an option list.
+        let host = body
+            .split(['^', '/', '$', ',', '='])
+            .next()?
+            .trim()
+            .trim_end_matches('.')
+            .to_lowercase();
+
+        if host.is_empty() || (require_dot && !host.contains('.')) {
+            return None;
+        }
+        if host.starts_with('.') || host.starts_with('-') {
+            return None;
+        }
+        // Anything outside this set means it is not a hostname: `*` wildcards,
+        // regex punctuation, query-string fragments.
+        if !host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+        {
+            return None;
+        }
+        // `a..b` is not a name; an empty label would also break trie traversal.
+        if host.split('.').any(|label| label.is_empty()) {
+            return None;
+        }
+
+        Some(host)
     }
 
     fn parse_rule_line(line: &str) -> Option<String> {
@@ -369,20 +420,20 @@ impl RuleEngine {
         if parts.len() >= 2 && (parts[0] == "0.0.0.0" || parts[0] == "127.0.0.1") {
             let domain = parts[1].to_lowercase();
             if domain != "localhost" && domain != "broadcasthost" {
-                return Some(domain);
+                return Self::extract_hostname(&domain, true);
             }
         }
 
-        if line.starts_with("||") && line.ends_with('^') {
-            let domain = &line[2..line.len() - 1];
-            return Some(domain.to_lowercase());
+        // `||domain^` and `||domain` are the same rule — the trailing separator
+        // is optional, and 172 rules in the AdGuard DNS filter omit it.
+        // Requiring it sent those to the fallback below, which stored them with
+        // the `||` still attached, so they never matched a single query while
+        // the UI counted them as loaded.
+        if let Some(body) = line.strip_prefix("||") {
+            return Self::extract_hostname(body, false);
         }
 
-        if !line.contains(' ') && line.contains('.') {
-            return Some(line.to_lowercase());
-        }
-
-        None
+        Self::extract_hostname(line, true)
     }
 
     pub fn add_whitelist(&self, domain: &str) {
@@ -559,6 +610,63 @@ mod tests {
 
         engine.remove_custom_host("myrouter.local");
         assert_eq!(engine.get_custom_host("myrouter.local"), None);
+    }
+
+    #[test]
+    fn test_block_rule_without_a_trailing_separator_still_loads() {
+        // 172 rules in the shipping AdGuard DNS filter are written this way.
+        // They used to fall through to the bare-line branch, which stored them
+        // with the `||` still attached, so they matched nothing at all.
+        let engine = RuleEngine::new();
+        let count = engine.load_rules_text("||direct-specific.com", RuleCategory::Ads);
+
+        assert_eq!(count, 1);
+        assert!(engine.is_blocked("direct-specific.com"));
+        assert!(engine.is_blocked("sub.direct-specific.com"));
+    }
+
+    #[test]
+    fn test_exception_without_a_trailing_separator_still_loads() {
+        let engine = RuleEngine::new();
+        let count =
+            engine.load_rules_text("||shady.example^\n@@||shady.example", RuleCategory::Ads);
+
+        assert_eq!(count, 2);
+        assert!(!engine.is_blocked("shady.example"));
+    }
+
+    #[test]
+    fn test_rules_the_dns_matcher_cannot_express_are_dropped() {
+        // Every one of these used to be stored verbatim as a "domain": they
+        // occupy memory, inflate the rule count reported to the user, and can
+        // never match a query. A DNS filter sees a hostname and nothing else.
+        let engine = RuleEngine::new();
+        let unusable = [
+            "||ads.livetv*.me^",                   // wildcard
+            "/^139\\.45\\.197\\.2(4[0-9])/",       // regex
+            "-ads-manager/$domain=~wordpress.org", // path + modifier
+            "-ad-sidebar.$image",                  // resource type
+            "&sst.gcsub=",                         // query-string fragment
+            ".beacon.min.js",                      // leading dot, not a name
+            "example.com##.ad-banner",             // cosmetic filter
+            "||a..b^",                             // empty label
+        ];
+
+        let count = engine.load_rules_text(&unusable.join("\n"), RuleCategory::Ads);
+        assert_eq!(count, 0, "nothing here is a hostname");
+    }
+
+    #[test]
+    fn test_modifiers_and_separators_are_stripped_to_the_hostname() {
+        let engine = RuleEngine::new();
+        let count = engine.load_rules_text(
+            "||tracker.example^$important\n||other.example^third-party",
+            RuleCategory::Trackers,
+        );
+
+        assert_eq!(count, 2);
+        assert!(engine.is_blocked("tracker.example"));
+        assert!(engine.is_blocked("other.example"));
     }
 
     #[test]
