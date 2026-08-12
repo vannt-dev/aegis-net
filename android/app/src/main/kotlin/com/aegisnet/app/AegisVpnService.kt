@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
@@ -27,14 +28,22 @@ class AegisVpnService : VpnService(), Runnable {
         private const val CHANNEL_ID = "aegis_vpn_status"
         private const val NOTIFICATION_ID = 0xA3
 
+        private const val PREFS_NAME = "aegis_vpn_service"
+        private const val KEY_BYPASS_APPS = "bypass_apps"
+
         /// ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE (API 34). Spelled as
         /// a literal so the module still compiles against an older compileSdk.
         private const val FGS_TYPE_SPECIAL_USE = 1 shl 30
 
         // Virtual DNS servers the OS sends queries to; only these addresses are
         // routed into the TUN.
+        //
+        // The v6 address is a ULA and has to be a valid IPv6 literal: every
+        // group is hexadecimal, so a mnemonic like "aegis" does not parse and
+        // Builder.addAddress throws before the tunnel is ever established.
         private const val TUN_DNS_SERVER = "10.0.0.3"
-        private const val TUN_DNS_SERVER_V6 = "fd00:aegis::3"
+        private const val TUN_DNS_SERVER_V6 = "fd00:aeed::3"
+        private const val TUN_ADDRESS_V6 = "fd00:aeed::2"
 
         /// Concurrent upstream lookups allowed before queries start queueing.
         private const val WORKER_THREADS = 8
@@ -120,7 +129,23 @@ class AegisVpnService : VpnService(), Runnable {
     private val tunWriteLock = Any()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        // START_STICKY redelivers a NULL intent after the system restarts a
+        // killed service, which on MIUI is a routine event rather than an edge
+        // case. Falling through the `when` left the process alive with no
+        // notification and no tunnel: a zombie that reports "protected" to
+        // nobody and, on Android 12, risks being killed again for never
+        // calling startForeground() after a startForegroundService() start.
+        //
+        // Rebuild the tunnel instead, using the bypass list the last start
+        // used, since the intent that carried it is gone.
+        if (intent == null) {
+            Log.i(TAG, "Restarted by the system; rebuilding the tunnel")
+            enterForeground()
+            startVpn(loadBypassApps())
+            return START_STICKY
+        }
+
+        when (intent.action) {
             ACTION_START -> {
                 // Go foreground BEFORE building the tunnel. Android 12 kills a
                 // service that has not posted its notification within 5s of
@@ -128,11 +153,34 @@ class AegisVpnService : VpnService(), Runnable {
                 // services within seconds of the user leaving the app — which
                 // is why the tunnel kept dying on Xiaomi devices.
                 enterForeground()
-                startVpn(intent.getStringArrayListExtra("bypassApps") ?: arrayListOf())
+                val bypassApps = intent.getStringArrayListExtra("bypassApps") ?: arrayListOf()
+                saveBypassApps(bypassApps)
+                startVpn(bypassApps)
             }
             ACTION_STOP -> stopVpn()
+            else -> Log.w(TAG, "Ignoring unknown action ${intent.action}")
         }
         return START_STICKY
+    }
+
+    /// Split-tunnel exclusions, remembered across a restart.
+    ///
+    /// A static would be lost with the process, and MIUI kills the process, not
+    /// just the service — the sticky restart would then rebuild the tunnel with
+    /// no exclusions at all and quietly route the user's banking and messaging
+    /// apps through it.
+    private fun saveBypassApps(apps: List<String>) {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet(KEY_BYPASS_APPS, apps.toSet())
+            .apply()
+    }
+
+    private fun loadBypassApps(): ArrayList<String> {
+        val saved = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getStringSet(KEY_BYPASS_APPS, emptySet())
+            .orEmpty()
+        return ArrayList(saved)
     }
 
     private fun enterForeground() {
@@ -212,31 +260,31 @@ class AegisVpnService : VpnService(), Runnable {
             return
         }
         try {
-            // DNS-only tunnel: advertise a private DNS server and route ONLY
-            // its address into the TUN. Every other packet (including the Rust
-            // engine's own upstream DoH lookups for allowed queries) stays on
-            // the real network, so nothing loops and non-DNS traffic is
-            // untouched. This also removes the need to protect() upstream
-            // sockets.
+            // DNS-only tunnel: advertise a private DNS server on both families
+            // and route ONLY those two addresses into the TUN. Every other
+            // packet (including the Rust engine's own upstream DoH lookups for
+            // allowed queries) stays on the real network, so nothing loops and
+            // non-DNS traffic is untouched. This also removes the need to
+            // protect() upstream sockets.
+            //
+            // Routing public resolver IPs (1.1.1.1, 8.8.8.8, ...) in here to
+            // stop apps from bypassing us looks tempting, but a VpnService
+            // route captures every port, not just 53. The engine's own DoH
+            // upstream is https://1.1.1.1/dns-query by default, so those routes
+            // fed its TCP/443 traffic back into the TUN, where the DNS-only
+            // filter dropped it and every lookup ended in SERVFAIL. Doing this
+            // safely needs a protected upstream socket plus a forwarding path
+            // for the non-DNS traffic it captures — tracked in ROADMAP.md.
             val builder = Builder()
                 .setSession("AegisNet Shield")
                 .addAddress("10.0.0.2", 24)
                 .addDnsServer(TUN_DNS_SERVER)
                 .addRoute(TUN_DNS_SERVER, 32)
-                // Register IPv6 TUN & DNS Route to prevent IPv6 DNS leaks (especially on MIUI / Android 14)
-                .addAddress("fd00:aegis::2", 128)
+                // The v6 half closes the IPv6 DNS leak that MIUI / Android 14
+                // open by handing apps an IPv6 resolver alongside the v4 one.
+                .addAddress(TUN_ADDRESS_V6, 128)
                 .addDnsServer(TUN_DNS_SERVER_V6)
                 .addRoute(TUN_DNS_SERVER_V6, 128)
-                // Intercept common hardcoded public DNS addresses to prevent app DNS bypasses
-                .addRoute("8.8.8.8", 32)
-                .addRoute("8.8.4.4", 32)
-                .addRoute("1.1.1.1", 32)
-                .addRoute("1.0.0.1", 32)
-                .addRoute("9.9.9.9", 32)
-                .addRoute("2001:4860:4860::8888", 128)
-                .addRoute("2001:4860:4860::8844", 128)
-                .addRoute("2606:4700:4700::1111", 128)
-                .addRoute("2606:4700:4700::1001", 128)
 
             // Add disallowed apps for Split Tunneling
             for (pkg in bypassApps) {
@@ -269,6 +317,7 @@ class AegisVpnService : VpnService(), Runnable {
             )
             vpnThread = Thread(this, "AegisVpnThread").also { it.start() }
             publishStartResult(true, null)
+            AegisTileService.requestTileRefresh(this)
             Log.i(TAG, "Aegis Local VPN Started Successfully with Split Tunneling")
         } catch (e: SecurityException) {
             // Consent was never granted, or another app holds the VPN slot.
@@ -285,6 +334,7 @@ class AegisVpnService : VpnService(), Runnable {
     private fun failStart(reason: String) {
         isRunning = false
         publishStartResult(false, reason)
+        AegisTileService.requestTileRefresh(this)
         leaveForeground()
         stopSelf()
     }
@@ -292,6 +342,7 @@ class AegisVpnService : VpnService(), Runnable {
     private fun stopVpn() {
         isRunning = false
         markTunnelDown()
+        AegisTileService.requestTileRefresh(this)
         try {
             // Drop in-flight work before the fd goes away, so workers are not
             // left writing to a closed descriptor.
@@ -349,10 +400,10 @@ class AegisVpnService : VpnService(), Runnable {
         try {
             val reply = nativeProcessPacket(packet)
 
-            // An empty reply means the packet was not a parseable IPv4/UDP DNS
-            // query. Only TUN_DNS_SERVER/32 is routed into this interface, so
-            // that is a malformed or non-IPv4 datagram aimed at our virtual
-            // resolver, and dropping it is correct.
+            // An empty reply means the packet was not a parseable IPv4/IPv6 UDP
+            // DNS query. Only TUN_DNS_SERVER and TUN_DNS_SERVER_V6 are routed
+            // into this interface, so that is a malformed datagram aimed at our
+            // virtual resolver, and dropping it is correct.
             if (reply.isEmpty()) return
 
             // Every DNS query gets an answer here: blocked (NXDOMAIN),
