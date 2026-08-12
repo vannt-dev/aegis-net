@@ -37,6 +37,7 @@ class DesktopDnsProxy {
   static const List<int> defaultPorts = [53, 5300];
 
   static RawDatagramSocket? _socket;
+  static StreamSubscription<RawSocketEvent>? _subscription;
   static _EngineWorker? _worker;
 
   static bool get isRunning => _socket != null;
@@ -82,7 +83,7 @@ class DesktopDnsProxy {
     _socket = socket;
     _worker = await _EngineWorker.spawn();
 
-    socket.listen(
+    _subscription = socket.listen(
       _onSocketEvent,
       onError: (Object e) => debugPrint('[AegisDesktop] socket error: $e'),
     );
@@ -93,8 +94,34 @@ class DesktopDnsProxy {
   }
 
   static Future<void> stop() async {
-    _socket?.close();
+    final socket = _socket;
+    final subscription = _subscription;
     _socket = null;
+    _subscription = null;
+
+    if (socket != null) {
+      socket.close();
+
+      // close() only queues the shutdown. The stream's done event is what says
+      // the OS has actually let go of the port, and returning before then is
+      // not academic: start() calls stop() and rebinds immediately, with
+      // reuseAddress deliberately off, so a restart on a fixed port could fail
+      // with "address already in use" and fall through to the next candidate.
+      //
+      // Bounded, because a socket that never reports done must not wedge
+      // shutdown — by that point the port is the OS's problem either way.
+      if (subscription != null) {
+        try {
+          await subscription.asFuture<void>().timeout(
+                const Duration(seconds: 2),
+              );
+        } catch (_) {
+          // Already closed, errored, or too slow. Nothing left to wait for.
+        }
+        await subscription.cancel();
+      }
+    }
+
     await _worker?.dispose();
     _worker = null;
   }
