@@ -177,6 +177,49 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
 
+      # ------------------------------------------------------- ghi chú phát hành
+      # Cả hai kênh phân phối trước đây chỉ đưa ra TIÊU ĐỀ. GitHub Release dùng
+      # generate_release_notes, tức là một danh sách title PR; còn mail Firebase
+      # gửi head_commit.message, mà body mặc định của merge commit đúng bằng
+      # title của PR. Nên bản v1.0.0 đến tay tester chỉ có:
+      #
+      #   AegisNet 1.0.0 (build N)
+      #   Merge pull request #12 from vannt-dev/develop
+      #   Release gate: develop → main (mở sớm để CI chạy liên tục)
+      #
+      # Không một chữ nào về những gì đã thay đổi. Phần viết tử tế nhất nằm ở
+      # CHANGELOG.md và không tới được đâu cả, kể cả cảnh báo kiểu "bản này chưa
+      # verify trên iOS" — thứ mà tester cần biết trước khi cài.
+      #
+      # So khớp theo tiền tố chính xác (index == 1) chứ không dùng regex: số
+      # phiên bản có dấu chấm, và trong regex thì "1.1.0" khớp luôn cả "1x1y0".
+      - name: Trích ghi chú phát hành từ CHANGELOG
+        if: steps.ver.outputs.publish == 'true'
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          awk -v hdr="## [$VERSION]" '
+            index($0, hdr) == 1 { found = 1; next }
+            /^## \[/            { if (found) exit }
+            found
+          ' CHANGELOG.md > RELEASE_NOTES.md
+
+          # Quên viết CHANGELOG cho phiên bản mới thì dừng ở đây, thay vì phát
+          # hành một bản không có ghi chú rồi mới phát hiện.
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "::error::CHANGELOG.md không có mục [$VERSION]. Thêm mục đó rồi phát hành lại."
+            exit 1
+          fi
+
+          # Firebase giới hạn ghi chú ở 16384 ký tự và cắt cụt trong im lặng nếu
+          # vượt. Cắt sẵn, có chừa chỗ cho dòng tiêu đề ghép vào bên dưới.
+          {
+            echo "AegisNet $VERSION (build ${{ github.run_number }})"
+            echo
+            head -c 15000 RELEASE_NOTES.md
+          } > FIREBASE_NOTES.md
+
+          echo "Ghi chú: $(wc -c < RELEASE_NOTES.md) ký tự cho GitHub, $(wc -c < FIREBASE_NOTES.md) cho Firebase."
+
       # ------------------------------------------------------------ phân phối
       # GitHub Release đứng TRƯỚC Firebase: nó chỉ phụ thuộc file đã build, còn
       # Firebase phụ thuộc dịch vụ ngoài. Xếp ngược lại thì một trục trặc phía
@@ -193,6 +236,9 @@ jobs:
           tag_name: v${{ steps.ver.outputs.version }}
           target_commitish: ${{ github.sha }}
           name: AegisNet ${{ steps.ver.outputs.version }}
+          # body_path đứng trước phần tự sinh: người đọc thấy ghi chú thật
+          # trước, danh sách PR ở dưới làm tham chiếu.
+          body_path: RELEASE_NOTES.md
           generate_release_notes: true
           files: build/app/outputs/flutter-apk/app-release.apk
 
@@ -204,6 +250,5 @@ jobs:
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           groups: testers
           file: build/app/outputs/flutter-apk/app-release.apk
-          releaseNotes: |
-            AegisNet ${{ steps.ver.outputs.version }} (build ${{ github.run_number }})
-            ${{ github.event.head_commit.message }}
+          # Dòng tiêu đề đã được ghép sẵn vào đầu file ở bước trích ghi chú.
+          releaseNotesFile: FIREBASE_NOTES.md
