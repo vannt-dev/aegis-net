@@ -227,6 +227,21 @@ class AegisBridge {
     }
   }
 
+  /// Drop every rule that came from a downloaded filter list, restoring the
+  /// engine's built-in seeds. The user's allow/deny lists and host overrides
+  /// survive.
+  ///
+  /// Call before re-loading the lists during a sync: loading only ever
+  /// inserts, so without this a blocklist the user unsubscribed from keeps
+  /// blocking for the life of the process.
+  static void clearDownloadedRules() {
+    if (_useNativeFfi) {
+      AegisNativeBindings.clearDownloadedRules();
+    } else {
+      _loadedRules.clear();
+    }
+  }
+
   /// Check if a domain is blocked by current rule engine
   static bool isDomainBlocked(String domain) {
     final clean = domain.trim().toLowerCase();

@@ -1,13 +1,12 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../app_version.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 import '../bridge/aegis_bridge.dart';
 import '../services/dns_benchmark_service.dart';
 import '../services/config_sync_service.dart';
-import '../services/parental_control_service.dart';
 import '../services/ios_doh_profile_service.dart';
 import '../i18n/app_strings.dart';
 
@@ -143,6 +142,31 @@ class SettingsScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  /// Render minutes-since-midnight in the user's locale and clock format.
+  String _formatMinutes(BuildContext context, int minutes) {
+    return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60).format(context);
+  }
+
+  Future<void> _pickScheduleBound(
+    BuildContext context,
+    VpnProvider vpn, {
+    required bool isStart,
+  }) async {
+    final current = isStart ? vpn.quietHoursStart : vpn.quietHoursEnd;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+    );
+    if (picked == null) return;
+
+    final minutes = picked.hour * 60 + picked.minute;
+    await vpn.setSchedule(
+      enabled: true,
+      startMinutes: isStart ? minutes : null,
+      endMinutes: isStart ? null : minutes,
     );
   }
 
@@ -354,128 +378,98 @@ class SettingsScreen extends StatelessWidget {
 
           const SizedBox(height: 24),
 
+          // Scheduled Parental Controls Section
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.schedule_rounded,
+                            color: Colors.amberAccent, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'Scheduled Parental Controls',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
+                      ],
+                    ),
+                    Switch(
+                      value: vpn.scheduleEnabled,
+                      activeThumbColor: Colors.amberAccent,
+                      onChanged: (val) => vpn.setSchedule(enabled: val),
+                    ),
+                  ],
+                ),
+                if (vpn.scheduleEnabled) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Enforces Adult content filtering from '
+                    '${_formatMinutes(context, vpn.quietHoursStart)} to '
+                    '${_formatMinutes(context, vpn.quietHoursEnd)}, then '
+                    'restores your own setting.',
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _pickScheduleBound(
+                            context,
+                            vpn,
+                            isStart: true,
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.amberAccent,
+                            side: const BorderSide(color: Colors.amberAccent),
+                          ),
+                          child: Text(
+                              'Start: ${_formatMinutes(context, vpn.quietHoursStart)}'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _pickScheduleBound(
+                            context,
+                            vpn,
+                            isStart: false,
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.amberAccent,
+                            side: const BorderSide(color: Colors.amberAccent),
+                          ),
+                          child: Text(
+                              'End: ${_formatMinutes(context, vpn.quietHoursEnd)}'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
           // Backup & Restore Config Section
           const Text(
             'Configuration Backup & Restore',
             style: TextStyle(
                 fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          const SizedBox(height: 24),
-
-          // Scheduled Parental Controls Section
-          StatefulBuilder(
-            builder: (context, setScheduleState) {
-              return Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF161B22),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.schedule_rounded,
-                                color: Colors.amberAccent, size: 18),
-                            SizedBox(width: 8),
-                            Text(
-                              'Scheduled Parental Controls',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white),
-                            ),
-                          ],
-                        ),
-                        Switch(
-                          value: ParentalControlService.isScheduleEnabled,
-                          activeThumbColor: Colors.amberAccent,
-                          onChanged: (val) async {
-                            await ParentalControlService.saveSchedule(
-                              enabled: val,
-                              start: ParentalControlService.startSchedule,
-                              end: ParentalControlService.endSchedule,
-                            );
-                            setScheduleState(() {});
-                          },
-                        ),
-                      ],
-                    ),
-                    if (ParentalControlService.isScheduleEnabled) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        'Enforces Adult & Malware protection from ${ParentalControlService.startSchedule.format(context)} to ${ParentalControlService.endSchedule.format(context)}.',
-                        style: TextStyle(
-                            color: Colors.grey.shade400, fontSize: 12),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () async {
-                                final time = await showTimePicker(
-                                  context: context,
-                                  initialTime:
-                                      ParentalControlService.startSchedule,
-                                );
-                                if (time != null) {
-                                  await ParentalControlService.saveSchedule(
-                                    enabled: true,
-                                    start: time,
-                                    end: ParentalControlService.endSchedule,
-                                  );
-                                  setScheduleState(() {});
-                                }
-                              },
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.amberAccent,
-                                side:
-                                    const BorderSide(color: Colors.amberAccent),
-                              ),
-                              child: Text(
-                                  'Start: ${ParentalControlService.startSchedule.format(context)}'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () async {
-                                final time = await showTimePicker(
-                                  context: context,
-                                  initialTime:
-                                      ParentalControlService.endSchedule,
-                                );
-                                if (time != null) {
-                                  await ParentalControlService.saveSchedule(
-                                    enabled: true,
-                                    start: ParentalControlService.startSchedule,
-                                    end: time,
-                                  );
-                                  setScheduleState(() {});
-                                }
-                              },
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.amberAccent,
-                                side:
-                                    const BorderSide(color: Colors.amberAccent),
-                              ),
-                              child: Text(
-                                  'End: ${ParentalControlService.endSchedule.format(context)}'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            },
           ),
           const SizedBox(height: 10),
           Row(
@@ -558,6 +552,12 @@ class SettingsScreen extends StatelessWidget {
                               final success =
                                   await ConfigSyncService.importConfigFromJson(
                                       controller.text);
+                              // The restore wrote storage directly, so the
+                              // live provider has to re-read it or the UI
+                              // keeps showing the pre-restore lists.
+                              if (success) {
+                                await vpn.reloadFromPreferences();
+                              }
                               if (ctx.mounted) {
                                 Navigator.pop(ctx);
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -664,47 +664,15 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 24),
           ],
 
-          // Backup & Restore
-          Text(
-            'Export / Import Configuration',
-            style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.bold, color: accent),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  style:
-                      OutlinedButton.styleFrom(side: BorderSide(color: accent)),
-                  icon: Icon(Icons.download, size: 16, color: accent),
-                  label: Text(AppStrings.get('export_json'),
-                      style: TextStyle(
-                          color: accent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    final backup = jsonEncode({
-                      'whitelist': vpn.whitelist,
-                      'blacklist': vpn.blacklist,
-                      'bypassApps': vpn.bypassApps,
-                      'upstreamDns': vpn.upstreamDns,
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text(
-                              'Config exported successfully: ${backup.length} bytes')),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+          // The "Export / Import Configuration" section that used to sit here
+          // was removed: its button built a JSON string, discarded it, and
+          // showed "Config exported successfully: N bytes". Nothing was ever
+          // exported. The Backup & Restore section above does the real thing.
 
           const SizedBox(height: 32),
           Center(
             child: Text(
-              'AegisNet v1.0.0 • Built with Rust & Flutter',
+              'AegisNet v$kAppVersion • Built with Rust & Flutter',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
           ),

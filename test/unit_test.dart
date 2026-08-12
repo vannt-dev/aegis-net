@@ -4,12 +4,30 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:aegis_net/src/app_version.dart';
 import 'package:aegis_net/src/bridge/aegis_bridge.dart';
 import 'package:aegis_net/src/providers/vpn_provider.dart';
 import 'package:aegis_net/src/services/ios_doh_profile_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('app version constant matches pubspec.yaml', () {
+    // The settings footer used to hardcode "v1.0.0" with nothing checking it,
+    // so it would have kept claiming 1.0.0 forever. The release workflow runs
+    // this before it builds, which is the only reason a plain const is safe.
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    final match =
+        RegExp(r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)', multiLine: true)
+            .firstMatch(pubspec);
+
+    expect(match, isNotNull, reason: 'no version: line in pubspec.yaml');
+    expect(
+      kAppVersion,
+      equals(match!.group(1)),
+      reason: 'lib/src/app_version.dart is out of step with pubspec.yaml',
+    );
+  });
 
   const vpnChannel = MethodChannel('com.aegisnet/vpn');
 
@@ -55,29 +73,92 @@ void main() {
 
     test('Custom host mapping in AegisBridge and VpnProvider', () {
       final provider = VpnProvider(enableSimulation: false);
-      provider.addCustomHost('myrouter.local', '192.168.1.1');
+      expect(provider.addCustomHost('myrouter.local', '192.168.1.1'), isTrue);
       expect(provider.customHosts['myrouter.local'], equals('192.168.1.1'));
 
       provider.removeCustomHost('myrouter.local');
       expect(provider.customHosts.containsKey('myrouter.local'), isFalse);
     });
 
-    test('Top blocked & allowed domains getters in VpnProvider', () {
+    test('Custom host mapping rejects values the engine would ignore', () {
       final provider = VpnProvider(enableSimulation: false);
-      expect(provider.topBlockedDomains, isNotEmpty);
-      expect(provider.topAllowedDomains, isNotEmpty);
-      expect(provider.topBlockedDomains.first['domain'], isNotNull);
-      expect(provider.topAllowedDomains.first['domain'], isNotNull);
+
+      // The Rust side parses the value as an IP and falls back to normal
+      // resolution when it cannot, so accepting these would show the user a
+      // mapping that never takes effect.
+      expect(provider.addCustomHost('myrouter.local', 'not-an-ip'), isFalse);
+      expect(provider.addCustomHost('myrouter.local', '999.1.1.1'), isFalse);
+      expect(provider.addCustomHost('myrouter.local', ''), isFalse);
+      expect(provider.addCustomHost('', '192.168.1.1'), isFalse);
+      expect(provider.customHosts, isEmpty);
+
+      // IPv6 mappings are valid.
+      expect(provider.addCustomHost('nas.local', 'fd00::1'), isTrue);
     });
 
-    test('Schedule settings management in VpnProvider', () {
+    test('Top domain lists stay empty until the engine has counted', () {
+      final provider = VpnProvider(enableSimulation: false);
+
+      // These used to fall back to a hand-written list of plausible domains
+      // and counts, which is indistinguishable from real data on screen.
+      expect(provider.topBlockedDomains, isEmpty);
+      expect(provider.topAllowedDomains, isEmpty);
+    });
+
+    test('Schedule settings management in VpnProvider', () async {
       final provider = VpnProvider(enableSimulation: false);
       expect(provider.scheduleEnabled, isFalse);
 
-      provider.setSchedule(enabled: true, startHour: 23, endHour: 7);
+      // Bounds are minutes since midnight, so 23:30 is expressible.
+      await provider.setSchedule(
+          enabled: true, startMinutes: 23 * 60 + 30, endMinutes: 7 * 60);
       expect(provider.scheduleEnabled, isTrue);
-      expect(provider.quietHoursStart, equals(23));
-      expect(provider.quietHoursEnd, equals(7));
+      expect(provider.quietHoursStart, equals(23 * 60 + 30));
+      expect(provider.quietHoursEnd, equals(7 * 60));
+    });
+
+    test('Quiet hours window handles overnight and same-day schedules',
+        () async {
+      final provider = VpnProvider(enableSimulation: false);
+
+      // Overnight, 22:00 -> 06:00.
+      await provider.setSchedule(
+          enabled: true, startMinutes: 22 * 60, endMinutes: 6 * 60);
+      expect(provider.isWithinQuietHours(DateTime(2026, 1, 1, 23, 0)), isTrue);
+      expect(provider.isWithinQuietHours(DateTime(2026, 1, 1, 2, 0)), isTrue);
+      expect(provider.isWithinQuietHours(DateTime(2026, 1, 1, 12, 0)), isFalse);
+      // The end bound is exclusive: 06:00 is already out of the window.
+      expect(provider.isWithinQuietHours(DateTime(2026, 1, 1, 6, 0)), isFalse);
+
+      // Same-day, 09:00 -> 17:00.
+      await provider.setSchedule(
+          enabled: true, startMinutes: 9 * 60, endMinutes: 17 * 60);
+      expect(provider.isWithinQuietHours(DateTime(2026, 1, 1, 12, 0)), isTrue);
+      expect(provider.isWithinQuietHours(DateTime(2026, 1, 1, 23, 0)), isFalse);
+      expect(provider.isWithinQuietHours(DateTime(2026, 1, 1, 3, 0)), isFalse);
+    });
+
+    test('Schedule hands the Adult toggle back when the window ends', () async {
+      final provider = VpnProvider(enableSimulation: false);
+      await provider.ready;
+
+      final userSetting = provider.blockAdult;
+
+      // A window covering now forces the category on...
+      final now = DateTime.now();
+      final start = (now.hour * 60 + now.minute - 30) % (24 * 60);
+      final end = (now.hour * 60 + now.minute + 30) % (24 * 60);
+      await provider.setSchedule(
+          enabled: true, startMinutes: start, endMinutes: end);
+      expect(provider.blockAdult, isTrue);
+      expect(provider.scheduleEnforcing, isTrue);
+
+      // ...and turning the schedule off restores what the user had chosen.
+      // Before this, the schedule was one-way: one night left Adult filtering
+      // switched on permanently.
+      await provider.setSchedule(enabled: false);
+      expect(provider.scheduleEnforcing, isFalse);
+      expect(provider.blockAdult, equals(userSetting));
     });
 
     test('AegisBridge whitelist removal restores blocking', () {

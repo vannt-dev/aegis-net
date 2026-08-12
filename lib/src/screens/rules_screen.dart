@@ -26,6 +26,11 @@ class _RulesScreenState extends State<RulesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // Sources and their on/off state live in storage, not in the widget, so
+    // the list starts out showing only the built-in presets until this lands.
+    RuleDownloaderService.loadSources().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -95,18 +100,23 @@ class _RulesScreenState extends State<RulesScreen>
             onPressed: () async {
               final name = nameCtrl.text.trim();
               final url = urlCtrl.text.trim();
-              if (name.isNotEmpty && url.startsWith('http')) {
-                final source = FilterSource(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  name: name,
-                  url: url,
-                  description: 'User custom filter list',
-                );
-                await RuleDownloaderService.addCustomSource(source);
-                if (ctx.mounted) {
-                  setState(() {});
-                  Navigator.pop(ctx);
-                }
+              if (name.isEmpty || !url.startsWith('http')) {
+                _showMessage('Enter a name and an http(s) URL');
+                return;
+              }
+
+              final source = FilterSource(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                name: name,
+                url: url,
+                description: 'User custom filter list',
+              );
+              final added = await RuleDownloaderService.addCustomSource(source);
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              setState(() {});
+              if (!added) {
+                _showMessage('That list is already subscribed');
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: emeraldColor),
@@ -188,6 +198,7 @@ class _RulesScreenState extends State<RulesScreen>
               const SizedBox(height: 12),
               ...RuleDownloaderService.allSources.map(
                 (source) => _buildPresetTile(
+                  id: source.id,
                   title: source.name,
                   description: source.description,
                   enabled: source.isEnabled,
@@ -369,10 +380,21 @@ class _RulesScreenState extends State<RulesScreen>
                             horizontal: 12, vertical: 12),
                       ),
                       onPressed: () {
-                        vpn.addCustomHost(
-                          _customHostDomainController.text,
-                          _customHostIpController.text,
-                        );
+                        final domain = _customHostDomainController.text.trim();
+                        final ip = _customHostIpController.text.trim();
+
+                        if (domain.isEmpty) {
+                          _showMessage('Enter a domain to map');
+                          return;
+                        }
+                        // The engine ignores a mapping it cannot parse as an
+                        // IP and quietly resolves the domain normally, so a
+                        // typo here would otherwise look like it took effect.
+                        if (!vpn.addCustomHost(domain, ip)) {
+                          _showMessage('"$ip" is not a valid IP address');
+                          return;
+                        }
+
                         _customHostDomainController.clear();
                         _customHostIpController.clear();
                       },
@@ -429,7 +451,15 @@ class _RulesScreenState extends State<RulesScreen>
     );
   }
 
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   Widget _buildPresetTile({
+    required String id,
     required String title,
     required String description,
     required bool enabled,
@@ -452,7 +482,10 @@ class _RulesScreenState extends State<RulesScreen>
           value: enabled,
           activeTrackColor: Colors.cyanAccent.withValues(alpha: 0.5),
           activeThumbColor: Colors.cyanAccent,
-          onChanged: (val) {},
+          onChanged: (val) async {
+            await RuleDownloaderService.setSourceEnabled(id, val);
+            if (mounted) setState(() {});
+          },
         ),
       ),
     );

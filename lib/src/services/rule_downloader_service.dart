@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
 
@@ -62,20 +63,40 @@ class RuleDownloaderService {
   static List<FilterSource> get allSources =>
       [...defaultSources, ..._customSources];
 
-  /// Load custom filter sources from SharedPreferences
+  /// Load custom filter sources from SharedPreferences.
+  ///
+  /// One unparseable entry must not cost the user the rest of their lists, so
+  /// entries are decoded individually and bad ones are dropped.
   static Future<void> loadCustomSources() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final jsonList = prefs.getStringList('custom_filter_sources') ?? [];
-      _customSources = jsonList
-          .map((s) =>
-              FilterSource.fromJson(jsonDecode(s) as Map<String, dynamic>))
-          .toList();
-    } catch (_) {}
+
+      _customSources = [];
+      for (final entry in jsonList) {
+        try {
+          final decoded = jsonDecode(entry);
+          if (decoded is Map<String, dynamic>) {
+            _customSources.add(FilterSource.fromJson(decoded));
+          }
+        } catch (e) {
+          debugPrint('[AegisRules] dropping unreadable filter source: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('[AegisRules] could not read custom filter sources: $e');
+    }
   }
 
-  /// Add a custom filter list URL
+  /// Add a custom filter list URL. Returns false if the same URL is already
+  /// subscribed — downloading a list twice just doubles the work and reports
+  /// an inflated rule count.
   static Future<bool> addCustomSource(FilterSource source) async {
+    final normalised = source.url.trim().toLowerCase();
+    final alreadyKnown = allSources
+        .any((existing) => existing.url.trim().toLowerCase() == normalised);
+    if (alreadyKnown) return false;
+
     _customSources.add(source);
     return _saveCustomSources();
   }
@@ -86,13 +107,56 @@ class RuleDownloaderService {
     return _saveCustomSources();
   }
 
+  /// Turn a source on or off and remember it. Preset sources are held in a
+  /// const list, so their toggle is persisted by id rather than on the object.
+  static Future<bool> setSourceEnabled(String id, bool enabled) async {
+    for (final source in allSources) {
+      if (source.id == id) source.isEnabled = enabled;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final disabled =
+          allSources.where((s) => !s.isEnabled).map((s) => s.id).toList();
+      await prefs.setStringList('disabled_filter_sources', disabled);
+    } catch (e) {
+      debugPrint('[AegisRules] could not persist source toggle: $e');
+      return false;
+    }
+
+    return _saveCustomSources();
+  }
+
+  /// Re-apply persisted on/off state to every known source.
+  static Future<void> _applyDisabledState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final disabled =
+          (prefs.getStringList('disabled_filter_sources') ?? []).toSet();
+      for (final source in allSources) {
+        source.isEnabled = !disabled.contains(source.id);
+      }
+    } catch (e) {
+      debugPrint('[AegisRules] could not read source toggles: $e');
+    }
+  }
+
+  /// Load custom sources and their on/off state together. This is what the UI
+  /// and [syncAllFilters] should call; [loadCustomSources] alone leaves every
+  /// source at its default enabled state.
+  static Future<void> loadSources() async {
+    await loadCustomSources();
+    await _applyDisabledState();
+  }
+
   static Future<bool> _saveCustomSources() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final jsonList =
           _customSources.map((s) => jsonEncode(s.toJson())).toList();
       return await prefs.setStringList('custom_filter_sources', jsonList);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[AegisRules] could not save custom filter sources: $e');
       return false;
     }
   }
@@ -110,15 +174,23 @@ class RuleDownloaderService {
         return content;
       }
     } catch (e) {
-      // Return null on failure
+      debugPrint('[AegisRules] filter download failed for $url: $e');
     }
     return null;
   }
 
   /// Download all enabled filter lists (default + custom) and update Rust Engine
   static Future<int> syncAllFilters() async {
-    await loadCustomSources();
+    await loadSources();
+
+    // Loading a list only inserts, so a source the user switched off would
+    // keep blocking until the process restarted. Start from the built-in
+    // seeds each sync; the user's own lists are not touched.
+    AegisBridge.clearDownloadedRules();
+
     int totalLoaded = 0;
+    // Category id -> concatenated list text, kept so the iOS tunnel extension
+    // can reload the same rules in its own process.
     final byCategory = <int, StringBuffer>{};
 
     for (final source in allSources) {
@@ -138,21 +210,40 @@ class RuleDownloaderService {
     return totalLoaded;
   }
 
+  /// Filter lists run to hundreds of thousands of lines, so they are handed to
+  /// the extension as plain text files rather than through a snapshot.
   static Future<void> _publishToSharedContainer(
       Map<int, StringBuffer> byCategory) async {
     final container = AegisBridge.sharedContainerPath;
     if (container == null) return;
 
     var wrote = false;
-    for (final entry in byCategory.entries) {
+    // Every category, not just the ones with content: a category whose last
+    // source was switched off has to have its file removed, or the extension
+    // keeps loading the rules from the previous sync forever.
+    for (var categoryId = 0; categoryId <= 3; categoryId++) {
+      final content = byCategory[categoryId]?.toString() ?? '';
+      final file =
+          File('$container/${AegisBridge.rulesFileNameFor(categoryId)}');
       try {
-        final file =
-            File('$container/${AegisBridge.rulesFileNameFor(entry.key)}');
-        await file.writeAsString(entry.value.toString(), flush: true);
+        if (content.isEmpty) {
+          if (await file.exists()) {
+            await file.delete();
+            wrote = true;
+          }
+          continue;
+        }
+        await file.writeAsString(content, flush: true);
         wrote = true;
-      } catch (_) {}
+      } catch (e) {
+        // A container write failure must not fail the sync; the app's own
+        // engine already has the rules.
+        debugPrint('[AegisRules] could not publish category $categoryId: $e');
+      }
     }
 
+    // Filter lists bypass the settings snapshot, so nothing else would tell a
+    // running tunnel that new rules are on disk.
     if (wrote) {
       AegisBridge.notifyTunnelReload();
     }

@@ -29,6 +29,9 @@ typedef AegisIsBlockedDart = int Function(Pointer<Utf8> domain);
 typedef AegisSetCategoryC = Void Function(Int32 categoryId, Int32 enabled);
 typedef AegisSetCategoryDart = void Function(int categoryId, int enabled);
 
+typedef AegisVoidC = Void Function();
+typedef AegisVoidDart = void Function();
+
 typedef AegisSetUpstreamDnsC = Void Function(Pointer<Utf8> upstream);
 typedef AegisSetUpstreamDnsDart = void Function(Pointer<Utf8> upstream);
 
@@ -72,6 +75,7 @@ class AegisNativeBindings {
   static AegisRemoveCustomHostDart? _removeCustomHost;
   static AegisIsBlockedDart? _isDomainBlocked;
   static AegisSetCategoryDart? _setCategory;
+  static AegisVoidDart? _clearDownloadedRules;
   static AegisSetUpstreamDnsDart? _setUpstreamDns;
   static AegisGetStatsDart? _getStatsJson;
   static AegisGetLogsDart? _getRecentLogsJson;
@@ -126,6 +130,8 @@ class AegisNativeBindings {
         _setCategory = _lib!
             .lookupFunction<AegisSetCategoryC, AegisSetCategoryDart>(
                 'aegis_set_category');
+        _clearDownloadedRules = _lib!.lookupFunction<AegisVoidC, AegisVoidDart>(
+            'aegis_clear_downloaded_rules');
         _setUpstreamDns = _lib!
             .lookupFunction<AegisSetUpstreamDnsC, AegisSetUpstreamDnsDart>(
                 'aegis_set_upstream_dns');
@@ -219,6 +225,11 @@ class AegisNativeBindings {
   static void setCategory(int categoryId, bool enabled) {
     if (!_isLoaded || _setCategory == null) return;
     _setCategory!(categoryId, enabled ? 1 : 0);
+  }
+
+  static void clearDownloadedRules() {
+    if (!_isLoaded || _clearDownloadedRules == null) return;
+    _clearDownloadedRules!();
   }
 
   static void setUpstreamDns(String upstream) {
