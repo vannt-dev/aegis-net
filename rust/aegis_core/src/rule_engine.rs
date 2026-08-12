@@ -14,10 +14,38 @@ pub enum RuleCategory {
 #[derive(Default, Debug)]
 struct TrieNode {
     is_terminal: bool,
-    children: HashMap<String, TrieNode>,
+    /// Children sorted by label, looked up by binary search.
+    ///
+    /// This was a `HashMap<String, TrieNode>`, which cost roughly 2.5–7.7x the
+    /// memory of the flat `HashSet<String>` the trie replaced: every node paid
+    /// a hash map's fixed overhead plus its own heap table, and a domain trie
+    /// is overwhelmingly single-child chains. That does not matter much on
+    /// Android, where the tunnel shares the app's address space, but the iOS
+    /// PacketTunnel extension has a hard memory limit in the tens of MB and
+    /// the default blocklists run to hundreds of thousands of rules — enough
+    /// to get the extension killed outright.
+    ///
+    /// A sorted `Vec` of boxed labels stores one pointer-sized slot plus the
+    /// label bytes per child, with no table and no spare capacity after
+    /// `shrink_to_fit`. Fan-out is small at every level except the TLD roots,
+    /// so binary search is not a meaningful cost.
+    children: Vec<(Box<str>, TrieNode)>,
 }
 
-/// Compact Domain Trie for high-performance sub-microsecond matching and low memory usage.
+impl TrieNode {
+    fn find(&self, label: &str) -> Option<&TrieNode> {
+        self.children
+            .binary_search_by(|(l, _)| (**l).cmp(label))
+            .ok()
+            .map(|i| &self.children[i].1)
+    }
+}
+
+/// Domain matcher storing one node per DNS label, reversed, so a rule covers a
+/// domain and everything under it in a single lookup.
+///
+/// Blocking a whole zone costs one terminal node rather than one entry per
+/// host. See [`TrieNode::children`] for the memory trade-off this makes.
 #[derive(Default, Debug)]
 pub struct DomainTrie {
     root: TrieNode,
@@ -29,16 +57,37 @@ impl DomainTrie {
         Self::default()
     }
 
-    pub fn insert(&mut self, domain: &str) -> bool {
+    /// Split a domain into labels, root label first, lowercased.
+    fn labels(domain: &str) -> Option<Vec<String>> {
         let clean = domain.trim_end_matches('.').to_lowercase();
         if clean.is_empty() {
-            return false;
+            return None;
         }
-        let labels: Vec<&str> = clean.split('.').rev().collect();
+        Some(clean.split('.').rev().map(|l| l.to_string()).collect())
+    }
+
+    pub fn insert(&mut self, domain: &str) -> bool {
+        let Some(labels) = Self::labels(domain) else {
+            return false;
+        };
+
         let mut current = &mut self.root;
         for label in labels {
-            current = current.children.entry(label.to_string()).or_default();
+            let index = match current
+                .children
+                .binary_search_by(|(l, _)| (**l).cmp(&label))
+            {
+                Ok(existing) => existing,
+                Err(insert_at) => {
+                    current
+                        .children
+                        .insert(insert_at, (label.into_boxed_str(), TrieNode::default()));
+                    insert_at
+                }
+            };
+            current = &mut current.children[index].1;
         }
+
         if !current.is_terminal {
             current.is_terminal = true;
             self.count += 1;
@@ -49,13 +98,12 @@ impl DomainTrie {
     }
 
     pub fn remove(&mut self, domain: &str) -> bool {
-        let clean = domain.trim_end_matches('.').to_lowercase();
-        if clean.is_empty() {
+        let Some(labels) = Self::labels(domain) else {
             return false;
-        }
-        let labels: Vec<&str> = clean.split('.').rev().collect();
+        };
 
-        fn remove_rec(node: &mut TrieNode, labels: &[&str], depth: usize) -> (bool, bool) {
+        /// Returns (did we clear a terminal, is this node now droppable).
+        fn remove_rec(node: &mut TrieNode, labels: &[String], depth: usize) -> (bool, bool) {
             if depth == labels.len() {
                 if node.is_terminal {
                     node.is_terminal = false;
@@ -63,17 +111,17 @@ impl DomainTrie {
                 }
                 return (false, false);
             }
-            let label = labels[depth];
-            if let Some(child) = node.children.get_mut(label) {
-                let (removed, delete_child) = remove_rec(child, labels, depth + 1);
-                if delete_child {
-                    node.children.remove(label);
-                }
-                let empty_now = !node.is_terminal && node.children.is_empty();
-                (removed, empty_now)
-            } else {
-                (false, false)
+
+            let label = &labels[depth];
+            let Ok(index) = node.children.binary_search_by(|(l, _)| (**l).cmp(label)) else {
+                return (false, false);
+            };
+
+            let (removed, drop_child) = remove_rec(&mut node.children[index].1, labels, depth + 1);
+            if drop_child {
+                node.children.remove(index);
             }
+            (removed, !node.is_terminal && node.children.is_empty())
         }
 
         let (removed, _) = remove_rec(&mut self.root, &labels, 0);
@@ -88,13 +136,15 @@ impl DomainTrie {
         if clean.is_empty() {
             return false;
         }
-        let labels: Vec<&str> = clean.split('.').rev().collect();
+
         let mut current = &self.root;
-        for label in labels {
+        for label in clean.split('.').rev() {
+            // A terminal above the queried name means a parent zone is listed,
+            // which covers every subdomain under it.
             if current.is_terminal {
                 return true;
             }
-            match current.children.get(label) {
+            match current.find(label) {
                 Some(next) => current = next,
                 None => return false,
             }
@@ -104,14 +154,18 @@ impl DomainTrie {
 
     pub fn clear(&mut self) {
         self.root.children.clear();
+        self.root.children.shrink_to_fit();
         self.root.is_terminal = false;
         self.count = 0;
     }
 
+    /// Hand back every byte of spare capacity in the tree. Worth calling after
+    /// a bulk load: inserts grow each child vector geometrically, so a freshly
+    /// loaded blocklist carries up to twice the slots it needs.
     pub fn shrink_to_fit(&mut self) {
         fn shrink_rec(node: &mut TrieNode) {
             node.children.shrink_to_fit();
-            for child in node.children.values_mut() {
+            for (_, child) in node.children.iter_mut() {
                 shrink_rec(child);
             }
         }
@@ -127,7 +181,7 @@ impl DomainTrie {
                 out.push(rev_path.join("."));
             }
             for (label, child) in &node.children {
-                path.push(label.clone());
+                path.push(label.to_string());
                 collect_rec(child, path, out);
                 path.pop();
             }
@@ -154,8 +208,13 @@ pub struct RuleEngine {
     adult_rules: RwLock<DomainTrie>,
 
     enabled_categories: RwLock<HashSet<RuleCategory>>,
+    /// User allowlist. Covers a domain and everything under it.
     allowed_domains: RwLock<DomainTrie>,
-    blocked_exact: RwLock<DomainTrie>,
+    /// User denylist. Also covers subdomains — blocking `example.com` blocks
+    /// `ads.example.com` too. This was an exact-match set before the trie
+    /// landed, so a rule that used to need one entry per host now needs one
+    /// entry per zone.
+    blocked_domains: RwLock<DomainTrie>,
     custom_hosts: RwLock<HashMap<String, String>>,
 }
 
@@ -173,7 +232,7 @@ impl RuleEngine {
             adult_rules: RwLock::new(DomainTrie::new()),
             enabled_categories: RwLock::new(enabled),
             allowed_domains: RwLock::new(DomainTrie::new()),
-            blocked_exact: RwLock::new(DomainTrie::new()),
+            blocked_domains: RwLock::new(DomainTrie::new()),
             custom_hosts: RwLock::new(HashMap::new()),
         };
 
@@ -234,6 +293,8 @@ impl RuleEngine {
                 continue;
             }
 
+            // `@@||domain^` exception rules (AdGuard/EasyList) override every
+            // category, so they belong in the whitelist, not the category set.
             if let Some(domain) = Self::parse_exception_line(line) {
                 if allowed.insert(&domain) {
                     count += 1;
@@ -275,6 +336,20 @@ impl RuleEngine {
             .cloned()
     }
 
+    /// Every override as `(domain, ip)` pairs, sorted for a stable snapshot on
+    /// disk.
+    pub fn custom_hosts(&self) -> Vec<(String, String)> {
+        let hosts = self.custom_hosts.read().unwrap();
+        let mut pairs: Vec<(String, String)> = hosts
+            .iter()
+            .map(|(d, ip)| (d.clone(), ip.clone()))
+            .collect();
+        pairs.sort();
+        pairs
+    }
+
+    /// Parse an AdGuard/EasyList exception rule (`@@||domain^`), which
+    /// un-blocks a domain regardless of which category blocked it.
     fn parse_exception_line(line: &str) -> Option<String> {
         if line.starts_with("@@||") && line.ends_with('^') {
             let domain = &line[4..line.len() - 1];
@@ -284,6 +359,8 @@ impl RuleEngine {
     }
 
     fn parse_rule_line(line: &str) -> Option<String> {
+        // Exception rules are handled by `parse_exception_line` above; never
+        // fall through and treat an unmatched `@@`-prefixed line as a block rule.
         if line.starts_with("@@") {
             return None;
         }
@@ -314,7 +391,7 @@ impl RuleEngine {
     }
 
     pub fn add_blacklist(&self, domain: &str) {
-        let mut blocked = self.blocked_exact.write().unwrap();
+        let mut blocked = self.blocked_domains.write().unwrap();
         blocked.insert(domain);
     }
 
@@ -324,10 +401,11 @@ impl RuleEngine {
     }
 
     pub fn remove_blacklist(&self, domain: &str) {
-        let mut blocked = self.blocked_exact.write().unwrap();
+        let mut blocked = self.blocked_domains.write().unwrap();
         blocked.remove(domain);
     }
 
+    /// Categories currently enabled, sorted for a stable snapshot on disk.
     pub fn enabled_categories(&self) -> Vec<RuleCategory> {
         let enabled = self.enabled_categories.read().unwrap();
         let mut categories: Vec<RuleCategory> = enabled.iter().copied().collect();
@@ -340,14 +418,18 @@ impl RuleEngine {
     }
 
     pub fn blacklist(&self) -> Vec<String> {
-        self.blocked_exact.read().unwrap().to_vec()
+        self.blocked_domains.read().unwrap().to_vec()
     }
 
+    /// Replace the user lists and category toggles wholesale. Used when a
+    /// process adopts a snapshot produced by the other one, where "not in the
+    /// snapshot" has to mean "removed", not "left alone".
     pub fn replace_user_state(
         &self,
         categories: &[RuleCategory],
         whitelist: &[String],
         blacklist: &[String],
+        custom_hosts: &[(String, String)],
     ) {
         {
             let mut enabled = self.enabled_categories.write().unwrap();
@@ -361,10 +443,20 @@ impl RuleEngine {
                 allowed.insert(d);
             }
         }
-        let mut blocked = self.blocked_exact.write().unwrap();
-        blocked.clear();
-        for d in blacklist {
-            blocked.insert(d);
+        {
+            let mut blocked = self.blocked_domains.write().unwrap();
+            blocked.clear();
+            for d in blacklist {
+                blocked.insert(d);
+            }
+        }
+        let mut hosts = self.custom_hosts.write().unwrap();
+        hosts.clear();
+        for (domain, ip) in custom_hosts {
+            hosts.insert(
+                domain.trim_end_matches('.').to_lowercase(),
+                ip.trim().to_string(),
+            );
         }
     }
 
@@ -379,10 +471,10 @@ impl RuleEngine {
             }
         }
 
-        // 2. Check Blacklist
+        // 2. Check Blacklist (covers the domain and any of its subdomains)
         {
-            let exact = self.blocked_exact.read().unwrap();
-            if exact.matches(&clean_domain) {
+            let blocked = self.blocked_domains.read().unwrap();
+            if blocked.matches(&clean_domain) {
                 return true;
             }
         }
@@ -417,14 +509,38 @@ impl RuleEngine {
         false
     }
 
+    /// Wipe everything, including the user's own allow/deny lists and host
+    /// overrides. Nothing routine should need this; see
+    /// [`clear_downloaded_rules`](Self::clear_downloaded_rules).
     pub fn clear(&self) {
         self.ads_rules.write().unwrap().clear();
         self.tracker_rules.write().unwrap().clear();
         self.malware_rules.write().unwrap().clear();
         self.adult_rules.write().unwrap().clear();
         self.allowed_domains.write().unwrap().clear();
-        self.blocked_exact.write().unwrap().clear();
+        self.blocked_domains.write().unwrap().clear();
         self.custom_hosts.write().unwrap().clear();
+    }
+
+    /// Drop every rule that came from a downloaded filter list, then restore
+    /// the built-in seeds. The user's allow/deny lists and host overrides are
+    /// left alone.
+    ///
+    /// Loading a list only ever inserted, so without this a blocklist the user
+    /// unsubscribed from kept blocking until the process restarted — and on
+    /// iOS the extension reloads repeatedly inside one process lifetime, so it
+    /// never restarted at all.
+    ///
+    /// The seeds are re-applied because a sync that fails after this point
+    /// would otherwise leave the engine with no rules whatsoever, which is
+    /// worse than the state it started in.
+    pub fn clear_downloaded_rules(&self) {
+        self.ads_rules.write().unwrap().clear();
+        self.tracker_rules.write().unwrap().clear();
+        self.malware_rules.write().unwrap().clear();
+        self.adult_rules.write().unwrap().clear();
+        self.seed_default_rules();
+        info!("Cleared downloaded filter rules; built-in seeds restored");
     }
 }
 
@@ -443,6 +559,85 @@ mod tests {
 
         engine.remove_custom_host("myrouter.local");
         assert_eq!(engine.get_custom_host("myrouter.local"), None);
+    }
+
+    #[test]
+    fn test_clearing_downloaded_rules_keeps_user_lists_and_seeds() {
+        let engine = RuleEngine::new();
+        engine.load_rules_text("0.0.0.0 tracker.example.com", RuleCategory::Ads);
+        engine.add_blacklist("mine.example.net");
+        engine.add_whitelist("safe.example.org");
+        engine.add_custom_host("myrouter.local", "192.168.1.1");
+        assert!(engine.is_blocked("tracker.example.com"));
+
+        engine.clear_downloaded_rules();
+
+        // The downloaded rule is gone — unsubscribing has to take effect.
+        assert!(!engine.is_blocked("tracker.example.com"));
+        // The user's own state is untouched.
+        assert!(engine.is_blocked("mine.example.net"));
+        assert_eq!(
+            engine.get_custom_host("myrouter.local"),
+            Some("192.168.1.1".to_string())
+        );
+        assert!(engine.whitelist().contains(&"safe.example.org".to_string()));
+        // And the built-in seeds are back, so a failed sync is not a total
+        // loss of protection.
+        assert!(engine.is_blocked("doubleclick.net"));
+    }
+
+    #[test]
+    fn test_blacklisting_a_domain_covers_its_subdomains() {
+        // The denylist was an exact-match set before the trie; one entry per
+        // host is no longer needed, and the change is easy to undo by accident.
+        let engine = RuleEngine::new();
+        engine.add_blacklist("example.com");
+
+        assert!(engine.is_blocked("example.com"));
+        assert!(engine.is_blocked("ads.example.com"));
+        assert!(engine.is_blocked("deep.ads.example.com"));
+
+        // A neighbour that merely ends in the same letters is not a subdomain.
+        assert!(!engine.is_blocked("notexample.com"));
+
+        engine.remove_blacklist("example.com");
+        assert!(!engine.is_blocked("ads.example.com"));
+    }
+
+    #[test]
+    fn test_whitelist_beats_a_blacklisted_parent_zone() {
+        let engine = RuleEngine::new();
+        engine.add_blacklist("example.com");
+        engine.add_whitelist("safe.example.com");
+
+        assert!(engine.is_blocked("example.com"));
+        assert!(!engine.is_blocked("safe.example.com"));
+    }
+
+    #[test]
+    fn test_custom_hosts_survive_a_snapshot_round_trip() {
+        let engine = RuleEngine::new();
+        engine.add_custom_host("myrouter.local", "192.168.1.1");
+        engine.add_custom_host("nas.local", "192.168.1.9");
+
+        // Sorted, so two snapshots of the same state compare equal.
+        assert_eq!(
+            engine.custom_hosts(),
+            vec![
+                ("myrouter.local".to_string(), "192.168.1.1".to_string()),
+                ("nas.local".to_string(), "192.168.1.9".to_string()),
+            ]
+        );
+
+        // Adopting a snapshot means "not present" is a removal, not a no-op.
+        let adopted = vec![("nas.local".to_string(), "10.0.0.9".to_string())];
+        engine.replace_user_state(&[], &[], &[], &adopted);
+
+        assert_eq!(engine.get_custom_host("myrouter.local"), None);
+        assert_eq!(
+            engine.get_custom_host("nas.local"),
+            Some("10.0.0.9".to_string())
+        );
     }
 
     #[test]

@@ -205,6 +205,14 @@ pub extern "C" fn aegis_remove_blacklist(domain_ptr: *const c_char) {
     }
 }
 
+/// Drop rules that came from downloaded filter lists, keeping the user's own
+/// allow/deny lists and host overrides. Call before re-loading the lists so an
+/// unsubscribed blocklist actually stops blocking.
+#[no_mangle]
+pub extern "C" fn aegis_clear_downloaded_rules() {
+    RULE_ENGINE.clear_downloaded_rules();
+}
+
 /// Add custom host mapping (e.g. domain -> IP)
 #[no_mangle]
 pub extern "C" fn aegis_add_custom_host(domain_ptr: *const c_char, ip_ptr: *const c_char) {

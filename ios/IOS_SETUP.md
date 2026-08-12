@@ -35,6 +35,7 @@ target, linking the Rust `xcframework`, provisioning, and device testing.
 | `ios/PacketTunnel/Info.plist` | Declares the `NEPacketTunnelProvider` principal class |
 | `ios/PacketTunnel/PacketTunnel.entitlements` | Extension: NetworkExtension + App Group |
 | `ios/build_rust_ios.sh` | Builds `AegisCore.xcframework` from the Rust crate |
+| `ios/add_packet_tunnel_target.rb` | Adds the PacketTunnel target to the Xcode project (step 3 below) |
 
 ## Steps (on the Mac)
 
@@ -59,6 +60,22 @@ In Xcode → **Runner** target → *Signing & Capabilities*, select your paid
 **Team**. That still cannot be scripted — it is tied to your developer account.
 
 ### 3. Add the Packet Tunnel extension target
+
+The target is **not** in `Runner.xcodeproj` — until it is, the Swift in
+`ios/PacketTunnel/` never gets compiled and `VpnManager` starts a tunnel whose
+bundle id does not exist. Add it with:
+
+```bash
+gem install xcodeproj
+ruby ios/add_packet_tunnel_target.rb
+```
+
+The script is idempotent and also links `AegisCore.xcframework` into both
+targets if step 1 has already produced it. Run it after step 1 so it can.
+
+<details>
+<summary>Doing it by hand in Xcode instead</summary>
+
 - **File → New → Target… → Network Extension** (Packet Tunnel Provider).
 - Name it **PacketTunnel**, bundle id `com.aegisnet.app.PacketTunnel`.
 - Delete the auto-generated `PacketTunnelProvider.swift`; instead **add the
@@ -66,6 +83,8 @@ In Xcode → **Runner** target → *Signing & Capabilities*, select your paid
   header) to this target.
 - In the target's *Build Settings*, set **Objective-C Bridging Header** to
   `PacketTunnel/PacketTunnel-Bridging-Header.h`.
+- Set **Skip Install** to *Yes* — an extension is packaged inside the host app.
+</details>
 
 ### 4. Capabilities & entitlements
 On **both** the Runner target and the PacketTunnel target, add:
@@ -113,6 +132,14 @@ So every `aegis_add_blacklist` / `aegis_set_category` / `aegis_set_upstream_dns`
 the Dart layer makes only mutates the *app's* copy, while `aegis_process_ip_packet`
 runs in the *extension's* copy. Without the mechanism below, filtering on iOS
 uses an empty rule set while the app shows statistics the tunnel never produced.
+
+> **Rebuild and re-link both targets together.** The settings snapshot carries a
+> version (`SNAPSHOT_VERSION` in `rust/aegis_core/src/shared_state.rs`) and a
+> reader refuses a version it does not know. Linking a newer `AegisCore` into
+> one target and a stale copy into the other makes `aegis_import_settings`
+> return `-3`, and the extension then filters on built-in defaults only —
+> silently, apart from one line in the log. Whenever the snapshot layout
+> changes, re-run `build_rust_ios.sh` and rebuild both targets.
 
 ### Design
 

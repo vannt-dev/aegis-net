@@ -350,13 +350,20 @@ class DashboardScreen extends StatelessWidget {
                             color: Colors.white,
                           ),
                         ),
+                        // The engine does not time its upstream lookups, so
+                        // there is no latency to report. This used to read a
+                        // hardcoded "14 ms (Ultra Fast)" — a permanent, made-up
+                        // benchmark sitting next to real counters. Show the
+                        // sample count instead, which is a fact we have.
                         Row(
                           children: [
-                            const Icon(Icons.bolt,
-                                color: Colors.amberAccent, size: 16),
+                            Icon(Icons.show_chart,
+                                color: Colors.grey.shade500, size: 16),
                             const SizedBox(width: 4),
                             Text(
-                              '14 ms (Ultra Fast)',
+                              vpn.qpsHistory.isEmpty
+                                  ? 'No samples yet'
+                                  : 'Last ${vpn.qpsHistory.length} samples',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,

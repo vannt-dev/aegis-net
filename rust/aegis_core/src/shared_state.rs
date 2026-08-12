@@ -19,7 +19,9 @@ use crate::statistics::{StatisticsEngine, StatsSummary};
 
 /// Bumped when the snapshot layout changes. A reader that sees a version it
 /// does not know refuses the file instead of guessing at the contents.
-pub const SNAPSHOT_VERSION: u32 = 1;
+///
+/// 2: added `custom_hosts`.
+pub const SNAPSHOT_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingsSnapshot {
@@ -28,6 +30,11 @@ pub struct SettingsSnapshot {
     pub whitelist: Vec<String>,
     pub blacklist: Vec<String>,
     pub upstream_dns: String,
+    /// Domain -> IP overrides, as `(domain, ip)` pairs sorted by domain. A map
+    /// would serialise just as well, but the ordering keeps the file stable
+    /// between writes so a diff of two snapshots is readable.
+    #[serde(default)]
+    pub custom_hosts: Vec<(String, String)>,
 }
 
 #[derive(Debug)]
@@ -55,6 +62,7 @@ pub fn settings_snapshot(engine: &RuleEngine, filter: &DnsFilterService) -> Sett
         whitelist: engine.whitelist(),
         blacklist: engine.blacklist(),
         upstream_dns: filter.upstream_dns(),
+        custom_hosts: engine.custom_hosts(),
     }
 }
 
@@ -85,6 +93,7 @@ pub fn import_settings(
         &snapshot.enabled_categories,
         &snapshot.whitelist,
         &snapshot.blacklist,
+        &snapshot.custom_hosts,
     );
     filter.set_upstream_dns(&snapshot.upstream_dns);
     Ok(())
@@ -165,6 +174,7 @@ mod tests {
         app_engine.set_category_enabled(RuleCategory::Adult, true);
         app_engine.add_whitelist("Doubleclick.NET");
         app_engine.add_blacklist("example-tracker.com");
+        app_engine.add_custom_host("myrouter.local", "192.168.1.1");
         app_filter.set_upstream_dns("https://dns.google/dns-query");
         export_settings(&app_engine, &app_filter, &path).expect("export");
 
@@ -182,6 +192,12 @@ mod tests {
         // Blacklisted in the app.
         assert!(ext_engine.is_blocked("example-tracker.com"));
         assert_eq!(ext_filter.upstream_dns(), "https://dns.google/dns-query");
+        // Host overrides have to cross too, or the tunnel resolves a pinned
+        // internal name upstream while the app insists it is pinned.
+        assert_eq!(
+            ext_engine.get_custom_host("myrouter.local"),
+            Some("192.168.1.1".to_string())
+        );
 
         // And the snapshots now agree.
         assert_eq!(

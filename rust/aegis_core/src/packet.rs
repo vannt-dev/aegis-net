@@ -67,6 +67,12 @@ pub struct Ipv6UdpPacket<'a> {
 }
 
 /// Parse an IPv6 packet carrying a UDP datagram.
+///
+/// Only a bare `IPv6 + UDP` chain is accepted. A packet with extension headers
+/// (Hop-by-Hop, Routing, Fragment, ...) has its UDP header further in, so it is
+/// rejected rather than parsed at a fixed offset, where option bytes would be
+/// read as ports. The TUN carries queries the local resolver sends to our own
+/// address, which do not use extension headers in practice.
 pub fn parse_ipv6_udp(packet: &[u8]) -> Option<Ipv6UdpPacket<'_>> {
     if packet.len() < 48 {
         return None;
@@ -242,8 +248,101 @@ mod tests {
         assert_eq!(parsed.payload, dns.as_slice());
     }
 
+    /// Assemble an IPv6+UDP+payload packet.
+    fn build_test_packet_v6(
+        src_ip: [u8; 16],
+        dst_ip: [u8; 16],
+        src_port: u16,
+        dst_port: u16,
+        payload: &[u8],
+    ) -> Vec<u8> {
+        let udp_len = 8 + payload.len();
+        let mut p = vec![0u8; 40 + udp_len];
+        p[0] = 0x60; // version 6
+        p[4..6].copy_from_slice(&(udp_len as u16).to_be_bytes());
+        p[6] = 17; // next header: UDP
+        p[7] = 64; // hop limit
+        p[8..24].copy_from_slice(&src_ip);
+        p[24..40].copy_from_slice(&dst_ip);
+        p[40..42].copy_from_slice(&src_port.to_be_bytes());
+        p[42..44].copy_from_slice(&dst_port.to_be_bytes());
+        p[44..46].copy_from_slice(&(udp_len as u16).to_be_bytes());
+        p[48..].copy_from_slice(payload);
+        p
+    }
+
+    const TUN_V6: [u8; 16] = [0xfd, 0x00, 0xae, 0xed, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3];
+    const CLIENT_V6: [u8; 16] = [0xfd, 0x00, 0xae, 0xed, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2];
+
     #[test]
-    fn test_parse_rejects_tcp_and_ipv6() {
+    fn test_parse_ipv6_udp_dns_query() {
+        let dns = vec![0xAB, 0xCD, 0x01, 0x00];
+        let pkt = build_test_packet_v6(CLIENT_V6, TUN_V6, 40000, 53, &dns);
+
+        let parsed = parse_ipv6_udp(&pkt).unwrap();
+        assert_eq!(parsed.src_ip, CLIENT_V6);
+        assert_eq!(parsed.dst_ip, TUN_V6);
+        assert_eq!(parsed.src_port, 40000);
+        assert_eq!(parsed.dst_port, 53);
+        assert_eq!(parsed.payload, dns.as_slice());
+    }
+
+    #[test]
+    fn test_ipv6_parser_rejects_other_protocols_and_ipv4() {
+        // TCP (next header 6) is not ours to answer.
+        let mut tcp = build_test_packet_v6(CLIENT_V6, TUN_V6, 40000, 53, &[0u8; 4]);
+        tcp[6] = 6;
+        assert!(parse_ipv6_udp(&tcp).is_none());
+
+        // An IPv4 packet must not be read as IPv6.
+        let v4 = build_test_packet([10, 0, 0, 2], [10, 0, 0, 3], 40000, 53, &[0u8; 16]);
+        assert!(parse_ipv6_udp(&v4).is_none());
+
+        // A truncated header must not panic on the fixed-offset slices.
+        assert!(parse_ipv6_udp(&[0x60u8; 20]).is_none());
+
+        // A payload length field that runs past the buffer is a lie.
+        let mut short = build_test_packet_v6(CLIENT_V6, TUN_V6, 40000, 53, &[0u8; 4]);
+        short[5] = 0xff;
+        assert!(parse_ipv6_udp(&short).is_none());
+    }
+
+    #[test]
+    fn test_ipv6_extension_headers_are_not_mistaken_for_udp() {
+        // A Hop-by-Hop header (next header 0) puts the UDP header further in;
+        // reading offset 40 as UDP would invent a port out of option bytes.
+        let mut pkt = build_test_packet_v6(CLIENT_V6, TUN_V6, 40000, 53, &[0u8; 4]);
+        pkt[6] = 0;
+        assert!(parse_ipv6_udp(&pkt).is_none());
+    }
+
+    #[test]
+    fn test_build_ipv6_response_swaps_endpoints_and_has_valid_checksum() {
+        let req = build_test_packet_v6(CLIENT_V6, TUN_V6, 40000, 53, &[0xAB, 0xCD, 0x01, 0x00]);
+
+        let dns_resp = vec![0xAB, 0xCD, 0x81, 0x80, 0x00];
+        let resp = build_ipv6_udp_response(&req, &dns_resp).unwrap();
+
+        let parsed = parse_ipv6_udp(&resp).unwrap();
+        assert_eq!(parsed.src_ip, TUN_V6, "reply comes from the resolver");
+        assert_eq!(parsed.dst_ip, CLIENT_V6);
+        assert_eq!(parsed.src_port, 53);
+        assert_eq!(parsed.dst_port, 40000);
+        assert_eq!(parsed.payload, dns_resp.as_slice());
+
+        // UDP checksum is mandatory over IPv6, so verifying the pseudo-header
+        // sum over the received packet must come out to zero.
+        let udp_len = 8 + dns_resp.len();
+        let mut pseudo = Vec::new();
+        pseudo.extend_from_slice(&resp[8..40]); // src + dst
+        pseudo.extend_from_slice(&(udp_len as u32).to_be_bytes());
+        pseudo.extend_from_slice(&[0, 0, 0, 17]);
+        pseudo.extend_from_slice(&resp[40..]);
+        assert_eq!(internet_checksum(&pseudo), 0, "UDP checksum must verify");
+    }
+
+    #[test]
+    fn test_ipv4_parser_rejects_tcp_and_ipv6() {
         // TCP (protocol 6) must be rejected.
         let mut tcp = build_test_packet([10, 0, 0, 2], [1, 1, 1, 1], 40000, 53, &[0u8; 4]);
         tcp[9] = 6;

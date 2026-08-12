@@ -15,6 +15,7 @@ class AnalyticsScreen extends StatelessWidget {
 
     final topBlocked = vpn.topBlockedDomains;
     final topAllowed = vpn.topAllowedDomains;
+    final qpsHistory = vpn.qpsHistory;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
@@ -37,6 +38,7 @@ class AnalyticsScreen extends StatelessWidget {
                 fontSize: 15, fontWeight: FontWeight.bold, color: accent),
           ),
           const SizedBox(height: 12),
+          if (topBlocked.isEmpty) _buildEmptyState('No blocked queries yet'),
           Column(
             children: topBlocked.map((item) {
               final domain = item['domain'].toString();
@@ -95,6 +97,7 @@ class AnalyticsScreen extends StatelessWidget {
                 fontSize: 15, fontWeight: FontWeight.bold, color: accent),
           ),
           const SizedBox(height: 12),
+          if (topAllowed.isEmpty) _buildEmptyState('No resolved queries yet'),
           Column(
             children: topAllowed.map((item) {
               final domain = item['domain'].toString();
@@ -146,9 +149,15 @@ class AnalyticsScreen extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          // Hourly Activity Heatmap / Bar Chart
+          // Recent query rate.
+          //
+          // This was labelled "Hourly Query Distribution" over seven hardcoded
+          // bars (12, 25, 18, 42, 68, 55, 84) that never changed. There is no
+          // hourly bucketing in the engine to draw, so the chart now shows the
+          // series that does exist — the queries-per-sample history the
+          // provider already tracks — under a title that describes it.
           Text(
-            'Hourly Query Distribution',
+            'Recent Query Rate',
             style: TextStyle(
                 fontSize: 15, fontWeight: FontWeight.bold, color: accent),
           ),
@@ -161,29 +170,56 @@ class AnalyticsScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white10),
             ),
-            child: BarChart(
-              BarChartData(
-                gridData: const FlGridData(show: false),
-                titlesData: const FlTitlesData(show: false),
-                borderData: FlBorderData(show: false),
-                barGroups: [
-                  BarChartGroupData(
-                      x: 0, barRods: [BarChartRodData(toY: 12, color: accent)]),
-                  BarChartGroupData(
-                      x: 1, barRods: [BarChartRodData(toY: 25, color: accent)]),
-                  BarChartGroupData(
-                      x: 2, barRods: [BarChartRodData(toY: 18, color: accent)]),
-                  BarChartGroupData(
-                      x: 3, barRods: [BarChartRodData(toY: 42, color: accent)]),
-                  BarChartGroupData(
-                      x: 4, barRods: [BarChartRodData(toY: 68, color: accent)]),
-                  BarChartGroupData(
-                      x: 5, barRods: [BarChartRodData(toY: 55, color: accent)]),
-                  BarChartGroupData(
-                      x: 6, barRods: [BarChartRodData(toY: 84, color: accent)]),
-                ],
-              ),
-            ),
+            child: qpsHistory.isEmpty
+                ? Center(
+                    child: Text(
+                      'No traffic recorded yet',
+                      style:
+                          TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                    ),
+                  )
+                : BarChart(
+                    BarChartData(
+                      gridData: const FlGridData(show: false),
+                      titlesData: const FlTitlesData(show: false),
+                      borderData: FlBorderData(show: false),
+                      barGroups: [
+                        for (var i = 0; i < qpsHistory.length; i++)
+                          BarChartGroupData(
+                            x: i,
+                            barRods: [
+                              BarChartRodData(toY: qpsHistory[i], color: accent)
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shown instead of a list the engine has no data for yet. The alternative —
+  /// filling the gap with plausible-looking sample domains — reads on screen
+  /// exactly like a real measurement.
+  Widget _buildEmptyState(String message) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B22),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.hourglass_empty_rounded,
+              color: Colors.grey.shade600, size: 18),
+          const SizedBox(width: 10),
+          Text(
+            message,
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
           ),
         ],
       ),

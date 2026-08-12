@@ -7,7 +7,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Android 13+ hides the ongoing tunnel notification without this. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- RECEIVE_BOOT_COMPLETED is deliberately NOT declared. Nothing listens
+         for it, and starting a VPN at boot is not ours to do: the platform's
+         own "Always-on VPN" setting does it properly, and this service is
+         already selectable there thanks to the android.net.VpnService filter
+         below. An unused permission is just something for a store review to
+         ask about. -->
 
     <application
         android:label="AegisNet"
