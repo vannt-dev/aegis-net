@@ -56,6 +56,17 @@ class RuleDownloaderService {
       url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts',
       description: 'Consolidated host file blocking adservers and malware.',
     ),
+    // Small and entirely hostname-based, so every line survives the DNS
+    // parser — measured at 3,525 rules and zero unusable entries. uBlock
+    // Origin Lite enables this one by default too.
+    FilterSource(
+      id: 'pgl_yoyo',
+      name: "Peter Lowe's Ad and Tracking Server List",
+      url:
+          'https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=0&mimetype=plaintext',
+      description:
+          'Hand-curated ad and tracking servers. Small, low false positives.',
+    ),
   ];
 
   static List<FilterSource> _customSources = [];

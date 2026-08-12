@@ -4,6 +4,34 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
+## [Unreleased]
+
+### 🧹 Filter rule parsing
+
+- **Rules that could never match are no longer stored.** The parser ended in a
+  catch-all — any line with a dot and no space became a "domain" — so filter
+  syntax the DNS matcher cannot express was kept verbatim. Measured against the
+  lists actually shipped: **669 such entries in the AdGuard DNS filter**, and
+  17,779 in EasyList. Each one occupied memory, inflated the "rules loaded"
+  count shown to the user, and matched nothing.
+
+  | | AdGuard DNS | StevenBlack | Peter Lowe |
+  |---|---|---|---|
+  | unusable entries before | 669 | 0 | 0 |
+  | after | **0** | 0 | 0 |
+
+- **`||domain` without a trailing `^` now loads.** 172 rules in the AdGuard DNS
+  filter are written that way. They fell through to the catch-all and were
+  stored with the `||` still attached, so those domains were **never actually
+  blocked** while the UI counted them as active rules. The same fix applies to
+  `@@||domain` exceptions.
+- Wildcards (`||ads.livetv*.me^`), regex, path-scoped and resource-type rules
+  are now dropped deliberately rather than stored as garbage. A DNS filter sees
+  a hostname and nothing else; none of these can be honoured.
+- **Added Peter Lowe's Ad and Tracking Server List** to the default sources.
+  Hostname-only, so every line survives the DNS parser — 3,525 rules, zero
+  unusable. It is one of the lists uBlock Origin Lite enables by default.
+
 ## [1.1.0] — 2026-08-12
 
 Android is verified on an Android 14 emulator: the tunnel establishes, a blocked
