@@ -43,7 +43,7 @@ class SettingsScreen extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('CLOSE'),
+            child: Text(AppStrings.get('common_close')),
           ),
         ],
       ),
@@ -54,14 +54,14 @@ class SettingsScreen extends StatelessWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        backgroundColor: Color(0xFF161B22),
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
         content: Row(
           children: [
-            CircularProgressIndicator(color: Colors.cyanAccent),
-            SizedBox(width: 20),
-            Text('Measuring DNS Latency...',
-                style: TextStyle(color: Colors.white)),
+            const CircularProgressIndicator(color: Colors.cyanAccent),
+            const SizedBox(width: 20),
+            Text(AppStrings.get('settings_measuring'),
+                style: const TextStyle(color: Colors.white)),
           ],
         ),
       ),
@@ -88,9 +88,9 @@ class SettingsScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                '⚡ DNS Benchmark Results',
-                style: TextStyle(
+              Text(
+                AppStrings.get('benchmark_results'),
+                style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Colors.white),
@@ -124,8 +124,8 @@ class SettingsScreen extends StatelessWidget {
                             color: emeraldDarkColor.withValues(alpha: 0.4),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text('FASTEST',
-                              style: TextStyle(
+                          child: Text(AppStrings.get('settings_fastest'),
+                              style: const TextStyle(
                                   color: emeraldColor,
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold)),
@@ -240,7 +240,7 @@ class SettingsScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Upstream DNS Resolver',
+                AppStrings.get('settings_upstream'),
                 style: TextStyle(
                     fontSize: 14, fontWeight: FontWeight.bold, color: accent),
               ),
@@ -263,13 +263,13 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _buildDnsTile(context, vpn, 'Cloudflare (1.1.1.1)',
-              'Fastest privacy-focused resolver'),
+              AppStrings.get('dns_cloudflare_desc')),
           _buildDnsTile(context, vpn, 'Google (8.8.8.8)',
-              'High reliability global resolver'),
+              AppStrings.get('dns_google_desc')),
           _buildDnsTile(context, vpn, 'AdGuard DNS (94.140.14.14)',
-              'Upstream ad-blocking DNS'),
+              AppStrings.get('dns_adguard_desc')),
           _buildDnsTile(context, vpn, 'Quad9 (9.9.9.9)',
-              'Malware protection & threat blocking'),
+              AppStrings.get('dns_quad9_desc')),
 
           const SizedBox(height: 16),
           // Custom DoH / DoT Field
@@ -277,7 +277,7 @@ class SettingsScreen extends StatelessWidget {
             controller: dohController,
             style: const TextStyle(color: Colors.white, fontSize: 12),
             decoration: InputDecoration(
-              hintText: 'Custom DoH URL (e.g. https://dns.nextdns.io/xxxxxx)',
+              hintText: AppStrings.get('settings_doh_hint'),
               hintStyle: TextStyle(color: Colors.grey.shade600),
               filled: true,
               fillColor: const Color(0xFF161B22),
@@ -293,16 +293,16 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 24),
 
           // App-by-App Split Tunneling
-          const Text(
-            'App-by-App Split Tunneling (Bypass VPN)',
-            style: TextStyle(
+          Text(
+            AppStrings.get('settings_split_title'),
+            style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
                 color: Colors.amberAccent),
           ),
           const SizedBox(height: 6),
           Text(
-            'Selected apps will bypass Aegis Local VPN and connect directly.',
+            AppStrings.get('settings_split_desc'),
             style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
           ),
           const SizedBox(height: 10),
@@ -313,7 +313,7 @@ class SettingsScreen extends StatelessWidget {
                   controller: bypassController,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   decoration: InputDecoration(
-                    hintText: 'Package name (e.g. com.zing.zalo)',
+                    hintText: AppStrings.get('settings_pkg_hint'),
                     hintStyle: TextStyle(color: Colors.grey.shade600),
                     filled: true,
                     fillColor: const Color(0xFF161B22),
@@ -337,8 +337,8 @@ class SettingsScreen extends StatelessWidget {
                   vpn.addBypassApp(bypassController.text);
                   bypassController.clear();
                 },
-                child: const Text('ADD',
-                    style: TextStyle(
+                child: Text(AppStrings.get('common_add'),
+                    style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,
                         fontWeight: FontWeight.bold)),
@@ -392,14 +392,14 @@ class SettingsScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.schedule_rounded,
+                        const Icon(Icons.schedule_rounded,
                             color: Colors.amberAccent, size: 18),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text(
-                          'Scheduled Parental Controls',
-                          style: TextStyle(
+                          AppStrings.get('settings_schedule_title'),
+                          style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
                               color: Colors.white),
@@ -416,10 +416,11 @@ class SettingsScreen extends StatelessWidget {
                 if (vpn.scheduleEnabled) ...[
                   const SizedBox(height: 10),
                   Text(
-                    'Enforces Adult content filtering from '
-                    '${_formatMinutes(context, vpn.quietHoursStart)} to '
-                    '${_formatMinutes(context, vpn.quietHoursEnd)}, then '
-                    'restores your own setting.',
+                    AppStrings.get('settings_schedule_desc')
+                        .replaceAll(
+                            '%1', _formatMinutes(context, vpn.quietHoursStart))
+                        .replaceAll(
+                            '%2', _formatMinutes(context, vpn.quietHoursEnd)),
                     style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
                   ),
                   const SizedBox(height: 10),
@@ -466,9 +467,9 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 24),
 
           // Backup & Restore Config Section
-          const Text(
-            'Configuration Backup & Restore',
-            style: TextStyle(
+          Text(
+            AppStrings.get('settings_backup_title'),
+            style: const TextStyle(
                 fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
           ),
           const SizedBox(height: 10),
@@ -477,7 +478,7 @@ class SettingsScreen extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.download_rounded, size: 16),
-                  label: const Text('BACKUP JSON'),
+                  label: Text(AppStrings.get('settings_backup_json')),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.cyanAccent,
                     side: const BorderSide(color: Colors.cyanAccent),
@@ -490,9 +491,9 @@ class SettingsScreen extends StatelessWidget {
                         context: context,
                         builder: (ctx) => AlertDialog(
                           backgroundColor: const Color(0xFF161B22),
-                          title: const Text('Exported Configuration JSON',
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 14)),
+                          title: Text(AppStrings.get('settings_exported_title'),
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 14)),
                           content: SingleChildScrollView(
                             child: SelectableText(jsonStr,
                                 style: const TextStyle(
@@ -503,8 +504,9 @@ class SettingsScreen extends StatelessWidget {
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx),
-                              child: const Text('CLOSE',
-                                  style: TextStyle(color: Colors.cyanAccent)),
+                              child: Text(AppStrings.get('common_close'),
+                                  style: const TextStyle(
+                                      color: Colors.cyanAccent)),
                             ),
                           ],
                         ),
@@ -517,7 +519,7 @@ class SettingsScreen extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.upload_rounded, size: 16),
-                  label: const Text('RESTORE JSON'),
+                  label: Text(AppStrings.get('settings_restore_json')),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: emeraldColor,
                     side: const BorderSide(color: emeraldColor),
@@ -528,24 +530,24 @@ class SettingsScreen extends StatelessWidget {
                       context: context,
                       builder: (ctx) => AlertDialog(
                         backgroundColor: const Color(0xFF161B22),
-                        title: const Text('Paste Configuration JSON',
-                            style:
-                                TextStyle(color: Colors.white, fontSize: 14)),
+                        title: Text(AppStrings.get('settings_paste_title'),
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 14)),
                         content: TextField(
                           controller: controller,
                           maxLines: 6,
                           style: const TextStyle(
                               color: Colors.white, fontSize: 11),
-                          decoration: const InputDecoration(
-                            hintText: 'Paste JSON here...',
-                            hintStyle: TextStyle(color: Colors.grey),
+                          decoration: InputDecoration(
+                            hintText: AppStrings.get('settings_paste_hint'),
+                            hintStyle: const TextStyle(color: Colors.grey),
                           ),
                         ),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(ctx),
-                            child: const Text('CANCEL',
-                                style: TextStyle(color: Colors.grey)),
+                            child: Text(AppStrings.get('common_cancel'),
+                                style: const TextStyle(color: Colors.grey)),
                           ),
                           ElevatedButton(
                             onPressed: () async {
@@ -563,8 +565,9 @@ class SettingsScreen extends StatelessWidget {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(success
-                                        ? 'Config restored successfully!'
-                                        : 'Invalid JSON config format'),
+                                        ? AppStrings.get('settings_restored_ok')
+                                        : AppStrings.get(
+                                            'settings_invalid_json')),
                                     backgroundColor: success
                                         ? emeraldDarkColor
                                         : Colors.red.shade900,
@@ -574,7 +577,7 @@ class SettingsScreen extends StatelessWidget {
                             },
                             style: ElevatedButton.styleFrom(
                                 backgroundColor: emeraldColor),
-                            child: const Text('RESTORE'),
+                            child: Text(AppStrings.get('common_restore')),
                           ),
                         ],
                       ),
@@ -635,8 +638,8 @@ class SettingsScreen extends StatelessWidget {
                       foregroundColor: Colors.black,
                     ),
                     icon: const Icon(Icons.verified_user, size: 16),
-                    label: const Text('Install iOS Encrypted DNS Profile',
-                        style: TextStyle(
+                    label: Text(AppStrings.get('settings_ios_profile'),
+                        style: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 12)),
                     onPressed: () async {
                       final dohUrl = vpn.upstreamDns.contains('(')
@@ -651,8 +654,8 @@ class SettingsScreen extends StatelessWidget {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(ok
-                                ? 'Profile generated! Review & Install in iOS Settings > Profile Downloaded.'
-                                : 'Failed to generate profile.'),
+                                ? AppStrings.get('settings_profile_ok')
+                                : AppStrings.get('settings_profile_failed')),
                           ),
                         );
                       }

@@ -97,6 +97,30 @@ nobody chose.
 
 All three lists now start empty, and the declared defaults survive first launch.
 
+### 🌏 The four languages now cover the whole app
+
+The settings screen offers English, Tiếng Việt, 한국어 and 日本語, and all four
+tables were complete — but only the dashboard and part of settings ever read
+them. Rules, Analytics, Logs and the navigation bar were hardcoded English, so
+switching language changed roughly a quarter of what is on screen.
+
+- Every user-visible string in all six screens now goes through `AppStrings`:
+  35 keys became 116, in each of the four languages. That includes the filter
+  list names and descriptions under "Subscribe to Filter Lists", which are
+  looked up as `src_<id>_name` — a list the user added themselves has no
+  translation and keeps whatever they typed.
+- **The screens never rebuilt on a language change.** `MainNavigationScreen`
+  held its five screens in a `const` list in a field, so `IndexedStack` got the
+  identical widget objects every build and Flutter skipped the whole subtree.
+  Only the tab labels changed language; everything behind them stayed as it
+  was. `const` on the individual constructors does the same thing, since a
+  const constructor is canonicalised.
+- `every language defines every string` fails if a translation is missing.
+  `AppStrings.get` falls back to English, so a gap does not throw — the screen
+  just quietly renders in the wrong language. The test compares raw lookups.
+- Fixed `theme_title` in Japanese, which read `サイバーパンクネ온カラー` — a Korean
+  syllable had found its way into the middle of a Japanese string.
+
 ### 🧪 Guard against the next one
 
 `test_seed_rules_never_block_an_app_s_own_api` now covers eleven endpoints an

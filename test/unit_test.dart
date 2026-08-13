@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aegis_net/src/app_version.dart';
 import 'package:aegis_net/src/bridge/aegis_bridge.dart';
+import 'package:aegis_net/src/i18n/app_strings.dart';
 import 'package:aegis_net/src/providers/vpn_provider.dart';
 import 'package:aegis_net/src/services/ios_doh_profile_service.dart';
 import 'package:aegis_net/src/services/rule_downloader_service.dart';
@@ -462,6 +463,18 @@ void main() {
         }
       } finally {
         HttpOverrides.global = savedOverrides;
+      }
+    });
+
+    test('every language defines every string', () {
+      // AppStrings.get falls back to English for a missing key, so a gap is
+      // invisible at runtime: the screen just renders in the wrong language.
+      // Only a direct lookup catches it.
+      for (final language in AppStrings.languages) {
+        final missing = AppStrings.keys
+            .where((k) => AppStrings.rawFor(language, k) == null);
+        expect(missing, isEmpty,
+            reason: '$language is missing: ${missing.join(', ')}');
       }
     });
 

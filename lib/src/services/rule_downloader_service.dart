@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
+import '../i18n/app_strings.dart';
 
 class FilterSource {
   final String id;
@@ -22,6 +23,15 @@ class FilterSource {
     this.categoryId = 0,
     this.isEnabled = true,
   });
+
+  /// Display name in the current language.
+  ///
+  /// The preset lists carry a translation under `src_<id>_name`; a list the
+  /// user subscribed to themselves has none, and falls back to what they typed.
+  String get localizedName => AppStrings.maybe('src_${id}_name') ?? name;
+
+  String get localizedDescription =>
+      AppStrings.maybe('src_${id}_desc') ?? description;
 
   Map<String, dynamic> toJson() => {
         'id': id,

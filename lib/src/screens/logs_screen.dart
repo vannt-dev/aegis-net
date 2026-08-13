@@ -77,7 +77,7 @@ class _LogsScreenState extends State<LogsScreen> {
               onChanged: (val) => setState(() => _searchQuery = val),
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'Filter domain logs...',
+                hintText: AppStrings.get('logs_filter_hint'),
                 hintStyle: TextStyle(color: Colors.grey.shade600),
                 prefixIcon: const Icon(Icons.search, color: Colors.grey),
                 filled: true,
@@ -97,11 +97,14 @@ class _LogsScreenState extends State<LogsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: Row(
               children: [
-                _buildFilterChip('all', 'ALL LOGS', accent),
+                _buildFilterChip(
+                    'all', AppStrings.get('logs_chip_all'), accent),
                 const SizedBox(width: 8),
-                _buildFilterChip('blocked', 'BLOCKED', Colors.redAccent),
+                _buildFilterChip('blocked', AppStrings.get('logs_blocked'),
+                    Colors.redAccent),
                 const SizedBox(width: 8),
-                _buildFilterChip('allowed', 'ALLOWED', emeraldColor),
+                _buildFilterChip(
+                    'allowed', AppStrings.get('logs_allowed'), emeraldColor),
               ],
             ),
           ),
@@ -110,7 +113,7 @@ class _LogsScreenState extends State<LogsScreen> {
             child: logs.isEmpty
                 ? Center(
                     child: Text(
-                      'No queries captured yet',
+                      AppStrings.get('logs_empty'),
                       style: TextStyle(color: Colors.grey.shade500),
                     ),
                   )
@@ -170,7 +173,9 @@ class _LogsScreenState extends State<LogsScreen> {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            item.isBlocked ? 'BLOCKED' : 'ALLOWED',
+                            item.isBlocked
+                                ? AppStrings.get('logs_blocked')
+                                : AppStrings.get('logs_allowed'),
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
