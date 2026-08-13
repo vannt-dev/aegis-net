@@ -269,14 +269,22 @@ impl RuleEngine {
         ads.insert("static.doubleclick.net");
         ads.insert("ads.youtube.com");
 
+        // Only endpoints an app can lose without noticing belong here. The
+        // seeds apply before a single list is downloaded and the Trackers
+        // category is on by default, so anything wrong in this list breaks
+        // every user immediately, with no setting to explain it.
+        //
+        // `youtubei.googleapis.com` and `graph.facebook.com` used to be in
+        // this list and are the reason it now carries this warning. Both are
+        // load-bearing APIs rather than telemetry — see
+        // `test_seed_rules_never_block_an_app_s_own_api`.
         let mut trackers = self.tracker_rules.write().unwrap();
-        trackers.insert("graph.facebook.com");
         trackers.insert("telemetry.applovin.com");
         trackers.insert("tracking.vungle.com");
         trackers.insert("analytics.google.com");
+        // Playback statistics only. YouTube keeps working without them.
         trackers.insert("s.youtube.com");
         trackers.insert("video-stats.l.google.com");
-        trackers.insert("youtubei.googleapis.com");
 
         let mut malware = self.malware_rules.write().unwrap();
         malware.insert("crypto-miner.org");
@@ -792,9 +800,21 @@ mod tests {
         let engine = RuleEngine::new();
         assert!(engine.is_blocked("doubleclick.net"));
         assert!(engine.is_blocked("sub.doubleclick.net"));
-        assert!(engine.is_blocked("graph.facebook.com"));
+        assert!(engine.is_blocked("telemetry.applovin.com"));
         assert!(!engine.is_blocked("google.com"));
         assert!(!engine.is_blocked("github.com"));
+    }
+
+    /// A filter that breaks the app it is filtering has failed, however many
+    /// trackers it caught. These are load-bearing APIs, not telemetry: the
+    /// YouTube app fetches its home feed, its search results and the player
+    /// config carrying the stream URLs from `youtubei.googleapis.com`, and
+    /// every app offering Facebook login talks to `graph.facebook.com`.
+    #[test]
+    fn test_seed_rules_never_block_an_app_s_own_api() {
+        let engine = RuleEngine::new();
+        assert!(!engine.is_blocked("youtubei.googleapis.com"));
+        assert!(!engine.is_blocked("graph.facebook.com"));
     }
 
     #[test]
@@ -821,11 +841,11 @@ mod tests {
     #[test]
     fn test_whitelist_covers_subdomains() {
         let engine = RuleEngine::new();
-        assert!(engine.is_blocked("graph.facebook.com"));
+        assert!(engine.is_blocked("telemetry.applovin.com"));
 
-        engine.add_whitelist("facebook.com");
-        assert!(!engine.is_blocked("graph.facebook.com"));
-        assert!(!engine.is_blocked("facebook.com"));
+        engine.add_whitelist("applovin.com");
+        assert!(!engine.is_blocked("telemetry.applovin.com"));
+        assert!(!engine.is_blocked("applovin.com"));
     }
 
     #[test]
@@ -890,12 +910,12 @@ mod tests {
     #[test]
     fn test_tld_exception_unblocks_every_domain_under_it() {
         let engine = RuleEngine::new();
-        assert!(engine.is_blocked("graph.facebook.com"));
+        assert!(engine.is_blocked("telemetry.applovin.com"));
 
         let count = engine.load_rules_text("@@||com^", RuleCategory::Ads);
         assert_eq!(count, 1);
 
-        assert!(!engine.is_blocked("graph.facebook.com"));
+        assert!(!engine.is_blocked("telemetry.applovin.com"));
         assert!(engine.is_blocked("doubleclick.net"));
     }
 

@@ -6,6 +6,28 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+### 🐛 YouTube would not load with the tunnel on
+
+- **`youtubei.googleapis.com` was blocked by default, which breaks the YouTube
+  app outright.** It is not a tracker: it is YouTube's InnerTube API, the one
+  the app fetches its home feed, its search results and the player config
+  carrying the stream URLs from. Blocked, the app renders its skeleton and
+  nothing ever fills it in — no thumbnails, no playback. Reported on Realme /
+  Android 14, but nothing about it was device-specific.
+
+  The rule came from `seed_default_rules()`, a built-in list that applies
+  before any filter list is downloaded, in the Trackers category, which is on
+  by default. So it hit every user from the first launch, and no setting on
+  screen explained why.
+
+- **`graph.facebook.com` removed for the same reason** — the Facebook Graph
+  API, which every app offering Facebook login depends on.
+- Genuine telemetry stays blocked: `s.youtube.com` and
+  `video-stats.l.google.com` are playback statistics, and YouTube works fine
+  without them.
+- `test_seed_rules_never_block_an_app_s_own_api` now guards the seed list, and
+  the comment above it says what the list is allowed to contain.
+
 ### 🧹 Filter rule parsing
 
 - **Rules that could never match are no longer stored.** The parser ended in a
