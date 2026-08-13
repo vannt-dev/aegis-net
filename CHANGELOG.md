@@ -121,6 +121,17 @@ switching language changed roughly a quarter of what is on screen.
 - Fixed `theme_title` in Japanese, which read `サイバーパンクネ온カラー` — a Korean
   syllable had found its way into the middle of a Japanese string.
 
+### ⌨️ Text fields in Settings cleared themselves every two seconds
+
+The DoH URL field and the split-tunnel package field created their
+`TextEditingController` inside `build()`. The settings screen watches
+`VpnProvider`, which notifies every two seconds while the tunnel is up, so both
+fields were handed a brand new empty controller on every tick: **whatever you
+typed disappeared mid-sentence, and neither controller was ever disposed.**
+Setting a custom DoH resolver or excluding an app while protected was simply
+not possible. Confirmed on device before and after the fix — the controllers
+now belong to a `State` that disposes them.
+
 ### 🧪 Guard against the next one
 
 `test_seed_rules_never_block_an_app_s_own_api` now covers eleven endpoints an

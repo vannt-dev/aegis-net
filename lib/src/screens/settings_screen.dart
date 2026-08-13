@@ -13,8 +13,31 @@ import '../i18n/app_strings.dart';
 const Color emeraldColor = Color(0xFF10B981);
 const Color emeraldDarkColor = Color(0xFF065F46);
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  /// Owned by the State, not created in `build`.
+  ///
+  /// These used to be locals inside `build`, and this screen watches
+  /// VpnProvider, which notifies every two seconds while the tunnel is up. So
+  /// every two seconds both fields were handed a brand new empty controller:
+  /// whatever the user had typed vanished mid-sentence, and neither controller
+  /// was ever disposed. Typing a DoH URL or a package name while protected was
+  /// impossible.
+  final TextEditingController _bypassController = TextEditingController();
+  final TextEditingController _dohController = TextEditingController();
+
+  @override
+  void dispose() {
+    _bypassController.dispose();
+    _dohController.dispose();
+    super.dispose();
+  }
 
   /// Vendor ROMs (MIUI above all) block the tunnel in ways the app cannot work
   /// around and cannot detect from Dart. This dumps what the native side can
@@ -176,9 +199,6 @@ class SettingsScreen extends StatelessWidget {
     final theme = context.watch<ThemeProvider>();
     final accent = theme.primaryAccent;
 
-    final TextEditingController bypassController = TextEditingController();
-    final TextEditingController dohController = TextEditingController();
-
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
       appBar: AppBar(
@@ -274,7 +294,7 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 16),
           // Custom DoH / DoT Field
           TextField(
-            controller: dohController,
+            controller: _dohController,
             style: const TextStyle(color: Colors.white, fontSize: 12),
             decoration: InputDecoration(
               hintText: AppStrings.get('settings_doh_hint'),
@@ -310,7 +330,7 @@ class SettingsScreen extends StatelessWidget {
             children: [
               Expanded(
                 child: TextField(
-                  controller: bypassController,
+                  controller: _bypassController,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   decoration: InputDecoration(
                     hintText: AppStrings.get('settings_pkg_hint'),
@@ -334,8 +354,8 @@ class SettingsScreen extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
                 onPressed: () {
-                  vpn.addBypassApp(bypassController.text);
-                  bypassController.clear();
+                  vpn.addBypassApp(_bypassController.text);
+                  _bypassController.clear();
                 },
                 child: Text(AppStrings.get('common_add'),
                     style: const TextStyle(
