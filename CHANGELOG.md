@@ -31,6 +31,19 @@ verified native pipeline on Android.
 - **Added Peter Lowe's Ad and Tracking Server List** to the default sources.
   Hostname-only, so every line survives the DNS parser — 3,525 rules, zero
   unusable. It is one of the lists uBlock Origin Lite enables by default.
+- **Added OISD Small** to the default sources, and deliberately not OISD Big.
+  Measured against the lists already shipped, with memory as the deciding
+  factor — the iOS PacketTunnel extension has a hard limit in the tens of MB,
+  and the merged trie already costs 18.3 MB before either list is added.
+
+  | | domains | already covered | newly blocked | trie cost |
+  |---|---|---|---|---|
+  | OISD Small | 56,747 | 93.5% | **3,673** | **+0.2 MB** |
+  | OISD Big | 265,831 | 32.3% | 179,917 | +11.1 MB |
+
+  OISD Big blocks a great deal more, but 11.1 MB on top of 18.3 MB is not a
+  trade the extension can make, and every list in the defaults is enabled for
+  every user. It can still be added by hand as a custom source.
 
 ## [1.1.0] — 2026-08-12
 

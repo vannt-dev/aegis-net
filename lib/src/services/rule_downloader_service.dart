@@ -67,6 +67,19 @@ class RuleDownloaderService {
       description:
           'Hand-curated ad and tracking servers. Small, low false positives.',
     ),
+    // Mostly redundant against the three lists above — 93.5% of its 56,747
+    // domains are already covered — but the 3,673 it does add cost only
+    // 0.2 MB in the trie, so it earns its place. The full OISD list is
+    // deliberately not here: it adds 11.1 MB, which the iOS PacketTunnel
+    // extension cannot spare. Add that one as a custom source if you want it.
+    FilterSource(
+      id: 'oisd_small',
+      name: 'OISD Small',
+      url: 'https://small.oisd.nl/',
+      description:
+          'Curated aggregate of ad and tracking domains, tuned to avoid '
+          'breaking sites.',
+    ),
   ];
 
   static List<FilterSource> _customSources = [];
