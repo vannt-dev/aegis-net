@@ -7,9 +7,23 @@ verified native pipeline on Android.
 ## [1.2.0] — 2026-08-13
 
 Fixes a bug that broke the YouTube app for everyone running 1.1.0, and stops
-the rule parser storing entries that could never match. **iOS is still not
-verified** — no Swift in the PacketTunnel target has been compiled on a Mac.
-Treat this release as Android-only, as with 1.1.0.
+the rule parser storing entries that could never match.
+
+Verified on an Android 14 emulator with the tunnel running — the same Android
+version the bug was reported on. Every endpoint the YouTube app needs now
+resolves, and filtering is untouched:
+
+| domain | 1.2.0 |
+|---|---|
+| `youtubei.googleapis.com` | resolves (`172.217.115.4`) — was NXDOMAIN in 1.1.0 |
+| `www.youtube.com`, `i.ytimg.com`, `yt3.ggpht.com` | resolve |
+| `rr1---sn-*.googlevideo.com`, `jnn-pa.googleapis.com` | resolve |
+| `graph.facebook.com` | resolves — was NXDOMAIN in 1.1.0 |
+| `s.youtube.com` | blocked, as intended |
+| `pagead2.googlesyndication.com` | blocked, as intended |
+
+**iOS is still not verified** — no Swift in the PacketTunnel target has been
+compiled on a Mac. Treat this release as Android-only, as with 1.1.0.
 
 ### 🐛 YouTube would not load with the tunnel on
 
