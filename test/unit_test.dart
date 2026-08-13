@@ -6,8 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aegis_net/src/app_version.dart';
 import 'package:aegis_net/src/bridge/aegis_bridge.dart';
+import 'package:aegis_net/src/i18n/app_strings.dart';
 import 'package:aegis_net/src/providers/vpn_provider.dart';
 import 'package:aegis_net/src/services/ios_doh_profile_service.dart';
+import 'package:aegis_net/src/services/rule_downloader_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -462,6 +464,41 @@ void main() {
       } finally {
         HttpOverrides.global = savedOverrides;
       }
+    });
+
+    test('every language defines every string', () {
+      // AppStrings.get falls back to English for a missing key, so a gap is
+      // invisible at runtime: the screen just renders in the wrong language.
+      // Only a direct lookup catches it.
+      for (final language in AppStrings.languages) {
+        final missing = AppStrings.keys
+            .where((k) => AppStrings.rawFor(language, k) == null);
+        expect(missing, isEmpty,
+            reason: '$language is missing: ${missing.join(', ')}');
+      }
+    });
+
+    test('a source declared off stays off before any toggle is saved',
+        () async {
+      // The pref stores only the ids that are OFF, so a missing key and "none
+      // are off" are indistinguishable unless null is handled on its own.
+      // Reading a missing key as an empty list switched every source on and
+      // silently overrode isEnabled: false — the adult list would have
+      // downloaded itself on first launch, for a category that ships disabled.
+      SharedPreferences.setMockInitialValues({});
+      await RuleDownloaderService.loadSources();
+
+      final adult = RuleDownloaderService.allSources
+          .firstWhere((s) => s.id == 'stevenblack_porn');
+      expect(adult.isEnabled, isFalse);
+
+      // And the categories the lists feed are the ones the switches control.
+      String categoryOf(String id) =>
+          '${RuleDownloaderService.allSources.firstWhere((s) => s.id == id).categoryId}';
+      expect(categoryOf('adguard_dns'), '0');
+      expect(categoryOf('pgl_yoyo'), '1');
+      expect(categoryOf('urlhaus'), '2');
+      expect(categoryOf('stevenblack_porn'), '3');
     });
 
     test('installProfile is a no-op off iOS and leaves no socket behind',

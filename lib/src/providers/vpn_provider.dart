@@ -52,7 +52,14 @@ class VpnProvider extends ChangeNotifier {
 
   final Map<String, String> _customHosts = {};
 
-  final List<String> _bypassApps = ['com.zing.zalo', 'com.vietcombank.mobile'];
+  /// Packages excluded from the tunnel. Empty until the user excludes one.
+  ///
+  /// This shipped containing `com.zing.zalo` and `com.vietcombank.mobile`, and
+  /// the list is handed to `addDisallowedApplication()` when the tunnel is
+  /// built. A banking app and a messaging app were therefore carved out of the
+  /// VPN on every fresh install, by a default nobody chose, in an app whose
+  /// whole promise is that traffic goes through it.
+  final List<String> _bypassApps = [];
 
   /// Counters, zeroed until the engine reports its own.
   ///
@@ -71,8 +78,15 @@ class VpnProvider extends ChangeNotifier {
   /// with three fabricated entries for the same reason as [_stats].
   final List<DnsLogItem> _logs = [];
 
-  final List<String> _whitelist = ['mybank.com', 'workplace.com'];
-  final List<String> _blacklist = ['bad-tracker.net', 'crypto-miner.org'];
+  /// The user's own lists, empty until the user puts something in them.
+  ///
+  /// These shipped seeded with `mybank.com` / `workplace.com` and
+  /// `bad-tracker.net` / `crypto-miner.org` — invented domains that a fresh
+  /// install presented as rules the user had written. Worse than the fabricated
+  /// statistics cleaned up in 1.1.0: an entry here is pushed into the engine,
+  /// so the app really was whitelisting two names nobody chose.
+  final List<String> _whitelist = [];
+  final List<String> _blacklist = [];
 
   Timer? _simulationTimer;
   final bool enableSimulation;

@@ -466,7 +466,8 @@ class DashboardScreen extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
-                                  '$count blocked',
+                                  AppStrings.get('count_blocked')
+                                      .replaceAll('%s', '$count'),
                                   style: const TextStyle(
                                       color: emeraldColor,
                                       fontSize: 11,

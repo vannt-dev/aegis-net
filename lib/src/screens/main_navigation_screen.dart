@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../i18n/app_strings.dart';
 import '../providers/theme_provider.dart';
 import 'dashboard_screen.dart';
 import 'rules_screen.dart';
@@ -17,13 +18,30 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = const [
-    DashboardScreen(),
-    RulesScreen(),
-    LogsScreen(),
-    AnalyticsScreen(),
-    SettingsScreen(),
-  ];
+  /// Built fresh on every build, deliberately.
+  ///
+  /// This was a `const` list held in a field, so `IndexedStack` received the
+  /// identical widget objects each time and Flutter short-circuited the whole
+  /// subtree. Only this widget rebuilt on a language change: the tab labels
+  /// switched to the new language while every screen behind them stayed in the
+  /// old one. New instances of the same types at the same positions keep their
+  /// State, so nothing is lost by rebuilding them.
+  /// `const` is wrong on these for the same reason: a const constructor is
+  /// canonicalised, so `const RulesScreen()` is the same object every time and
+  /// the subtree is skipped again.
+  // ignore: prefer_const_constructors
+  List<Widget> get _screens => [
+        // ignore: prefer_const_constructors
+        DashboardScreen(),
+        // ignore: prefer_const_constructors
+        RulesScreen(),
+        // ignore: prefer_const_constructors
+        LogsScreen(),
+        // ignore: prefer_const_constructors
+        AnalyticsScreen(),
+        // ignore: prefer_const_constructors
+        SettingsScreen(),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -50,31 +68,31 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           type: BottomNavigationBarType.fixed,
           selectedFontSize: 11,
           unselectedFontSize: 11,
-          items: const [
+          items: [
             BottomNavigationBarItem(
-              icon: Icon(Icons.shield_outlined),
-              activeIcon: Icon(Icons.shield_rounded),
-              label: 'Dashboard',
+              icon: const Icon(Icons.shield_outlined),
+              activeIcon: const Icon(Icons.shield_rounded),
+              label: AppStrings.get('nav_dashboard'),
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.list_alt_rounded),
-              activeIcon: Icon(Icons.list_alt_sharp),
-              label: 'Rules',
+              icon: const Icon(Icons.list_alt_rounded),
+              activeIcon: const Icon(Icons.list_alt_sharp),
+              label: AppStrings.get('nav_rules'),
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.history_toggle_off_rounded),
-              activeIcon: Icon(Icons.history_rounded),
-              label: 'Logs',
+              icon: const Icon(Icons.history_toggle_off_rounded),
+              activeIcon: const Icon(Icons.history_rounded),
+              label: AppStrings.get('nav_logs'),
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.analytics_outlined),
-              activeIcon: Icon(Icons.analytics),
-              label: 'Analytics',
+              icon: const Icon(Icons.analytics_outlined),
+              activeIcon: const Icon(Icons.analytics),
+              label: AppStrings.get('nav_analytics'),
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.settings_outlined),
-              activeIcon: Icon(Icons.settings),
-              label: 'Settings',
+              icon: const Icon(Icons.settings_outlined),
+              activeIcon: const Icon(Icons.settings),
+              label: AppStrings.get('nav_settings'),
             ),
           ],
         ),

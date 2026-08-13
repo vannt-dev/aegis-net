@@ -7,4 +7,4 @@
 /// Drift is prevented by `app version constant matches pubspec.yaml` in
 /// `test/unit_test.dart`, which the release workflow runs before it will build
 /// anything. The footer used to hardcode "v1.0.0" with nothing checking it.
-const String kAppVersion = '1.1.0';
+const String kAppVersion = '1.2.0';

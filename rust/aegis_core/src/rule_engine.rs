@@ -200,6 +200,24 @@ impl DomainTrie {
     }
 }
 
+/// What one line of a filter list means to the DNS matcher.
+///
+/// This is the distinction the parser actually draws, so it is worth a name:
+/// `Unusable` is not a malformed line, it is valid filter syntax that a DNS
+/// filter has no way to honour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LineKind {
+    /// A hostname to block, covering everything under it.
+    Block(String),
+    /// A hostname to allow, overriding every category (`@@||domain^`).
+    Allow(String),
+    /// Blank or a comment. Carries no rule.
+    Comment,
+    /// Rule syntax a DNS filter cannot express — wildcards, regex, and rules
+    /// narrowed to a URL path or a resource type. Dropped on purpose.
+    Unusable,
+}
+
 /// High-performance Domain Rule Matcher for AegisNet with Categories
 pub struct RuleEngine {
     ads_rules: RwLock<DomainTrie>,
@@ -251,19 +269,27 @@ impl RuleEngine {
         ads.insert("static.doubleclick.net");
         ads.insert("ads.youtube.com");
 
+        // Only endpoints an app can lose without noticing belong here. The
+        // seeds apply before a single list is downloaded and the Trackers
+        // category is on by default, so anything wrong in this list breaks
+        // every user immediately, with no setting to explain it.
+        //
+        // `youtubei.googleapis.com` and `graph.facebook.com` used to be in
+        // this list and are the reason it now carries this warning. Both are
+        // load-bearing APIs rather than telemetry — see
+        // `test_seed_rules_never_block_an_app_s_own_api`.
         let mut trackers = self.tracker_rules.write().unwrap();
-        trackers.insert("graph.facebook.com");
         trackers.insert("telemetry.applovin.com");
         trackers.insert("tracking.vungle.com");
         trackers.insert("analytics.google.com");
+        // Playback statistics only. YouTube keeps working without them.
         trackers.insert("s.youtube.com");
         trackers.insert("video-stats.l.google.com");
-        trackers.insert("youtubei.googleapis.com");
 
-        let mut malware = self.malware_rules.write().unwrap();
-        malware.insert("crypto-miner.org");
-        malware.insert("bad-malware-site.net");
-        malware.insert("phishing-login.com");
+        // Malware and Adult are fed entirely by downloaded lists. This block
+        // used to seed crypto-miner.org, bad-malware-site.net and
+        // phishing-login.com -- invented names, so the Malware toggle
+        // protected against nothing while counting three rules as loaded.
     }
 
     pub fn set_category_enabled(&self, category: RuleCategory, enabled: bool) {
@@ -288,24 +314,21 @@ impl RuleEngine {
         let mut allowed = self.allowed_domains.write().unwrap();
 
         for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
-                continue;
-            }
-
-            // `@@||domain^` exception rules (AdGuard/EasyList) override every
-            // category, so they belong in the whitelist, not the category set.
-            if let Some(domain) = Self::parse_exception_line(line) {
-                if allowed.insert(&domain) {
-                    count += 1;
+            match Self::parse_line(line) {
+                // `@@||domain^` exception rules (AdGuard/EasyList) override
+                // every category, so they belong in the whitelist, not the
+                // category set.
+                LineKind::Allow(domain) => {
+                    if allowed.insert(&domain) {
+                        count += 1;
+                    }
                 }
-                continue;
-            }
-
-            if let Some(domain) = Self::parse_rule_line(line) {
-                if rules.insert(&domain) {
-                    count += 1;
+                LineKind::Block(domain) => {
+                    if rules.insert(&domain) {
+                        count += 1;
+                    }
                 }
+                LineKind::Comment | LineKind::Unusable => {}
             }
         }
 
@@ -346,6 +369,30 @@ impl RuleEngine {
             .collect();
         pairs.sort();
         pairs
+    }
+
+    /// Classify one line of a filter list.
+    ///
+    /// This is the single decision `load_rules_text` makes per line, exposed
+    /// so a candidate list can be measured before it ships — see
+    /// `examples/probe.rs`, which reports how many domains a list adds and
+    /// what it costs in the trie. That tool used to carry its own copy of this
+    /// logic; a copy does not fail when it drifts, it quietly reports wrong
+    /// numbers, and those numbers are what list decisions get made on.
+    pub fn parse_line(line: &str) -> LineKind {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
+            return LineKind::Comment;
+        }
+
+        if let Some(domain) = Self::parse_exception_line(line) {
+            return LineKind::Allow(domain);
+        }
+
+        match Self::parse_rule_line(line) {
+            Some(domain) => LineKind::Block(domain),
+            None => LineKind::Unusable,
+        }
     }
 
     /// Parse an AdGuard/EasyList exception rule (`@@||domain^`), which
@@ -753,9 +800,38 @@ mod tests {
         let engine = RuleEngine::new();
         assert!(engine.is_blocked("doubleclick.net"));
         assert!(engine.is_blocked("sub.doubleclick.net"));
-        assert!(engine.is_blocked("graph.facebook.com"));
+        assert!(engine.is_blocked("telemetry.applovin.com"));
         assert!(!engine.is_blocked("google.com"));
         assert!(!engine.is_blocked("github.com"));
+    }
+
+    /// A filter that breaks the app it is filtering has failed, however many
+    /// trackers it caught. These are load-bearing APIs, not telemetry: the
+    /// YouTube app fetches its home feed, its search results and the player
+    /// config carrying the stream URLs from `youtubei.googleapis.com`, and
+    /// every app offering Facebook login talks to `graph.facebook.com`.
+    #[test]
+    fn test_seed_rules_never_block_an_app_s_own_api() {
+        let engine = RuleEngine::new();
+        for domain in [
+            // The one that shipped broken in 1.1.0.
+            "youtubei.googleapis.com",
+            "graph.facebook.com",
+            // Content and playback for the same app.
+            "www.youtube.com",
+            "i.ytimg.com",
+            "googlevideo.com",
+            // Other APIs an app cannot start without.
+            "api.twitter.com",
+            "graph.instagram.com",
+            "api.telegram.org",
+            "chat.openai.com",
+            // Push delivery. Blocking this silently kills notifications.
+            "fcm.googleapis.com",
+            "firebaseinstallations.googleapis.com",
+        ] {
+            assert!(!engine.is_blocked(domain), "seed rules block {domain}");
+        }
     }
 
     #[test]
@@ -782,11 +858,11 @@ mod tests {
     #[test]
     fn test_whitelist_covers_subdomains() {
         let engine = RuleEngine::new();
-        assert!(engine.is_blocked("graph.facebook.com"));
+        assert!(engine.is_blocked("telemetry.applovin.com"));
 
-        engine.add_whitelist("facebook.com");
-        assert!(!engine.is_blocked("graph.facebook.com"));
-        assert!(!engine.is_blocked("facebook.com"));
+        engine.add_whitelist("applovin.com");
+        assert!(!engine.is_blocked("telemetry.applovin.com"));
+        assert!(!engine.is_blocked("applovin.com"));
     }
 
     #[test]
@@ -851,12 +927,12 @@ mod tests {
     #[test]
     fn test_tld_exception_unblocks_every_domain_under_it() {
         let engine = RuleEngine::new();
-        assert!(engine.is_blocked("graph.facebook.com"));
+        assert!(engine.is_blocked("telemetry.applovin.com"));
 
         let count = engine.load_rules_text("@@||com^", RuleCategory::Ads);
         assert_eq!(count, 1);
 
-        assert!(!engine.is_blocked("graph.facebook.com"));
+        assert!(!engine.is_blocked("telemetry.applovin.com"));
         assert!(engine.is_blocked("doubleclick.net"));
     }
 
