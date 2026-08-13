@@ -57,7 +57,24 @@ const CURRENT: [(&str, &str); 4] = [
 ];
 
 /// Lists being weighed for inclusion.
-const CANDIDATES: [(&str, &str); 1] = [("OISD Big", "https://big.oisd.nl/")];
+///
+/// Every default source currently feeds category 0 (Ads), which leaves the
+/// Trackers, Malware and Adult toggles with nothing but seed rules behind
+/// them. These are candidates to give those categories something real.
+const CANDIDATES: [(&str, &str); 4] = [
+    ("OISD Big", "https://big.oisd.nl/"),
+    // Malware
+    ("URLhaus", "https://urlhaus.abuse.ch/downloads/hostfile/"),
+    // Adult
+    (
+        "Sinfonietta porn",
+        "https://raw.githubusercontent.com/Sinfonietta/hostfiles/master/pornography-hosts",
+    ),
+    (
+        "SB porn-only",
+        "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts",
+    ),
+];
 
 struct Tally {
     blocked: HashSet<String>,

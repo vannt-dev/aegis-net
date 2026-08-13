@@ -47,6 +47,62 @@ compiled on a Mac. Treat this release as Android-only, as with 1.1.0.
 - `test_seed_rules_never_block_an_app_s_own_api` now guards the seed list, and
   the comment above it says what the list is allowed to contain.
 
+### 🎛️ Three of the four category switches did nothing
+
+Every downloaded list fed category 0 (Ads), so the other three switches in the
+UI controlled only the hardcoded seed rules behind them.
+
+Two things had to be wrong for that. `FilterSource.categoryId` defaulted to `0`
+and no default source overrode it — but fixing that alone changes nothing,
+because `syncAllFilters()` called `loadRulesText(content)` without the category
+and the engine then applied its own default of `0`. The field was only ever
+reaching the per-category files written for the iOS extension, which is why the
+switches looked wired up.
+
+| Switch | Was | Now |
+|---|---|---|
+| Ads | ~251,000 domains | AdGuard DNS + StevenBlack + OISD Small |
+| Trackers | 5 seed rules | Peter Lowe's list (3,526) |
+| Malware | **3 invented domains** | URLhaus (370 real hosts, +0.0 MB) |
+| Adult | **nothing at all** | StevenBlack adult hosts (76,751), opt-in |
+
+- `crypto-miner.org`, `bad-malware-site.net` and `phishing-login.com` were not
+  real. Turning on "Malware" protected against three names that do not exist,
+  and counted them as rules loaded.
+- The adult list is **not downloaded until it is switched on**: 76,751 hostnames
+  cost 4.3 MB in the trie, and the Adult category is off by default, so paying
+  that up front would be 4.3 MB of the iOS extension's budget spent on nothing.
+- Honest caveat: DNS blocklists do not split cleanly into "ads" and "trackers".
+  Nearly everything in the Trackers list is also in the ad lists, so switching
+  Trackers off still will not unblock much.
+
+### 🧽 The user's own lists shipped pre-filled with invented entries
+
+`_whitelist` came seeded with `mybank.com` and `workplace.com`, `_blacklist`
+with `bad-tracker.net` and `crypto-miner.org`. A fresh install presented four
+rules as though the user had written them. This is the same class of problem as
+the fabricated statistics removed in 1.1.0, and worse in one way: whitelist
+entries are pushed into the engine, so the app really was allowing two domains
+nobody chose.
+
+- **The split-tunnel bypass list was seeded too, and that one had teeth.** It
+  shipped holding `com.zing.zalo` and `com.vietcombank.mobile`, and the list
+  goes to `addDisallowedApplication()` when the tunnel is built. A messaging app
+  and a banking app were carved out of the VPN on every fresh install, chosen by
+  nobody, in an app whose entire promise is that traffic goes through it.
+- **A source declared `isEnabled: false` could not stay off.** The preference
+  stores only the ids that are *off*, and a missing key was read as an empty
+  list, which switched everything on. Guarded by
+  `a source declared off stays off before any toggle is saved`.
+
+All three lists now start empty, and the declared defaults survive first launch.
+
+### 🧪 Guard against the next one
+
+`test_seed_rules_never_block_an_app_s_own_api` now covers eleven endpoints an
+app cannot start without — YouTube, Instagram, Telegram, Twitter, OpenAI, and
+Firebase Cloud Messaging, where a block would silently kill push notifications.
+
 ### 🧹 Filter rule parsing
 
 - **Rules that could never match are no longer stored.** The parser ended in a

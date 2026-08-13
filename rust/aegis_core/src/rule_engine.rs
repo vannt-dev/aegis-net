@@ -286,10 +286,10 @@ impl RuleEngine {
         trackers.insert("s.youtube.com");
         trackers.insert("video-stats.l.google.com");
 
-        let mut malware = self.malware_rules.write().unwrap();
-        malware.insert("crypto-miner.org");
-        malware.insert("bad-malware-site.net");
-        malware.insert("phishing-login.com");
+        // Malware and Adult are fed entirely by downloaded lists. This block
+        // used to seed crypto-miner.org, bad-malware-site.net and
+        // phishing-login.com -- invented names, so the Malware toggle
+        // protected against nothing while counting three rules as loaded.
     }
 
     pub fn set_category_enabled(&self, category: RuleCategory, enabled: bool) {
@@ -813,8 +813,25 @@ mod tests {
     #[test]
     fn test_seed_rules_never_block_an_app_s_own_api() {
         let engine = RuleEngine::new();
-        assert!(!engine.is_blocked("youtubei.googleapis.com"));
-        assert!(!engine.is_blocked("graph.facebook.com"));
+        for domain in [
+            // The one that shipped broken in 1.1.0.
+            "youtubei.googleapis.com",
+            "graph.facebook.com",
+            // Content and playback for the same app.
+            "www.youtube.com",
+            "i.ytimg.com",
+            "googlevideo.com",
+            // Other APIs an app cannot start without.
+            "api.twitter.com",
+            "graph.instagram.com",
+            "api.telegram.org",
+            "chat.openai.com",
+            // Push delivery. Blocking this silently kills notifications.
+            "fcm.googleapis.com",
+            "firebaseinstallations.googleapis.com",
+        ] {
+            assert!(!engine.is_blocked(domain), "seed rules block {domain}");
+        }
     }
 
     #[test]
