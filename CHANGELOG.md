@@ -47,19 +47,18 @@ compiled on a Mac. Treat this release as Android-only, as with 1.1.0.
 - `test_seed_rules_never_block_an_app_s_own_api` now guards the seed list, and
   the comment above it says what the list is allowed to contain.
 
-### 🎛️ Three of the four category switches did nothing
+### 🎛️ Three of the four rule categories had nothing in them
 
-Every downloaded list fed category 0 (Ads), so the other three switches in the
-UI controlled only the hardcoded seed rules behind them.
+Every downloaded list fed category 0 (Ads), so Trackers, Malware and Adult held
+only the hardcoded seed rules — and Adult held nothing at all.
 
 Two things had to be wrong for that. `FilterSource.categoryId` defaulted to `0`
 and no default source overrode it — but fixing that alone changes nothing,
 because `syncAllFilters()` called `loadRulesText(content)` without the category
 and the engine then applied its own default of `0`. The field was only ever
-reaching the per-category files written for the iOS extension, which is why the
-switches looked wired up.
+reaching the per-category files written for the iOS extension.
 
-| Switch | Was | Now |
+| Category | Was | Now |
 |---|---|---|
 | Ads | ~251,000 domains | AdGuard DNS + StevenBlack + OISD Small |
 | Trackers | 5 seed rules | Peter Lowe's list (3,526) |
@@ -67,14 +66,24 @@ switches looked wired up.
 | Adult | **nothing at all** | StevenBlack adult hosts (76,751), opt-in |
 
 - `crypto-miner.org`, `bad-malware-site.net` and `phishing-login.com` were not
-  real. Turning on "Malware" protected against three names that do not exist,
+  real. The Malware category protected against three names that do not exist,
   and counted them as rules loaded.
 - The adult list is **not downloaded until it is switched on**: 76,751 hostnames
   cost 4.3 MB in the trie, and the Adult category is off by default, so paying
   that up front would be 4.3 MB of the iOS extension's budget spent on nothing.
 - Honest caveat: DNS blocklists do not split cleanly into "ads" and "trackers".
-  Nearly everything in the Trackers list is also in the ad lists, so switching
-  Trackers off still will not unblock much.
+  Nearly everything in the Trackers list is also in the ad lists, so disabling
+  Trackers would still not unblock much.
+
+**Known gap, not fixed here.** The categories have no switches on screen — the
+only `Switch` in the app is Scheduled Parental Controls, and the only thing it
+does is turn the Adult category on. Since that category was empty, **the
+schedule filtered nothing whatsoever** before this release, and it still does
+nothing until the adult list is switched on in Rules. Wiring the two together
+is a change worth making carefully: the obvious version routes through
+`syncAllFilters()`, which starts by clearing every downloaded rule and
+re-fetching ~7 MB, so a flick of that switch on a bad connection would leave
+the user with no filtering at all.
 
 ### 🧽 The user's own lists shipped pre-filled with invented entries
 
@@ -105,7 +114,7 @@ them. Rules, Analytics, Logs and the navigation bar were hardcoded English, so
 switching language changed roughly a quarter of what is on screen.
 
 - Every user-visible string in all six screens now goes through `AppStrings`:
-  35 keys became 116, in each of the four languages. That includes the filter
+  35 keys became 118, in each of the four languages. That includes the filter
   list names and descriptions under "Subscribe to Filter Lists", which are
   looked up as `src_<id>_name` — a list the user added themselves has no
   translation and keeps whatever they typed.
@@ -131,6 +140,21 @@ typed disappeared mid-sentence, and neither controller was ever disposed.**
 Setting a custom DoH resolver or excluding an app while protected was simply
 not possible. Confirmed on device before and after the fix — the controllers
 now belong to a `State` that disposes them.
+
+### ⏱️ A category change no longer hides behind a cached answer
+
+The engine caches replies for five minutes and nothing invalidated them when a
+category was switched on, so a rule change silently did not apply to anything
+already looked up. `aegis_set_category` now clears the cache, guarded by
+`test_toggling_a_category_drops_cached_answers`.
+
+**This does not make the change instant.** Android keeps its own resolver cache
+outside the app, and that one cannot be flushed from here — measured on device,
+a domain resolved two minutes before the Adult category was switched on kept
+resolving afterwards, and only started returning NXDOMAIN once the tunnel was
+stopped and started again. Domains never looked up before are blocked
+immediately. Anyone turning on parental controls in a hurry should restart the
+tunnel.
 
 ### 🧪 Guard against the next one
 

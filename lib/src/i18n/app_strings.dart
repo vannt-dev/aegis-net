@@ -165,6 +165,8 @@ class AppStrings {
       'src_stevenblack_porn_name': 'StevenBlack Adult Hosts',
       'src_stevenblack_porn_desc':
           'Adult sites only. Enable to make the Adult filter do anything; adds about 4 MB of memory.',
+      'samples_none': 'No samples yet',
+      'samples_last': 'Last %s samples',
     },
     'vi': {
       // ---------------------------------------------------------- dashboard
@@ -320,6 +322,8 @@ class AppStrings {
       'src_stevenblack_porn_name': 'StevenBlack — Nội dung người lớn',
       'src_stevenblack_porn_desc':
           'Chỉ gồm trang người lớn. Bật thì bộ lọc Người lớn mới có tác dụng; tốn thêm khoảng 4 MB bộ nhớ.',
+      'samples_none': 'Chưa có mẫu nào',
+      'samples_last': '%s mẫu gần nhất',
     },
     'ko': {
       // ---------------------------------------------------------- dashboard
@@ -464,6 +468,8 @@ class AppStrings {
       'src_stevenblack_porn_name': 'StevenBlack 성인 사이트 호스트',
       'src_stevenblack_porn_desc':
           '성인 사이트 전용. 켜야 성인 필터가 동작하며 약 4 MB의 메모리를 더 사용합니다.',
+      'samples_none': '아직 샘플이 없습니다',
+      'samples_last': '최근 %s개 샘플',
     },
     'ja': {
       // ---------------------------------------------------------- dashboard
@@ -609,6 +615,8 @@ class AppStrings {
       'src_stevenblack_porn_name': 'StevenBlack アダルトホスト',
       'src_stevenblack_porn_desc':
           'アダルトサイトのみ。有効にするとアダルトフィルターが機能し、約4 MBのメモリを追加で使います。',
+      'samples_none': 'サンプルはまだありません',
+      'samples_last': '直近%s件のサンプル',
     },
   };
 

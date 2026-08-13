@@ -41,6 +41,9 @@ pub extern "C" fn aegis_set_category(category_id: c_int, enabled: c_int) {
         _ => return,
     };
     RULE_ENGINE.set_category_enabled(cat, enabled != 0);
+    // The rule set just changed; answers cached under the old one must not
+    // outlive it.
+    DNS_FILTER.clear_cache();
 }
 
 /// Set the upstream DoH target used to resolve cache-miss queries. Accepts a
