@@ -4,7 +4,12 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
-## [Unreleased]
+## [1.2.0] — 2026-08-13
+
+Fixes a bug that broke the YouTube app for everyone running 1.1.0, and stops
+the rule parser storing entries that could never match. **iOS is still not
+verified** — no Swift in the PacketTunnel target has been compiled on a Mac.
+Treat this release as Android-only, as with 1.1.0.
 
 ### 🐛 YouTube would not load with the tunnel on
 
