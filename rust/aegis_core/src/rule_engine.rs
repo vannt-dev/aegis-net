@@ -200,6 +200,24 @@ impl DomainTrie {
     }
 }
 
+/// What one line of a filter list means to the DNS matcher.
+///
+/// This is the distinction the parser actually draws, so it is worth a name:
+/// `Unusable` is not a malformed line, it is valid filter syntax that a DNS
+/// filter has no way to honour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LineKind {
+    /// A hostname to block, covering everything under it.
+    Block(String),
+    /// A hostname to allow, overriding every category (`@@||domain^`).
+    Allow(String),
+    /// Blank or a comment. Carries no rule.
+    Comment,
+    /// Rule syntax a DNS filter cannot express — wildcards, regex, and rules
+    /// narrowed to a URL path or a resource type. Dropped on purpose.
+    Unusable,
+}
+
 /// High-performance Domain Rule Matcher for AegisNet with Categories
 pub struct RuleEngine {
     ads_rules: RwLock<DomainTrie>,
@@ -288,24 +306,21 @@ impl RuleEngine {
         let mut allowed = self.allowed_domains.write().unwrap();
 
         for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
-                continue;
-            }
-
-            // `@@||domain^` exception rules (AdGuard/EasyList) override every
-            // category, so they belong in the whitelist, not the category set.
-            if let Some(domain) = Self::parse_exception_line(line) {
-                if allowed.insert(&domain) {
-                    count += 1;
+            match Self::parse_line(line) {
+                // `@@||domain^` exception rules (AdGuard/EasyList) override
+                // every category, so they belong in the whitelist, not the
+                // category set.
+                LineKind::Allow(domain) => {
+                    if allowed.insert(&domain) {
+                        count += 1;
+                    }
                 }
-                continue;
-            }
-
-            if let Some(domain) = Self::parse_rule_line(line) {
-                if rules.insert(&domain) {
-                    count += 1;
+                LineKind::Block(domain) => {
+                    if rules.insert(&domain) {
+                        count += 1;
+                    }
                 }
+                LineKind::Comment | LineKind::Unusable => {}
             }
         }
 
@@ -346,6 +361,30 @@ impl RuleEngine {
             .collect();
         pairs.sort();
         pairs
+    }
+
+    /// Classify one line of a filter list.
+    ///
+    /// This is the single decision `load_rules_text` makes per line, exposed
+    /// so a candidate list can be measured before it ships — see
+    /// `examples/probe.rs`, which reports how many domains a list adds and
+    /// what it costs in the trie. That tool used to carry its own copy of this
+    /// logic; a copy does not fail when it drifts, it quietly reports wrong
+    /// numbers, and those numbers are what list decisions get made on.
+    pub fn parse_line(line: &str) -> LineKind {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
+            return LineKind::Comment;
+        }
+
+        if let Some(domain) = Self::parse_exception_line(line) {
+            return LineKind::Allow(domain);
+        }
+
+        match Self::parse_rule_line(line) {
+            Some(domain) => LineKind::Block(domain),
+            None => LineKind::Unusable,
+        }
     }
 
     /// Parse an AdGuard/EasyList exception rule (`@@||domain^`), which
