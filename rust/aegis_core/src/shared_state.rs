@@ -181,14 +181,14 @@ mod tests {
         // Consumer side: a fresh engine, as the extension starts out.
         let (ext_engine, ext_filter) = engine_pair();
         assert!(ext_engine.is_blocked("doubleclick.net"));
-        assert!(ext_engine.is_blocked("graph.facebook.com"));
+        assert!(ext_engine.is_blocked("telemetry.applovin.com"));
 
         import_settings(&ext_engine, &ext_filter, &path).expect("import");
 
         // Whitelisted in the app, so no longer blocked here. Case is normalised.
         assert!(!ext_engine.is_blocked("doubleclick.net"));
         // Trackers were disabled in the app.
-        assert!(!ext_engine.is_blocked("graph.facebook.com"));
+        assert!(!ext_engine.is_blocked("telemetry.applovin.com"));
         // Blacklisted in the app.
         assert!(ext_engine.is_blocked("example-tracker.com"));
         assert_eq!(ext_filter.upstream_dns(), "https://dns.google/dns-query");

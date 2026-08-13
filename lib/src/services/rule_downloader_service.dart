@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
+import '../i18n/app_strings.dart';
 
 class FilterSource {
   final String id;
@@ -22,6 +23,15 @@ class FilterSource {
     this.categoryId = 0,
     this.isEnabled = true,
   });
+
+  /// Display name in the current language.
+  ///
+  /// The preset lists carry a translation under `src_<id>_name`; a list the
+  /// user subscribed to themselves has none, and falls back to what they typed.
+  String get localizedName => AppStrings.maybe('src_${id}_name') ?? name;
+
+  String get localizedDescription =>
+      AppStrings.maybe('src_${id}_desc') ?? description;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -55,6 +65,59 @@ class RuleDownloaderService {
       name: 'StevenBlack Unified Hosts',
       url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts',
       description: 'Consolidated host file blocking adservers and malware.',
+    ),
+    // Small and entirely hostname-based, so every line survives the DNS
+    // parser — measured at 3,525 rules and zero unusable entries. uBlock
+    // Origin Lite enables this one by default too.
+    FilterSource(
+      id: 'pgl_yoyo',
+      name: "Peter Lowe's Ad and Tracking Server List",
+      url:
+          'https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=0&mimetype=plaintext',
+      description:
+          'Hand-curated ad and tracking servers. Small, low false positives.',
+      // Feeds the Trackers category, which otherwise has no list behind it at
+      // all. Nearly everything here is also in the ad lists, so turning
+      // Trackers off does not unblock much — DNS blocklists do not split
+      // cleanly into "ads" and "trackers", and this is the honest half of that.
+      categoryId: 1,
+    ),
+    // Mostly redundant against the three lists above — 93.5% of its 56,747
+    // domains are already covered — but the 3,673 it does add cost only
+    // 0.2 MB in the trie, so it earns its place. The full OISD list is
+    // deliberately not here: it adds 11.1 MB, which the iOS PacketTunnel
+    // extension cannot spare. Add that one as a custom source if you want it.
+    FilterSource(
+      id: 'oisd_small',
+      name: 'OISD Small',
+      url: 'https://small.oisd.nl/',
+      description:
+          'Curated aggregate of ad and tracking domains, tuned to avoid '
+          'breaking sites.',
+    ),
+    // Malware. 370 hostnames and 0.0 MB in the trie, so the category costs
+    // nothing to make real. It used to hold three invented domains
+    // (crypto-miner.org and friends) and protected against nothing.
+    FilterSource(
+      id: 'urlhaus',
+      name: 'URLhaus Malware Hosts',
+      url: 'https://urlhaus.abuse.ch/downloads/hostfile/',
+      description: 'abuse.ch feed of hosts actively serving malware.',
+      categoryId: 2,
+    ),
+    // Adult. Off by default, and deliberately not downloaded until it is
+    // switched on: 76,751 hostnames cost 4.3 MB in the trie, which is real
+    // money against the iOS PacketTunnel budget, and the Adult category is
+    // disabled by default anyway.
+    FilterSource(
+      id: 'stevenblack_porn',
+      name: 'StevenBlack Adult Hosts',
+      url:
+          'https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts',
+      description: 'Adult sites only. Enable to make the Adult filter do '
+          'anything; adds about 4 MB of memory.',
+      categoryId: 3,
+      isEnabled: false,
     ),
   ];
 
@@ -128,11 +191,20 @@ class RuleDownloaderService {
   }
 
   /// Re-apply persisted on/off state to every known source.
+  ///
+  /// The key stores the ids that are *off*, so an absent key and "nothing is
+  /// off" look identical unless null is handled separately. Treating a missing
+  /// key as an empty list switched every source on, which quietly overrode any
+  /// source declared `isEnabled: false` — the adult list would have downloaded
+  /// itself on first launch and spent 4.3 MB on a category that is off by
+  /// default. Until the user touches a toggle, the declared defaults stand.
   static Future<void> _applyDisabledState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final disabled =
-          (prefs.getStringList('disabled_filter_sources') ?? []).toSet();
+      final saved = prefs.getStringList('disabled_filter_sources');
+      if (saved == null) return;
+
+      final disabled = saved.toSet();
       for (final source in allSources) {
         source.isEnabled = !disabled.contains(source.id);
       }
@@ -197,7 +269,15 @@ class RuleDownloaderService {
       if (source.isEnabled) {
         final content = await fetchFilterContent(source.url);
         if (content != null && content.isNotEmpty) {
-          final count = AegisBridge.loadRulesText(content);
+          // Without the category the engine takes the default, 0, and every
+          // list lands in Ads no matter what the source says. That is what
+          // left the Trackers, Malware and Adult switches with nothing but
+          // seed rules behind them; `categoryId` was only ever reaching the
+          // per-category files written for the iOS extension below.
+          final count = AegisBridge.loadRulesText(
+            content,
+            categoryId: source.categoryId,
+          );
           totalLoaded += count;
           (byCategory[source.categoryId] ??= StringBuffer())
             ..writeln(content)

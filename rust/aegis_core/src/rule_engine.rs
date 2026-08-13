@@ -200,6 +200,24 @@ impl DomainTrie {
     }
 }
 
+/// What one line of a filter list means to the DNS matcher.
+///
+/// This is the distinction the parser actually draws, so it is worth a name:
+/// `Unusable` is not a malformed line, it is valid filter syntax that a DNS
+/// filter has no way to honour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LineKind {
+    /// A hostname to block, covering everything under it.
+    Block(String),
+    /// A hostname to allow, overriding every category (`@@||domain^`).
+    Allow(String),
+    /// Blank or a comment. Carries no rule.
+    Comment,
+    /// Rule syntax a DNS filter cannot express — wildcards, regex, and rules
+    /// narrowed to a URL path or a resource type. Dropped on purpose.
+    Unusable,
+}
+
 /// High-performance Domain Rule Matcher for AegisNet with Categories
 pub struct RuleEngine {
     ads_rules: RwLock<DomainTrie>,
@@ -251,19 +269,27 @@ impl RuleEngine {
         ads.insert("static.doubleclick.net");
         ads.insert("ads.youtube.com");
 
+        // Only endpoints an app can lose without noticing belong here. The
+        // seeds apply before a single list is downloaded and the Trackers
+        // category is on by default, so anything wrong in this list breaks
+        // every user immediately, with no setting to explain it.
+        //
+        // `youtubei.googleapis.com` and `graph.facebook.com` used to be in
+        // this list and are the reason it now carries this warning. Both are
+        // load-bearing APIs rather than telemetry — see
+        // `test_seed_rules_never_block_an_app_s_own_api`.
         let mut trackers = self.tracker_rules.write().unwrap();
-        trackers.insert("graph.facebook.com");
         trackers.insert("telemetry.applovin.com");
         trackers.insert("tracking.vungle.com");
         trackers.insert("analytics.google.com");
+        // Playback statistics only. YouTube keeps working without them.
         trackers.insert("s.youtube.com");
         trackers.insert("video-stats.l.google.com");
-        trackers.insert("youtubei.googleapis.com");
 
-        let mut malware = self.malware_rules.write().unwrap();
-        malware.insert("crypto-miner.org");
-        malware.insert("bad-malware-site.net");
-        malware.insert("phishing-login.com");
+        // Malware and Adult are fed entirely by downloaded lists. This block
+        // used to seed crypto-miner.org, bad-malware-site.net and
+        // phishing-login.com -- invented names, so the Malware toggle
+        // protected against nothing while counting three rules as loaded.
     }
 
     pub fn set_category_enabled(&self, category: RuleCategory, enabled: bool) {
@@ -288,24 +314,21 @@ impl RuleEngine {
         let mut allowed = self.allowed_domains.write().unwrap();
 
         for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
-                continue;
-            }
-
-            // `@@||domain^` exception rules (AdGuard/EasyList) override every
-            // category, so they belong in the whitelist, not the category set.
-            if let Some(domain) = Self::parse_exception_line(line) {
-                if allowed.insert(&domain) {
-                    count += 1;
+            match Self::parse_line(line) {
+                // `@@||domain^` exception rules (AdGuard/EasyList) override
+                // every category, so they belong in the whitelist, not the
+                // category set.
+                LineKind::Allow(domain) => {
+                    if allowed.insert(&domain) {
+                        count += 1;
+                    }
                 }
-                continue;
-            }
-
-            if let Some(domain) = Self::parse_rule_line(line) {
-                if rules.insert(&domain) {
-                    count += 1;
+                LineKind::Block(domain) => {
+                    if rules.insert(&domain) {
+                        count += 1;
+                    }
                 }
+                LineKind::Comment | LineKind::Unusable => {}
             }
         }
 
@@ -348,14 +371,89 @@ impl RuleEngine {
         pairs
     }
 
+    /// Classify one line of a filter list.
+    ///
+    /// This is the single decision `load_rules_text` makes per line, exposed
+    /// so a candidate list can be measured before it ships — see
+    /// `examples/probe.rs`, which reports how many domains a list adds and
+    /// what it costs in the trie. That tool used to carry its own copy of this
+    /// logic; a copy does not fail when it drifts, it quietly reports wrong
+    /// numbers, and those numbers are what list decisions get made on.
+    pub fn parse_line(line: &str) -> LineKind {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
+            return LineKind::Comment;
+        }
+
+        if let Some(domain) = Self::parse_exception_line(line) {
+            return LineKind::Allow(domain);
+        }
+
+        match Self::parse_rule_line(line) {
+            Some(domain) => LineKind::Block(domain),
+            None => LineKind::Unusable,
+        }
+    }
+
     /// Parse an AdGuard/EasyList exception rule (`@@||domain^`), which
     /// un-blocks a domain regardless of which category blocked it.
+    ///
+    /// The trailing `^` is optional here for the same reason it is optional on
+    /// a block rule. `@@` alone is not enough: `@@not-a-real-rule.com` is not
+    /// an exception rule, and treating it as one would silently un-block a
+    /// domain — over-blocking is bad, but wrongly *allowing* something is
+    /// worse for a filter.
     fn parse_exception_line(line: &str) -> Option<String> {
-        if line.starts_with("@@||") && line.ends_with('^') {
-            let domain = &line[4..line.len() - 1];
-            return Some(domain.to_lowercase());
+        if let Some(body) = line.strip_prefix("@@||") {
+            return Self::extract_hostname(body, false);
         }
         None
+    }
+
+    /// Pull a bare hostname out of an AdGuard/EasyList rule body.
+    ///
+    /// Returns `None` for everything the DNS matcher cannot represent —
+    /// wildcards, regex, and rules narrowed to a URL path or a resource type.
+    /// Those used to reach a catch-all branch that stored the raw line as
+    /// though it were a domain. Measured against the lists actually shipped:
+    /// 669 such entries in the AdGuard DNS filter and 17,779 in EasyList, none
+    /// of which can match any query, every one of them counted in the "rules
+    /// loaded" figure shown to the user.
+    ///
+    /// `require_dot` separates the two syntaxes. `||zip^` deliberately blocks a
+    /// whole TLD, so the `||` form has to accept a dotless name; a bare line
+    /// has to look like a domain first, or every stray word in a list becomes
+    /// a rule.
+    fn extract_hostname(body: &str, require_dot: bool) -> Option<String> {
+        // A network rule stops describing the hostname at the first of these:
+        // the `^` separator, a path, `$` modifiers, or an option list.
+        let host = body
+            .split(['^', '/', '$', ',', '='])
+            .next()?
+            .trim()
+            .trim_end_matches('.')
+            .to_lowercase();
+
+        if host.is_empty() || (require_dot && !host.contains('.')) {
+            return None;
+        }
+        if host.starts_with('.') || host.starts_with('-') {
+            return None;
+        }
+        // Anything outside this set means it is not a hostname: `*` wildcards,
+        // regex punctuation, query-string fragments.
+        if !host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+        {
+            return None;
+        }
+        // `a..b` is not a name; an empty label would also break trie traversal.
+        if host.split('.').any(|label| label.is_empty()) {
+            return None;
+        }
+
+        Some(host)
     }
 
     fn parse_rule_line(line: &str) -> Option<String> {
@@ -369,20 +467,20 @@ impl RuleEngine {
         if parts.len() >= 2 && (parts[0] == "0.0.0.0" || parts[0] == "127.0.0.1") {
             let domain = parts[1].to_lowercase();
             if domain != "localhost" && domain != "broadcasthost" {
-                return Some(domain);
+                return Self::extract_hostname(&domain, true);
             }
         }
 
-        if line.starts_with("||") && line.ends_with('^') {
-            let domain = &line[2..line.len() - 1];
-            return Some(domain.to_lowercase());
+        // `||domain^` and `||domain` are the same rule — the trailing separator
+        // is optional, and 172 rules in the AdGuard DNS filter omit it.
+        // Requiring it sent those to the fallback below, which stored them with
+        // the `||` still attached, so they never matched a single query while
+        // the UI counted them as loaded.
+        if let Some(body) = line.strip_prefix("||") {
+            return Self::extract_hostname(body, false);
         }
 
-        if !line.contains(' ') && line.contains('.') {
-            return Some(line.to_lowercase());
-        }
-
-        None
+        Self::extract_hostname(line, true)
     }
 
     pub fn add_whitelist(&self, domain: &str) {
@@ -562,6 +660,63 @@ mod tests {
     }
 
     #[test]
+    fn test_block_rule_without_a_trailing_separator_still_loads() {
+        // 172 rules in the shipping AdGuard DNS filter are written this way.
+        // They used to fall through to the bare-line branch, which stored them
+        // with the `||` still attached, so they matched nothing at all.
+        let engine = RuleEngine::new();
+        let count = engine.load_rules_text("||direct-specific.com", RuleCategory::Ads);
+
+        assert_eq!(count, 1);
+        assert!(engine.is_blocked("direct-specific.com"));
+        assert!(engine.is_blocked("sub.direct-specific.com"));
+    }
+
+    #[test]
+    fn test_exception_without_a_trailing_separator_still_loads() {
+        let engine = RuleEngine::new();
+        let count =
+            engine.load_rules_text("||shady.example^\n@@||shady.example", RuleCategory::Ads);
+
+        assert_eq!(count, 2);
+        assert!(!engine.is_blocked("shady.example"));
+    }
+
+    #[test]
+    fn test_rules_the_dns_matcher_cannot_express_are_dropped() {
+        // Every one of these used to be stored verbatim as a "domain": they
+        // occupy memory, inflate the rule count reported to the user, and can
+        // never match a query. A DNS filter sees a hostname and nothing else.
+        let engine = RuleEngine::new();
+        let unusable = [
+            "||ads.livetv*.me^",                   // wildcard
+            "/^139\\.45\\.197\\.2(4[0-9])/",       // regex
+            "-ads-manager/$domain=~wordpress.org", // path + modifier
+            "-ad-sidebar.$image",                  // resource type
+            "&sst.gcsub=",                         // query-string fragment
+            ".beacon.min.js",                      // leading dot, not a name
+            "example.com##.ad-banner",             // cosmetic filter
+            "||a..b^",                             // empty label
+        ];
+
+        let count = engine.load_rules_text(&unusable.join("\n"), RuleCategory::Ads);
+        assert_eq!(count, 0, "nothing here is a hostname");
+    }
+
+    #[test]
+    fn test_modifiers_and_separators_are_stripped_to_the_hostname() {
+        let engine = RuleEngine::new();
+        let count = engine.load_rules_text(
+            "||tracker.example^$important\n||other.example^third-party",
+            RuleCategory::Trackers,
+        );
+
+        assert_eq!(count, 2);
+        assert!(engine.is_blocked("tracker.example"));
+        assert!(engine.is_blocked("other.example"));
+    }
+
+    #[test]
     fn test_clearing_downloaded_rules_keeps_user_lists_and_seeds() {
         let engine = RuleEngine::new();
         engine.load_rules_text("0.0.0.0 tracker.example.com", RuleCategory::Ads);
@@ -645,9 +800,38 @@ mod tests {
         let engine = RuleEngine::new();
         assert!(engine.is_blocked("doubleclick.net"));
         assert!(engine.is_blocked("sub.doubleclick.net"));
-        assert!(engine.is_blocked("graph.facebook.com"));
+        assert!(engine.is_blocked("telemetry.applovin.com"));
         assert!(!engine.is_blocked("google.com"));
         assert!(!engine.is_blocked("github.com"));
+    }
+
+    /// A filter that breaks the app it is filtering has failed, however many
+    /// trackers it caught. These are load-bearing APIs, not telemetry: the
+    /// YouTube app fetches its home feed, its search results and the player
+    /// config carrying the stream URLs from `youtubei.googleapis.com`, and
+    /// every app offering Facebook login talks to `graph.facebook.com`.
+    #[test]
+    fn test_seed_rules_never_block_an_app_s_own_api() {
+        let engine = RuleEngine::new();
+        for domain in [
+            // The one that shipped broken in 1.1.0.
+            "youtubei.googleapis.com",
+            "graph.facebook.com",
+            // Content and playback for the same app.
+            "www.youtube.com",
+            "i.ytimg.com",
+            "googlevideo.com",
+            // Other APIs an app cannot start without.
+            "api.twitter.com",
+            "graph.instagram.com",
+            "api.telegram.org",
+            "chat.openai.com",
+            // Push delivery. Blocking this silently kills notifications.
+            "fcm.googleapis.com",
+            "firebaseinstallations.googleapis.com",
+        ] {
+            assert!(!engine.is_blocked(domain), "seed rules block {domain}");
+        }
     }
 
     #[test]
@@ -674,11 +858,11 @@ mod tests {
     #[test]
     fn test_whitelist_covers_subdomains() {
         let engine = RuleEngine::new();
-        assert!(engine.is_blocked("graph.facebook.com"));
+        assert!(engine.is_blocked("telemetry.applovin.com"));
 
-        engine.add_whitelist("facebook.com");
-        assert!(!engine.is_blocked("graph.facebook.com"));
-        assert!(!engine.is_blocked("facebook.com"));
+        engine.add_whitelist("applovin.com");
+        assert!(!engine.is_blocked("telemetry.applovin.com"));
+        assert!(!engine.is_blocked("applovin.com"));
     }
 
     #[test]
@@ -743,12 +927,12 @@ mod tests {
     #[test]
     fn test_tld_exception_unblocks_every_domain_under_it() {
         let engine = RuleEngine::new();
-        assert!(engine.is_blocked("graph.facebook.com"));
+        assert!(engine.is_blocked("telemetry.applovin.com"));
 
         let count = engine.load_rules_text("@@||com^", RuleCategory::Ads);
         assert_eq!(count, 1);
 
-        assert!(!engine.is_blocked("graph.facebook.com"));
+        assert!(!engine.is_blocked("telemetry.applovin.com"));
         assert!(engine.is_blocked("doubleclick.net"));
     }
 

@@ -4,6 +4,203 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
+## [1.2.0] — 2026-08-13
+
+Fixes a bug that broke the YouTube app for everyone running 1.1.0, and stops
+the rule parser storing entries that could never match.
+
+Verified on an Android 14 emulator with the tunnel running — the same Android
+version the bug was reported on. Every endpoint the YouTube app needs now
+resolves, and filtering is untouched:
+
+| domain | 1.2.0 |
+|---|---|
+| `youtubei.googleapis.com` | resolves (`172.217.115.4`) — was NXDOMAIN in 1.1.0 |
+| `www.youtube.com`, `i.ytimg.com`, `yt3.ggpht.com` | resolve |
+| `rr1---sn-*.googlevideo.com`, `jnn-pa.googleapis.com` | resolve |
+| `graph.facebook.com` | resolves — was NXDOMAIN in 1.1.0 |
+| `s.youtube.com` | blocked, as intended |
+| `pagead2.googlesyndication.com` | blocked, as intended |
+
+**iOS is still not verified** — no Swift in the PacketTunnel target has been
+compiled on a Mac. Treat this release as Android-only, as with 1.1.0.
+
+### 🐛 YouTube would not load with the tunnel on
+
+- **`youtubei.googleapis.com` was blocked by default, which breaks the YouTube
+  app outright.** It is not a tracker: it is YouTube's InnerTube API, the one
+  the app fetches its home feed, its search results and the player config
+  carrying the stream URLs from. Blocked, the app renders its skeleton and
+  nothing ever fills it in — no thumbnails, no playback. Reported on Realme /
+  Android 14, but nothing about it was device-specific.
+
+  The rule came from `seed_default_rules()`, a built-in list that applies
+  before any filter list is downloaded, in the Trackers category, which is on
+  by default. So it hit every user from the first launch, and no setting on
+  screen explained why.
+
+- **`graph.facebook.com` removed for the same reason** — the Facebook Graph
+  API, which every app offering Facebook login depends on.
+- Genuine telemetry stays blocked: `s.youtube.com` and
+  `video-stats.l.google.com` are playback statistics, and YouTube works fine
+  without them.
+- `test_seed_rules_never_block_an_app_s_own_api` now guards the seed list, and
+  the comment above it says what the list is allowed to contain.
+
+### 🎛️ Three of the four rule categories had nothing in them
+
+Every downloaded list fed category 0 (Ads), so Trackers, Malware and Adult held
+only the hardcoded seed rules — and Adult held nothing at all.
+
+Two things had to be wrong for that. `FilterSource.categoryId` defaulted to `0`
+and no default source overrode it — but fixing that alone changes nothing,
+because `syncAllFilters()` called `loadRulesText(content)` without the category
+and the engine then applied its own default of `0`. The field was only ever
+reaching the per-category files written for the iOS extension.
+
+| Category | Was | Now |
+|---|---|---|
+| Ads | ~251,000 domains | AdGuard DNS + StevenBlack + OISD Small |
+| Trackers | 5 seed rules | Peter Lowe's list (3,526) |
+| Malware | **3 invented domains** | URLhaus (370 real hosts, +0.0 MB) |
+| Adult | **nothing at all** | StevenBlack adult hosts (76,751), opt-in |
+
+- `crypto-miner.org`, `bad-malware-site.net` and `phishing-login.com` were not
+  real. The Malware category protected against three names that do not exist,
+  and counted them as rules loaded.
+- The adult list is **not downloaded until it is switched on**: 76,751 hostnames
+  cost 4.3 MB in the trie, and the Adult category is off by default, so paying
+  that up front would be 4.3 MB of the iOS extension's budget spent on nothing.
+- Honest caveat: DNS blocklists do not split cleanly into "ads" and "trackers".
+  Nearly everything in the Trackers list is also in the ad lists, so disabling
+  Trackers would still not unblock much.
+
+**Known gap, not fixed here.** The categories have no switches on screen — the
+only `Switch` in the app is Scheduled Parental Controls, and the only thing it
+does is turn the Adult category on. Since that category was empty, **the
+schedule filtered nothing whatsoever** before this release, and it still does
+nothing until the adult list is switched on in Rules. Wiring the two together
+is a change worth making carefully: the obvious version routes through
+`syncAllFilters()`, which starts by clearing every downloaded rule and
+re-fetching ~7 MB, so a flick of that switch on a bad connection would leave
+the user with no filtering at all.
+
+### 🧽 The user's own lists shipped pre-filled with invented entries
+
+`_whitelist` came seeded with `mybank.com` and `workplace.com`, `_blacklist`
+with `bad-tracker.net` and `crypto-miner.org`. A fresh install presented four
+rules as though the user had written them. This is the same class of problem as
+the fabricated statistics removed in 1.1.0, and worse in one way: whitelist
+entries are pushed into the engine, so the app really was allowing two domains
+nobody chose.
+
+- **The split-tunnel bypass list was seeded too, and that one had teeth.** It
+  shipped holding `com.zing.zalo` and `com.vietcombank.mobile`, and the list
+  goes to `addDisallowedApplication()` when the tunnel is built. A messaging app
+  and a banking app were carved out of the VPN on every fresh install, chosen by
+  nobody, in an app whose entire promise is that traffic goes through it.
+- **A source declared `isEnabled: false` could not stay off.** The preference
+  stores only the ids that are *off*, and a missing key was read as an empty
+  list, which switched everything on. Guarded by
+  `a source declared off stays off before any toggle is saved`.
+
+All three lists now start empty, and the declared defaults survive first launch.
+
+### 🌏 The four languages now cover the whole app
+
+The settings screen offers English, Tiếng Việt, 한국어 and 日本語, and all four
+tables were complete — but only the dashboard and part of settings ever read
+them. Rules, Analytics, Logs and the navigation bar were hardcoded English, so
+switching language changed roughly a quarter of what is on screen.
+
+- Every user-visible string in all six screens now goes through `AppStrings`:
+  35 keys became 118, in each of the four languages. That includes the filter
+  list names and descriptions under "Subscribe to Filter Lists", which are
+  looked up as `src_<id>_name` — a list the user added themselves has no
+  translation and keeps whatever they typed.
+- **The screens never rebuilt on a language change.** `MainNavigationScreen`
+  held its five screens in a `const` list in a field, so `IndexedStack` got the
+  identical widget objects every build and Flutter skipped the whole subtree.
+  Only the tab labels changed language; everything behind them stayed as it
+  was. `const` on the individual constructors does the same thing, since a
+  const constructor is canonicalised.
+- `every language defines every string` fails if a translation is missing.
+  `AppStrings.get` falls back to English, so a gap does not throw — the screen
+  just quietly renders in the wrong language. The test compares raw lookups.
+- Fixed `theme_title` in Japanese, which read `サイバーパンクネ온カラー` — a Korean
+  syllable had found its way into the middle of a Japanese string.
+
+### ⌨️ Text fields in Settings cleared themselves every two seconds
+
+The DoH URL field and the split-tunnel package field created their
+`TextEditingController` inside `build()`. The settings screen watches
+`VpnProvider`, which notifies every two seconds while the tunnel is up, so both
+fields were handed a brand new empty controller on every tick: **whatever you
+typed disappeared mid-sentence, and neither controller was ever disposed.**
+Setting a custom DoH resolver or excluding an app while protected was simply
+not possible. Confirmed on device before and after the fix — the controllers
+now belong to a `State` that disposes them.
+
+### ⏱️ A category change no longer hides behind a cached answer
+
+The engine caches replies for five minutes and nothing invalidated them when a
+category was switched on, so a rule change silently did not apply to anything
+already looked up. `aegis_set_category` now clears the cache, guarded by
+`test_toggling_a_category_drops_cached_answers`.
+
+**This does not make the change instant.** Android keeps its own resolver cache
+outside the app, and that one cannot be flushed from here — measured on device,
+a domain resolved two minutes before the Adult category was switched on kept
+resolving afterwards, and only started returning NXDOMAIN once the tunnel was
+stopped and started again. Domains never looked up before are blocked
+immediately. Anyone turning on parental controls in a hurry should restart the
+tunnel.
+
+### 🧪 Guard against the next one
+
+`test_seed_rules_never_block_an_app_s_own_api` now covers eleven endpoints an
+app cannot start without — YouTube, Instagram, Telegram, Twitter, OpenAI, and
+Firebase Cloud Messaging, where a block would silently kill push notifications.
+
+### 🧹 Filter rule parsing
+
+- **Rules that could never match are no longer stored.** The parser ended in a
+  catch-all — any line with a dot and no space became a "domain" — so filter
+  syntax the DNS matcher cannot express was kept verbatim. Measured against the
+  lists actually shipped: **669 such entries in the AdGuard DNS filter**, and
+  17,779 in EasyList. Each one occupied memory, inflated the "rules loaded"
+  count shown to the user, and matched nothing.
+
+  | | AdGuard DNS | StevenBlack | Peter Lowe |
+  |---|---|---|---|
+  | unusable entries before | 669 | 0 | 0 |
+  | after | **0** | 0 | 0 |
+
+- **`||domain` without a trailing `^` now loads.** 172 rules in the AdGuard DNS
+  filter are written that way. They fell through to the catch-all and were
+  stored with the `||` still attached, so those domains were **never actually
+  blocked** while the UI counted them as active rules. The same fix applies to
+  `@@||domain` exceptions.
+- Wildcards (`||ads.livetv*.me^`), regex, path-scoped and resource-type rules
+  are now dropped deliberately rather than stored as garbage. A DNS filter sees
+  a hostname and nothing else; none of these can be honoured.
+- **Added Peter Lowe's Ad and Tracking Server List** to the default sources.
+  Hostname-only, so every line survives the DNS parser — 3,525 rules, zero
+  unusable. It is one of the lists uBlock Origin Lite enables by default.
+- **Added OISD Small** to the default sources, and deliberately not OISD Big.
+  Measured against the lists already shipped, with memory as the deciding
+  factor — the iOS PacketTunnel extension has a hard limit in the tens of MB,
+  and the merged trie already costs 18.3 MB before either list is added.
+
+  | | domains | already covered | newly blocked | trie cost |
+  |---|---|---|---|---|
+  | OISD Small | 56,747 | 93.5% | **3,673** | **+0.2 MB** |
+  | OISD Big | 265,831 | 32.3% | 179,917 | +11.1 MB |
+
+  OISD Big blocks a great deal more, but 11.1 MB on top of 18.3 MB is not a
+  trade the extension can make, and every list in the defaults is enabled for
+  every user. It can still be added by hand as a custom source.
+
 ## [1.1.0] — 2026-08-12
 
 Android is verified on an Android 14 emulator: the tunnel establishes, a blocked

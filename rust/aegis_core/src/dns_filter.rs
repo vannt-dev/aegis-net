@@ -50,6 +50,17 @@ impl DnsFilterService {
         *self.upstream_dns.write().unwrap() = upstream.to_string();
     }
 
+    /// Drop every cached answer.
+    ///
+    /// A cached reply outlives the rule that allowed it: entries live for five
+    /// minutes, so switching a category on left every domain already visited
+    /// resolving as before. That is worst for the Adult category, which exists
+    /// to be switched on in a hurry — the sites someone was just looking at are
+    /// exactly the ones still in the cache.
+    pub fn clear_cache(&self) {
+        self.dns_cache.clear();
+    }
+
     pub fn handle_dns_payload(&self, payload: &[u8], _client_addr: SocketAddr) -> Vec<u8> {
         let question = Self::extract_question(payload);
 
@@ -660,6 +671,30 @@ mod tests {
             DnsFilterService::doh_endpoint("dot://dns.adguard.com"),
             None
         );
+    }
+
+    /// Enabling a category must not leave the old answers in place.
+    ///
+    /// Observed on device: with the Adult list loaded but the category off,
+    /// pornhub.com resolved and was cached. Switching the category on left it
+    /// resolving, while adult domains that had never been queried were blocked
+    /// immediately. Five minutes of a parental control not applying to the
+    /// sites someone was just on is the whole failure.
+    #[test]
+    fn test_toggling_a_category_drops_cached_answers() {
+        let engine = Arc::new(RuleEngine::new());
+        let stats = Arc::new(StatisticsEngine::new(16));
+        let filter = DnsFilterService::new(
+            engine,
+            stats,
+            "https://1.1.1.1/dns-query".to_string(),
+        );
+
+        filter.dns_cache.insert("example.com|1".to_string(), vec![1, 2, 3]);
+        assert!(filter.dns_cache.get("example.com|1").is_some());
+
+        filter.clear_cache();
+        assert!(filter.dns_cache.get("example.com|1").is_none());
     }
 
     #[test]

@@ -362,8 +362,9 @@ class DashboardScreen extends StatelessWidget {
                             const SizedBox(width: 4),
                             Text(
                               vpn.qpsHistory.isEmpty
-                                  ? 'No samples yet'
-                                  : 'Last ${vpn.qpsHistory.length} samples',
+                                  ? AppStrings.get('samples_none')
+                                  : AppStrings.get('samples_last').replaceAll(
+                                      '%s', '${vpn.qpsHistory.length}'),
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
@@ -466,7 +467,8 @@ class DashboardScreen extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
-                                  '$count blocked',
+                                  AppStrings.get('count_blocked')
+                                      .replaceAll('%s', '$count'),
                                   style: const TextStyle(
                                       color: emeraldColor,
                                       fontSize: 11,

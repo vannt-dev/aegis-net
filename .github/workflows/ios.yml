@@ -14,7 +14,7 @@ jobs:
     name: 🦀 Rust Core — iOS cross-compile
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust Toolchain + iOS targets
         uses: dtolnay/rust-toolchain@stable
@@ -34,7 +34,7 @@ jobs:
           cargo build --release --target x86_64-apple-ios
 
       - name: Upload iOS static libraries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: libaegis_core-ios
           path: |
@@ -51,7 +51,7 @@ jobs:
     name: 📱 Flutter iOS shell build
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../i18n/app_strings.dart';
 import '../providers/theme_provider.dart';
 import '../providers/vpn_provider.dart';
 
@@ -22,9 +23,9 @@ class AnalyticsScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: const Color(0xFF161B22),
         elevation: 0,
-        title: const Text(
-          'Detailed Analytics & Reports',
-          style: TextStyle(
+        title: Text(
+          AppStrings.get('analytics_title'),
+          style: const TextStyle(
               fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
@@ -33,12 +34,13 @@ class AnalyticsScreen extends StatelessWidget {
         children: [
           // Top Blocked Domains Header
           Text(
-            'Top Blocked Ad Networks',
+            AppStrings.get('analytics_top_blocked'),
             style: TextStyle(
                 fontSize: 15, fontWeight: FontWeight.bold, color: accent),
           ),
           const SizedBox(height: 12),
-          if (topBlocked.isEmpty) _buildEmptyState('No blocked queries yet'),
+          if (topBlocked.isEmpty)
+            _buildEmptyState(AppStrings.get('analytics_no_blocked')),
           Column(
             children: topBlocked.map((item) {
               final domain = item['domain'].toString();
@@ -75,7 +77,8 @@ class AnalyticsScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        '$count blocked',
+                        AppStrings.get('count_blocked')
+                            .replaceAll('%s', '$count'),
                         style: TextStyle(
                             color: Colors.redAccent.shade200,
                             fontWeight: FontWeight.bold,
@@ -92,12 +95,13 @@ class AnalyticsScreen extends StatelessWidget {
 
           // Top Allowed / Requested Domains
           Text(
-            'Top Requested Domains',
+            AppStrings.get('analytics_top_requested'),
             style: TextStyle(
                 fontSize: 15, fontWeight: FontWeight.bold, color: accent),
           ),
           const SizedBox(height: 12),
-          if (topAllowed.isEmpty) _buildEmptyState('No resolved queries yet'),
+          if (topAllowed.isEmpty)
+            _buildEmptyState(AppStrings.get('analytics_no_resolved')),
           Column(
             children: topAllowed.map((item) {
               final domain = item['domain'].toString();
@@ -134,7 +138,8 @@ class AnalyticsScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        '$count queries',
+                        AppStrings.get('count_queries')
+                            .replaceAll('%s', '$count'),
                         style: const TextStyle(
                             color: Color(0xFF10B981),
                             fontWeight: FontWeight.bold,
@@ -157,7 +162,7 @@ class AnalyticsScreen extends StatelessWidget {
           // series that does exist — the queries-per-sample history the
           // provider already tracks — under a title that describes it.
           Text(
-            'Recent Query Rate',
+            AppStrings.get('analytics_recent_rate'),
             style: TextStyle(
                 fontSize: 15, fontWeight: FontWeight.bold, color: accent),
           ),
@@ -173,7 +178,7 @@ class AnalyticsScreen extends StatelessWidget {
             child: qpsHistory.isEmpty
                 ? Center(
                     child: Text(
-                      'No traffic recorded yet',
+                      AppStrings.get('analytics_no_traffic'),
                       style:
                           TextStyle(color: Colors.grey.shade500, fontSize: 13),
                     ),

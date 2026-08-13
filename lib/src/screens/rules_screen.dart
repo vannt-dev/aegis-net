@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../i18n/app_strings.dart';
 import '../providers/vpn_provider.dart';
 import '../services/rule_downloader_service.dart';
 
@@ -51,8 +52,8 @@ class _RulesScreenState extends State<RulesScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(count > 0
-              ? 'Successfully synced $count active ad-blocking rules!'
-              : 'Synced filter lists with active engine.'),
+              ? AppStrings.get('rules_synced_count').replaceAll('%s', '$count')
+              : AppStrings.get('rules_synced')),
           backgroundColor: emeraldDarkColor,
         ),
       );
@@ -67,17 +68,17 @@ class _RulesScreenState extends State<RulesScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF161B22),
-        title: const Text('Add Custom Blocklist URL',
-            style: TextStyle(color: Colors.white, fontSize: 16)),
+        title: Text(AppStrings.get('rules_add_url_title'),
+            style: const TextStyle(color: Colors.white, fontSize: 16)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameCtrl,
               style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'List Name (e.g. OISD Basic)',
-                hintStyle: TextStyle(color: Colors.grey),
+              decoration: InputDecoration(
+                hintText: AppStrings.get('rules_list_name_hint'),
+                hintStyle: const TextStyle(color: Colors.grey),
               ),
             ),
             const SizedBox(height: 10),
@@ -94,14 +95,15 @@ class _RulesScreenState extends State<RulesScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+            child: Text(AppStrings.get('common_cancel'),
+                style: const TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () async {
               final name = nameCtrl.text.trim();
               final url = urlCtrl.text.trim();
               if (name.isEmpty || !url.startsWith('http')) {
-                _showMessage('Enter a name and an http(s) URL');
+                _showMessage(AppStrings.get('rules_enter_name_url'));
                 return;
               }
 
@@ -109,18 +111,18 @@ class _RulesScreenState extends State<RulesScreen>
                 id: DateTime.now().millisecondsSinceEpoch.toString(),
                 name: name,
                 url: url,
-                description: 'User custom filter list',
+                description: AppStrings.get('rules_custom_desc'),
               );
               final added = await RuleDownloaderService.addCustomSource(source);
               if (!ctx.mounted) return;
               Navigator.pop(ctx);
               setState(() {});
               if (!added) {
-                _showMessage('That list is already subscribed');
+                _showMessage(AppStrings.get('rules_already_subscribed'));
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: emeraldColor),
-            child: const Text('ADD LIST'),
+            child: Text(AppStrings.get('rules_add_list')),
           ),
         ],
       ),
@@ -136,9 +138,9 @@ class _RulesScreenState extends State<RulesScreen>
       appBar: AppBar(
         backgroundColor: const Color(0xFF161B22),
         elevation: 0,
-        title: const Text(
-          'Filter Rules & Engine',
-          style: TextStyle(
+        title: Text(
+          AppStrings.get('rules_title'),
+          style: const TextStyle(
               fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         actions: [
@@ -151,7 +153,7 @@ class _RulesScreenState extends State<RulesScreen>
                         strokeWidth: 2, color: Colors.cyanAccent),
                   )
                 : const Icon(Icons.sync_rounded, color: Colors.cyanAccent),
-            tooltip: 'Sync Live Rules',
+            tooltip: AppStrings.get('rules_sync_tooltip'),
             onPressed: _isSyncing ? null : _syncLiveFilters,
           ),
         ],
@@ -160,10 +162,10 @@ class _RulesScreenState extends State<RulesScreen>
           indicatorColor: Colors.cyanAccent,
           labelColor: Colors.cyanAccent,
           unselectedLabelColor: Colors.grey,
-          tabs: const [
-            Tab(text: 'Filter Presets'),
-            Tab(text: 'Custom Rules'),
-            Tab(text: 'Local DNS Hosts'),
+          tabs: [
+            Tab(text: AppStrings.get('rules_tab_presets')),
+            Tab(text: AppStrings.get('rules_tab_custom')),
+            Tab(text: AppStrings.get('rules_tab_hosts')),
           ],
         ),
       ),
@@ -177,16 +179,16 @@ class _RulesScreenState extends State<RulesScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Subscribe to Filter Lists',
-                    style: TextStyle(
+                  Text(
+                    AppStrings.get('rules_subscribe'),
+                    style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.bold),
                   ),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.add_link, size: 16),
-                    label: const Text('ADD URL'),
+                    label: Text(AppStrings.get('rules_add_url')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.cyanAccent,
                       side: const BorderSide(color: Colors.cyanAccent),
@@ -199,8 +201,8 @@ class _RulesScreenState extends State<RulesScreen>
               ...RuleDownloaderService.allSources.map(
                 (source) => _buildPresetTile(
                   id: source.id,
-                  title: source.name,
-                  description: source.description,
+                  title: source.localizedName,
+                  description: source.localizedDescription,
                   enabled: source.isEnabled,
                 ),
               ),
@@ -213,9 +215,9 @@ class _RulesScreenState extends State<RulesScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Add Custom Domain Rule',
-                  style: TextStyle(
+                Text(
+                  AppStrings.get('rules_add_domain'),
+                  style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: Colors.white),
@@ -228,7 +230,7 @@ class _RulesScreenState extends State<RulesScreen>
                         controller: _domainInputController,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          hintText: 'e.g. example.com',
+                          hintText: AppStrings.get('rules_domain_hint'),
                           hintStyle: TextStyle(color: Colors.grey.shade600),
                           filled: true,
                           fillColor: const Color(0xFF161B22),
@@ -252,8 +254,9 @@ class _RulesScreenState extends State<RulesScreen>
                         vpn.addWhitelistDomain(_domainInputController.text);
                         _domainInputController.clear();
                       },
-                      child: const Text('ALLOW',
-                          style: TextStyle(color: Colors.white, fontSize: 11)),
+                      child: Text(AppStrings.get('rules_allow'),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 11)),
                     ),
                     const SizedBox(width: 6),
                     ElevatedButton(
@@ -266,15 +269,16 @@ class _RulesScreenState extends State<RulesScreen>
                         vpn.addBlacklistDomain(_domainInputController.text);
                         _domainInputController.clear();
                       },
-                      child: const Text('BLOCK',
-                          style: TextStyle(color: Colors.white, fontSize: 11)),
+                      child: Text(AppStrings.get('rules_block'),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 11)),
                     ),
                   ],
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  'Custom Whitelist (Always Allowed)',
-                  style: TextStyle(
+                Text(
+                  AppStrings.get('rules_whitelist_title'),
+                  style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: emeraldColor),
@@ -283,7 +287,7 @@ class _RulesScreenState extends State<RulesScreen>
                 Expanded(
                   child: vpn.whitelist.isEmpty
                       ? Center(
-                          child: Text('No custom whitelisted domains',
+                          child: Text(AppStrings.get('rules_no_whitelist'),
                               style: TextStyle(color: Colors.grey.shade500)))
                       : ListView.builder(
                           itemCount: vpn.whitelist.length,
@@ -325,7 +329,7 @@ class _RulesScreenState extends State<RulesScreen>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Override DNS resolution locally without remote server lookup.',
+                  AppStrings.get('rules_hosts_desc'),
                   style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
                 ),
                 const SizedBox(height: 12),
@@ -338,7 +342,7 @@ class _RulesScreenState extends State<RulesScreen>
                         style:
                             const TextStyle(color: Colors.white, fontSize: 12),
                         decoration: InputDecoration(
-                          hintText: 'Domain (e.g. myrouter.local)',
+                          hintText: AppStrings.get('rules_host_domain_hint'),
                           hintStyle: TextStyle(color: Colors.grey.shade600),
                           filled: true,
                           fillColor: const Color(0xFF161B22),
@@ -359,7 +363,7 @@ class _RulesScreenState extends State<RulesScreen>
                         style:
                             const TextStyle(color: Colors.white, fontSize: 12),
                         decoration: InputDecoration(
-                          hintText: 'IP (192.168.1.1)',
+                          hintText: AppStrings.get('rules_host_ip_hint'),
                           hintStyle: TextStyle(color: Colors.grey.shade600),
                           filled: true,
                           fillColor: const Color(0xFF161B22),
@@ -384,7 +388,8 @@ class _RulesScreenState extends State<RulesScreen>
                         final ip = _customHostIpController.text.trim();
 
                         if (domain.isEmpty) {
-                          _showMessage('Enter a domain to map');
+                          _showMessage(
+                              AppStrings.get('rules_enter_domain_map'));
                           return;
                         }
                         // The engine ignores a mapping it cannot parse as an
@@ -398,15 +403,16 @@ class _RulesScreenState extends State<RulesScreen>
                         _customHostDomainController.clear();
                         _customHostIpController.clear();
                       },
-                      child: const Text('MAP',
-                          style: TextStyle(color: Colors.white, fontSize: 11)),
+                      child: Text(AppStrings.get('rules_map'),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 11)),
                     ),
                   ],
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'Active Custom Mappings',
-                  style: TextStyle(
+                Text(
+                  AppStrings.get('rules_active_mappings'),
+                  style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: Colors.cyanAccent),
@@ -415,7 +421,7 @@ class _RulesScreenState extends State<RulesScreen>
                 Expanded(
                   child: vpn.customHosts.isEmpty
                       ? Center(
-                          child: Text('No custom host mappings defined',
+                          child: Text(AppStrings.get('rules_no_mappings'),
                               style: TextStyle(color: Colors.grey.shade500)))
                       : ListView.builder(
                           itemCount: vpn.customHosts.length,
