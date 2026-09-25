@@ -1,5 +1,7 @@
 # AegisNet 🛡️
 
+[![Downloads](https://img.shields.io/github/downloads/vannt-dev/aegis-net/total)](https://github.com/vannt-dev/aegis-net/releases)
+
 **AegisNet** is a high-performance, cross-platform system-wide DNS Privacy Guard & Ad-Blocking Mobile Application for **Android & iOS**, built with **Flutter** and powered by a high-speed **Rust Core Engine**.
 
 ---
