@@ -54,6 +54,7 @@ Switch to the **Logs** tab:
 * Monitor all real-time DNS queries made by applications on your device.
 * **`BLOCKED` (Red)**: Ad networks, trackers, or malicious domains blocked by AegisNet.
 * **`ALLOWED` (Green)**: Safe domains passed through to upstream DNS.
+* **Allow or block from the log**: Tap any entry to always allow or always block that domain, take it off a list it is already on, or copy the name. The change applies to the next query; a domain is only ever on one of the two lists.
 * Use the search bar at the top to filter specific domains.
 
 ---

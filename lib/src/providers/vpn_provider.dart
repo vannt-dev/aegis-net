@@ -486,6 +486,33 @@ class VpnProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Always resolve [domain]: put it on the allow list and take it off the
+  /// block list, so the two lists never disagree about one name.
+  void allowDomain(String domain) {
+    final clean = domain.trim().toLowerCase();
+    if (clean.isEmpty) return;
+    if (_blacklist.contains(clean)) removeBlacklistDomain(clean);
+    addWhitelistDomain(clean);
+  }
+
+  /// Always block [domain]: the mirror image of [allowDomain].
+  void blockDomain(String domain) {
+    final clean = domain.trim().toLowerCase();
+    if (clean.isEmpty) return;
+    if (_whitelist.contains(clean)) removeWhitelistDomain(clean);
+    addBlacklistDomain(clean);
+  }
+
+  /// Replaces the query log. The log normally comes from the native engine,
+  /// which a widget test does not have.
+  @visibleForTesting
+  void debugSetLogs(List<DnsLogItem> logs) {
+    _logs
+      ..clear()
+      ..addAll(logs);
+    notifyListeners();
+  }
+
   void addBypassApp(String packageName) {
     if (packageName.trim().isEmpty) return;
     final clean = packageName.trim();

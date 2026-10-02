@@ -53,6 +53,7 @@ Chuyển sang tab **Logs**:
 * Theo dõi tất cả truy vấn tên miền của các ứng dụng trên máy theo thời gian thực.
 * Nhãn **`BLOCKED` (Đỏ)**: Các truy vấn quảng cáo/theo dõi đã bị ngăn chặn thành công.
 * Nhãn **`ALLOWED` (Xanh)**: Các truy vấn an toàn được đi qua.
+* **Cho phép hoặc chặn ngay từ nhật ký**: Chạm vào một dòng để luôn cho phép hoặc luôn chặn tên miền đó, gỡ nó khỏi danh sách đang chứa nó, hoặc sao chép tên. Thay đổi có hiệu lực từ truy vấn kế tiếp; một tên miền chỉ nằm trong một trong hai danh sách.
 * Sử dụng ô **Filter domain logs...** ở trên cùng để tìm kiếm tên miền cụ thể.
 
 ---
