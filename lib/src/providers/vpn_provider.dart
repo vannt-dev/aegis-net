@@ -305,6 +305,27 @@ class VpnProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
+  static final RegExp _dotUpstream = RegExp(
+      r'^(?:tls|dot)://(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.\-]+|[0-9A-Fa-f:]+)'
+      r'(?::\d{1,5})?(?:#[A-Za-z0-9.\-]+)?/?$');
+
+  /// Checks a resolver typed by the user and returns it trimmed, or null when
+  /// it is not one the engine can use.
+  ///
+  /// Accepted: an `https://` DoH URL, or a DNS-over-TLS target written
+  /// `tls://host[:port][#name]` (`dot://` works too). A bad value must be
+  /// refused here: the engine answers every query SERVFAIL for an upstream it
+  /// cannot reach, so saving a typo would take DNS down for the whole device.
+  static String? normalizeCustomUpstream(String input) {
+    final value = input.trim();
+    if (value.isEmpty || value.contains(RegExp(r'\s'))) return null;
+    if (value.startsWith('https://')) {
+      final uri = Uri.tryParse(value);
+      return uri != null && uri.host.isNotEmpty ? value : null;
+    }
+    return _dotUpstream.hasMatch(value) ? value : null;
+  }
+
   /// Pulls the raw host/IP/URL out of a display label like
   /// "Cloudflare (1.1.1.1)" or "Cloudflare DoH (https://1.1.1.1/dns-query)",
   /// which is what the engine's DoH client actually needs.

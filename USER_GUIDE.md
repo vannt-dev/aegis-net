@@ -75,6 +75,7 @@ Chuyển sang tab **Settings**:
 Chuyển sang tab **Settings**:
 * **Chủ đề Cyberpunk Neon**: Chọn 1 trong 4 tông màu chủ đề thích mắt (Neon Cyan, Emerald Green, Electric Purple, Sunset Gold).
 * **Đo tốc độ DNS**: Bấm nút **`SPEED TEST`** bên cạnh mục Upstream DNS. Hệ thống sẽ đo độ trễ ($ms$) của các nhà cung cấp DNS và hiển thị nhãn **`FASTEST`** cho DNS nhanh nhất để bạn chọn.
+* **Máy chủ DNS tự chọn**: Nhập máy chủ vào ô bên dưới danh sách nhà cung cấp rồi bấm Done. Dùng URL DoH dạng `https://` (`https://dns.nextdns.io/abc123`) hoặc địa chỉ DNS-over-TLS (`tls://1.1.1.1`). Khi máy chủ DoT là địa chỉ IP mà chứng chỉ cấp cho tên miền, thêm tên sau dấu `#`: `tls://94.140.14.14#dns.adguard-dns.com`. Nên dùng địa chỉ IP thay vì tên miền: khi đang bật bảo vệ, tên miền của máy chủ DNS lại phải được phân giải qua chính máy chủ đó.
 
 ---
 
