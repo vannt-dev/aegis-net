@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/vpn_provider.dart';
@@ -130,6 +131,7 @@ class _LogsScreenState extends State<LogsScreen> {
 
                       return ListTile(
                         dense: true,
+                        onTap: () => _showDomainActions(vpn, item),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 2),
                         leading: Container(
@@ -190,6 +192,105 @@ class _LogsScreenState extends State<LogsScreen> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Lets a logged domain be allowed or blocked from where it was noticed,
+  /// instead of retyping it on the Rules screen.
+  void _showDomainActions(VpnProvider vpn, DnsLogItem item) {
+    final domain = item.domain.trim().toLowerCase();
+    if (domain.isEmpty) return;
+    final allowed = vpn.whitelist.contains(domain);
+    final blocked = vpn.blacklist.contains(domain);
+
+    void done(String messageKey) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content:
+              Text(AppStrings.get(messageKey).replaceAll('{domain}', domain)),
+          backgroundColor: Colors.cyan.shade900,
+        ));
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+              child: Text(
+                domain,
+                key: const ValueKey('log-actions-domain'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const Divider(color: Colors.white10, height: 1),
+            ListTile(
+              key: const ValueKey('log-action-allow'),
+              leading:
+                  const Icon(Icons.check_circle_outline, color: emeraldColor),
+              title: Text(
+                AppStrings.get(
+                    allowed ? 'logs_action_unallow' : 'logs_action_allow'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                if (allowed) {
+                  vpn.removeWhitelistDomain(domain);
+                  done('logs_rule_removed');
+                } else {
+                  vpn.allowDomain(domain);
+                  done('logs_allow_added');
+                }
+              },
+            ),
+            ListTile(
+              key: const ValueKey('log-action-block'),
+              leading: const Icon(Icons.block, color: Colors.redAccent),
+              title: Text(
+                AppStrings.get(
+                    blocked ? 'logs_action_unblock' : 'logs_action_block'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                if (blocked) {
+                  vpn.removeBlacklistDomain(domain);
+                  done('logs_rule_removed');
+                } else {
+                  vpn.blockDomain(domain);
+                  done('logs_block_added');
+                }
+              },
+            ),
+            ListTile(
+              key: const ValueKey('log-action-copy'),
+              leading: const Icon(Icons.copy, color: Colors.grey),
+              title: Text(
+                AppStrings.get('logs_action_copy'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: domain));
+                done('logs_copied');
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }

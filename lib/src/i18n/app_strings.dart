@@ -83,6 +83,15 @@ class AppStrings {
       'logs_blocked': 'BLOCKED',
       'logs_allowed': 'ALLOWED',
       'logs_empty': 'No queries captured yet',
+      'logs_action_allow': 'Always allow this domain',
+      'logs_action_unallow': 'Remove from the allow list',
+      'logs_action_block': 'Always block this domain',
+      'logs_action_unblock': 'Remove from the block list',
+      'logs_action_copy': 'Copy the domain',
+      'logs_allow_added': '{domain} is now always allowed.',
+      'logs_block_added': '{domain} is now always blocked.',
+      'logs_rule_removed': 'Removed the rule for {domain}.',
+      'logs_copied': 'Copied {domain}.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': 'Successfully synced %s active ad-blocking rules!',
@@ -240,6 +249,15 @@ class AppStrings {
       'logs_blocked': 'ĐÃ CHẶN',
       'logs_allowed': 'CHO QUA',
       'logs_empty': 'Chưa ghi nhận truy vấn nào',
+      'logs_action_allow': 'Luôn cho phép tên miền này',
+      'logs_action_unallow': 'Xoá khỏi danh sách cho phép',
+      'logs_action_block': 'Luôn chặn tên miền này',
+      'logs_action_unblock': 'Xoá khỏi danh sách chặn',
+      'logs_action_copy': 'Sao chép tên miền',
+      'logs_allow_added': 'Từ giờ luôn cho phép {domain}.',
+      'logs_block_added': 'Từ giờ luôn chặn {domain}.',
+      'logs_rule_removed': 'Đã xoá quy tắc cho {domain}.',
+      'logs_copied': 'Đã sao chép {domain}.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': 'Đã đồng bộ %s quy tắc chặn quảng cáo!',
@@ -395,6 +413,15 @@ class AppStrings {
       'logs_blocked': '차단됨',
       'logs_allowed': '허용됨',
       'logs_empty': '아직 수집된 쿼리가 없습니다',
+      'logs_action_allow': '이 도메인 항상 허용',
+      'logs_action_unallow': '허용 목록에서 제거',
+      'logs_action_block': '이 도메인 항상 차단',
+      'logs_action_unblock': '차단 목록에서 제거',
+      'logs_action_copy': '도메인 복사',
+      'logs_allow_added': '{domain}을(를) 항상 허용합니다.',
+      'logs_block_added': '{domain}을(를) 항상 차단합니다.',
+      'logs_rule_removed': '{domain}에 대한 규칙을 제거했습니다.',
+      'logs_copied': '{domain}을(를) 복사했습니다.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': '차단 규칙 %s개를 동기화했습니다!',
@@ -541,6 +568,15 @@ class AppStrings {
       'logs_blocked': 'ブロック',
       'logs_allowed': '許可',
       'logs_empty': 'クエリはまだ記録されていません',
+      'logs_action_allow': 'このドメインを常に許可',
+      'logs_action_unallow': '許可リストから削除',
+      'logs_action_block': 'このドメインを常にブロック',
+      'logs_action_unblock': 'ブロックリストから削除',
+      'logs_action_copy': 'ドメインをコピー',
+      'logs_allow_added': '{domain} を常に許可します。',
+      'logs_block_added': '{domain} を常にブロックします。',
+      'logs_rule_removed': '{domain} のルールを削除しました。',
+      'logs_copied': '{domain} をコピーしました。',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': '%s件のブロックルールを同期しました！',
