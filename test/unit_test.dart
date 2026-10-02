@@ -508,5 +508,63 @@ void main() {
       expect(await IosDohProfileService.installProfile(), isFalse);
       expect(IosDohProfileService.isServing, isFalse);
     });
+
+    test('a custom resolver is accepted only in a form the engine can use', () {
+      const accepted = [
+        'https://dns.nextdns.io/abc123',
+        'https://1.1.1.1/dns-query',
+        'tls://1.1.1.1',
+        'dot://9.9.9.9:8853',
+        'tls://94.140.14.14#dns.adguard-dns.com',
+        'tls://94.140.14.14:853#dns.adguard-dns.com',
+        'tls://dns.google',
+        'tls://[2606:4700:4700::1111]',
+        'tls://[2606:4700:4700::1111]:853#one.one.one.one',
+        'tls://2606:4700:4700::1111',
+        'tls://1.1.1.1/',
+      ];
+      for (final upstream in accepted) {
+        expect(VpnProvider.normalizeCustomUpstream(upstream), upstream,
+            reason: upstream);
+      }
+      expect(VpnProvider.normalizeCustomUpstream('  tls://1.1.1.1 \n'),
+          'tls://1.1.1.1');
+
+      const rejected = [
+        '',
+        '   ',
+        '1.1.1.1',
+        'dns.google',
+        'http://1.1.1.1/dns-query',
+        'https://',
+        'tls://',
+        'tls://#dns.google',
+        'tls://1.1.1.1#',
+        'tls://1.1.1.1/dns-query',
+        'tls://user@1.1.1.1',
+        'tls://1.1.1.1:port',
+        'tls://1.1.1.1 #dns.google',
+        'Cloudflare (1.1.1.1)',
+      ];
+      for (final upstream in rejected) {
+        expect(VpnProvider.normalizeCustomUpstream(upstream), isNull,
+            reason: upstream);
+      }
+    });
+
+    test('the custom resolver messages exist in every language', () {
+      expect(AppStrings.languages, isNotEmpty);
+      for (final lang in AppStrings.languages) {
+        for (final key in [
+          'settings_doh_hint',
+          'settings_upstream_saved',
+          'settings_upstream_invalid',
+        ]) {
+          expect(AppStrings.rawFor(lang, key), isNotNull, reason: '$lang/$key');
+        }
+        expect(
+            AppStrings.rawFor(lang, 'settings_doh_hint'), contains('tls://'));
+      }
+    });
   });
 }

@@ -4,6 +4,30 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
+## [Unreleased]
+
+### Added
+
+- **DNS-over-TLS upstream (RFC 7858).** The engine speaks DoT to an upstream
+  written `tls://host[:port][#name]` (or `dot://`). The certificate is checked
+  against the host, or against the name after `#` when the host is an address
+  (`tls://94.140.14.14#dns.adguard-dns.com`). Connections are kept open and
+  reused; a resolver that closed an idle one is reconnected to once. An
+  unreachable or malformed DoT upstream answers SERVFAIL, like DoH.
+
+### Fixed
+
+- **The custom resolver field in Settings did nothing.** It accepted text and
+  never applied it. Submitting it now sets the upstream, after checking that
+  it is an `https://` DoH URL or a DoT target; anything else is refused with a
+  message, because a resolver the engine cannot reach takes DNS down for the
+  whole device.
+- The iOS DoH profile button no longer puts a `tls://` upstream into the
+  profile as if it were a DoH URL; it falls back to the default DoH endpoint.
+
+Not verified on a device: the DoT transport was exercised from a desktop build
+against Cloudflare, Google and Quad9, and cross-compiled for Android arm64.
+
 ## [1.2.0] — 2026-08-13
 
 Fixes a bug that broke the YouTube app for everyone running 1.1.0, and stops

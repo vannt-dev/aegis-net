@@ -46,9 +46,12 @@
       a `VpnService` route captures every port, so it swallowed the engine's
       own DoH upstream and broke DNS outright. Needs a `protect()`ed upstream
       socket plus a forwarding path for the non-DNS traffic it captures
-- [ ] Real DNS-over-TLS transport (RFC 7858, port 853). `tls://` and `dot://`
-      upstreams are currently rejected rather than silently rewritten to a
-      guessed DoH URL
+- [x] Real DNS-over-TLS transport (RFC 7858, port 853) in the Rust core
+      (`dot.rs`): `tls://host[:port][#name]` and `dot://` upstreams, certificate
+      verified against the host or the name after `#`, connections reused.
+      Checked against Cloudflare, Google and Quad9 from a desktop build and
+      cross-compiled for Android arm64; **not yet run on a device or emulator**.
+      No EDNS padding yet
 
 ## 📍 Phase 3: Premium UI/UX & User Customization
 - [x] Cyberpunk Glassmorphic Dashboard with Pulsing Power Switch
