@@ -17,6 +17,10 @@ lazy_static = "1.4"
 dashmap = "5.5"
 jni = "0.21"
 ureq = "2.10"
+# DNS-over-TLS. Both crates are already in the build through ureq; the feature
+# set matches ureq's so no second crypto backend (aws-lc) is compiled in.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "0.26"
 
 [profile.release]
 opt-level = 3
