@@ -4,6 +4,64 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
+## [1.3.0] — 2026-10-03
+
+Adds DNS-over-TLS upstreams and one-tap allow/block from the query log, and
+fixes two Android bugs: a resolver given by host name took DNS down for the
+whole device, and on Android 7.0 no filter list ever downloaded.
+
+Verified on Android 7.0, 9, 11 and 14 emulators — the tunnel starts, blocking
+applies, and DoH and DoT upstreams resolve by address and by name. Not yet
+run on a physical device. **iOS is still not verified**, as with 1.2.0.
+
+### Added
+
+- **Allow or block a domain from the query log.** Tapping an entry opens a
+  sheet to always allow or always block that domain, to take it off a list it
+  is already on, or to copy the name; until now the domain had to be retyped
+  on the Rules screen. Allowing a blocked domain takes it off the block list,
+  and the other way round, so a domain is never on both.
+
+- **DNS-over-TLS upstream (RFC 7858).** The engine speaks DoT to an upstream
+  written `tls://host[:port][#name]` (or `dot://`). The certificate is checked
+  against the host, or against the name after `#` when the host is an address
+  (`tls://94.140.14.14#dns.adguard-dns.com`). Connections are kept open and
+  reused; a resolver that closed an idle one is reconnected to once. An
+  unreachable or malformed DoT upstream answers SERVFAIL, like DoH.
+
+### Fixed
+
+- **A host-name upstream took DNS down for the whole device on Android.**
+  `https://dns.google/dns-query`, `https://dns.nextdns.io/<id>` (the example
+  the Settings field itself suggests) and `tls://dns.google` were all
+  accepted, and then every lookup on the phone failed after about 20 seconds.
+  The engine's sockets bypass the tunnel, but looking up the upstream's name
+  did not: inside the VPN the app's own resolver is the engine, which needed
+  that same upstream to answer. The app is now excluded from its own tunnel,
+  so the name is looked up on the real network. Address-form upstreams were
+  never affected. Verified on an Android 14 emulator: all three forms above
+  resolve, and blocking still applies to every other app.
+
+- **Filter lists never downloaded on Android 7.0.** Every list host the app
+  ships with (GitHub, Peter Lowe, OISD) chains to Let's Encrypt's ISRG Root
+  X1, which Android only trusts from 7.1.1 on, so each download failed with
+  `CERTIFICATE_VERIFY_FAILED` and the app filtered with its seed rules alone.
+  The two ISRG roots are now bundled and trusted for list downloads in
+  addition to the system's own. Verified on Android 7.0, 9 and 11 emulators:
+  every list downloads, and domains found only in those lists are blocked.
+
+- **The custom resolver field in Settings did nothing.** It accepted text and
+  never applied it. Submitting it now sets the upstream, after checking that
+  it is an `https://` DoH URL or a DoT target; anything else is refused with a
+  message, because a resolver the engine cannot reach takes DNS down for the
+  whole device.
+- The iOS DoH profile button no longer puts a `tls://` upstream into the
+  profile as if it were a DoH URL; it falls back to the default DoH endpoint.
+
+The DoT transport was exercised from a desktop build against Cloudflare, Google
+and Quad9, and on an Android 14 emulator (x86_64) against Quad9 and Google, by
+address and by name. Not yet run on a physical device.
+
 ## [1.2.0] — 2026-08-13
 
 Fixes a bug that broke the YouTube app for everyone running 1.1.0, and stops

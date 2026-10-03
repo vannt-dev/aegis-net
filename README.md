@@ -1,5 +1,7 @@
 # AegisNet 🛡️
 
+[![Downloads](https://img.shields.io/github/downloads/vannt-dev/aegis-net/total)](https://github.com/vannt-dev/aegis-net/releases)
+
 **AegisNet** is a high-performance, cross-platform system-wide DNS Privacy Guard & Ad-Blocking Mobile Application for **Android & iOS**, built with **Flutter** and powered by a high-speed **Rust Core Engine**.
 
 ---
@@ -40,12 +42,12 @@
 - **🗺️ Local DNS Mapping & Custom Hosts**: Define custom internal DNS host overrides (`domain` -> `IP`, e.g. `myrouter.local` -> `192.168.1.1`) with real-time UI control.
 - **⏰ Scheduled Quiet Hours (Parental Controls)**: Automatic category filter activation during configured quiet hours (e.g. 22:00 - 06:00).
 - **🔒 Enforced SafeSearch**: Exact-host SafeSearch rewriting for Google & DuckDuckGo (unrelated subdomains such as `mail.google.com` are never touched).
-- **🌐 DNS-over-HTTPS & DoT (RFC 8484)**: Encrypted DoH/DoT upstream (`application/dns-message`) using IP-literal endpoints to avoid resolver bootstrap loops; configurable providers (Cloudflare, Google, AdGuard, Quad9).
+- **🌐 DNS-over-HTTPS & DNS-over-TLS**: Encrypted upstream over DoH (RFC 8484, `application/dns-message`) or DoT (RFC 7858, port 853). The built-in providers (Cloudflare, Google, AdGuard, Quad9) use DoH with IP-literal endpoints to avoid resolver bootstrap loops; a custom resolver can be an `https://` URL or a `tls://host[:port][#name]` target, where `#name` is the certificate name to verify when the host is an address.
 - **💻 Multi-Platform Desktop Support**: Desktop scaffolding for Windows, macOS, and Linux powered by `DesktopDnsProxy`.
 - **⏱️ DNS Latency Benchmark**: Interactive built-in benchmark tool to test and automatically select the fastest upstream DNS provider.
 - **📱 System-Wide Protection**: Intercepts OS-level DNS traffic via local split-tunnel VPN (`VpnService` on Android, `NEPacketTunnelProvider` on iOS) without routing web traffic to remote servers.
 - **📊 Real-time Dashboard & Analytics**: Interactive traffic graphs, query counters, ad-block stats, bandwidth savings, and detailed category analytics.
-- **📜 Live Query Log & CSV Export**: Real-time query monitoring with status filter chips (`ALL LOGS`, `BLOCKED`, `ALLOWED`), instant domain search and CSV export.
+- **📜 Live Query Log & CSV Export**: Real-time query monitoring with status filter chips (`ALL LOGS`, `BLOCKED`, `ALLOWED`), instant domain search and CSV export. Tap an entry to allow or block that domain on the spot.
 - **⚡ Custom Whitelist & Blacklist**: Flexible custom rule management with instant hot-reloading.
 - **🔄 Background Auto-Sync**: Automatic blocklist updates and background rule synchronization.
 - **🌍 4-Language i18n Support**: Full internationalization for English (EN), Vietnamese (VI), Korean (KO), and Japanese (JA).

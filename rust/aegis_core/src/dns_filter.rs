@@ -1,4 +1,5 @@
 use crate::cache::DnsCache;
+use crate::dot::{self, DotClient};
 use crate::rule_engine::RuleEngine;
 use crate::statistics::StatisticsEngine;
 use lazy_static::lazy_static;
@@ -11,6 +12,7 @@ lazy_static! {
         .timeout(std::time::Duration::from_millis(2500))
         .max_idle_connections(10)
         .build();
+    static ref DOT_CLIENT: DotClient = DotClient::new();
 }
 
 /// DNS QTYPE values this module answers directly.
@@ -380,8 +382,8 @@ impl DnsFilterService {
         // speak DoT — it just guesses that the same host also serves DoH on
         // /dns-query, which is true for Cloudflare and AdGuard and false for
         // plenty of others, and the ones where it is false fail as an opaque
-        // SERVFAIL. Reject the scheme until there is a real DoT transport.
-        if upstream.starts_with("tls://") || upstream.starts_with("dot://") {
+        // SERVFAIL. Those upstreams go to the DoT transport in `dot.rs`.
+        if dot::is_dot_scheme(upstream) {
             return None;
         }
 
@@ -392,22 +394,29 @@ impl DnsFilterService {
         }
     }
 
-    /// Forward a DNS query over DNS-over-HTTPS (RFC 8484): the raw DNS wire
-    /// message is POSTed with `application/dns-message` and the response body is
-    /// the DNS wire answer. Replaces the previous cleartext UDP/53 transport.
+    /// Forward a DNS query to the configured upstream. An empty result means
+    /// the upstream could not be reached; the caller answers SERVFAIL.
+    ///
+    /// `tls://` and `dot://` upstreams use DNS-over-TLS (RFC 7858). Anything
+    /// else uses DNS-over-HTTPS (RFC 8484): the raw DNS wire message is POSTed
+    /// with `application/dns-message` and the response body is the DNS wire
+    /// answer.
     fn forward_to_upstream(&self, payload: &[u8]) -> Vec<u8> {
         use std::io::Read;
 
         let upstream = self.upstream_dns.read().unwrap().clone();
+        if dot::is_dot_scheme(&upstream) {
+            return match dot::parse_target(&upstream) {
+                Some(target) => DOT_CLIENT.exchange(&target, payload).unwrap_or_default(),
+                None => {
+                    warn!("Upstream {:?} is not a valid DNS-over-TLS target", upstream);
+                    vec![]
+                }
+            };
+        }
         let endpoint = match Self::doh_endpoint(&upstream) {
             Some(e) => e,
-            None => {
-                warn!(
-                    "Upstream {:?} is not a DoH endpoint; DNS-over-TLS is not supported",
-                    upstream
-                );
-                return vec![];
-            }
+            None => return vec![],
         };
 
         let response = DOH_AGENT
@@ -684,17 +693,40 @@ mod tests {
     fn test_toggling_a_category_drops_cached_answers() {
         let engine = Arc::new(RuleEngine::new());
         let stats = Arc::new(StatisticsEngine::new(16));
-        let filter = DnsFilterService::new(
-            engine,
-            stats,
-            "https://1.1.1.1/dns-query".to_string(),
-        );
+        let filter = DnsFilterService::new(engine, stats, "https://1.1.1.1/dns-query".to_string());
 
-        filter.dns_cache.insert("example.com|1".to_string(), vec![1, 2, 3]);
+        filter
+            .dns_cache
+            .insert("example.com|1".to_string(), vec![1, 2, 3]);
         assert!(filter.dns_cache.get("example.com|1").is_some());
 
         filter.clear_cache();
         assert!(filter.dns_cache.get("example.com|1").is_none());
+    }
+
+    /// A DoT upstream that cannot be reached, or cannot even be parsed, must
+    /// answer SERVFAIL like an unreachable DoH upstream, not drop the query
+    /// and not fall back to some other transport behind the user's back.
+    #[test]
+    fn test_unusable_dot_upstream_answers_servfail() {
+        let query = vec![
+            0xaa, 0xbb, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, b'e',
+            b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00,
+            0x01,
+        ];
+        let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
+
+        // Port 1 on loopback refuses at once; the second target has no host.
+        for upstream in ["tls://127.0.0.1:1", "dot://"] {
+            let service = DnsFilterService::new(
+                Arc::new(RuleEngine::new()),
+                Arc::new(StatisticsEngine::new(10)),
+                upstream.to_string(),
+            );
+            let response = service.handle_dns_payload(&query, client);
+            assert_eq!(response[3] & 0x0f, 0x02, "{upstream}: expected SERVFAIL");
+            assert_eq!(&response[0..2], &query[0..2]);
+        }
     }
 
     #[test]

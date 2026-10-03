@@ -32,11 +32,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _bypassController = TextEditingController();
   final TextEditingController _dohController = TextEditingController();
 
+  bool _dohPrefilled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Show a custom resolver that is already in effect. Done once: the
+    // provider notifies every two seconds, and refilling on each of those
+    // would overwrite whatever is being typed.
+    if (!_dohPrefilled) {
+      _dohPrefilled = true;
+      final upstream = context.read<VpnProvider>().upstreamDns;
+      if (VpnProvider.normalizeCustomUpstream(upstream) != null) {
+        _dohController.text = upstream;
+      }
+    }
+  }
+
   @override
   void dispose() {
     _bypassController.dispose();
     _dohController.dispose();
     super.dispose();
+  }
+
+  /// Until this was wired up the field accepted text and did nothing with it.
+  void _applyCustomUpstream(
+      BuildContext context, VpnProvider vpn, String value) {
+    final upstream = VpnProvider.normalizeCustomUpstream(value);
+    if (upstream != null) {
+      vpn.setUpstreamDns(upstream);
+      _dohController.text = upstream;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppStrings.get(upstream != null
+            ? 'settings_upstream_saved'
+            : 'settings_upstream_invalid')),
+      ),
+    );
   }
 
   /// Vendor ROMs (MIUI above all) block the tunnel in ways the app cannot work
@@ -296,6 +330,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextField(
             controller: _dohController,
             style: const TextStyle(color: Colors.white, fontSize: 12),
+            keyboardType: TextInputType.url,
+            textInputAction: TextInputAction.done,
+            autocorrect: false,
+            onSubmitted: (value) => _applyCustomUpstream(context, vpn, value),
             decoration: InputDecoration(
               hintText: AppStrings.get('settings_doh_hint'),
               hintStyle: TextStyle(color: Colors.grey.shade600),
@@ -662,12 +700,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         style: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 12)),
                     onPressed: () async {
-                      final dohUrl = vpn.upstreamDns.contains('(')
+                      final configured = vpn.upstreamDns.contains('(')
                           ? RegExp(r'\(([^)]+)\)')
                                   .firstMatch(vpn.upstreamDns)
                                   ?.group(1) ??
                               IosDohProfileService.defaultDohUrl
                           : vpn.upstreamDns;
+                      // The profile is a DoH profile; a DNS-over-TLS upstream
+                      // has no URL to put in it.
+                      final dohUrl = configured.startsWith('tls://') ||
+                              configured.startsWith('dot://')
+                          ? IosDohProfileService.defaultDohUrl
+                          : configured;
                       final ok = await IosDohProfileService.installProfile(
                           dohUrl: dohUrl);
                       if (context.mounted) {

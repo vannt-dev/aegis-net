@@ -83,6 +83,15 @@ class AppStrings {
       'logs_blocked': 'BLOCKED',
       'logs_allowed': 'ALLOWED',
       'logs_empty': 'No queries captured yet',
+      'logs_action_allow': 'Always allow this domain',
+      'logs_action_unallow': 'Remove from the allow list',
+      'logs_action_block': 'Always block this domain',
+      'logs_action_unblock': 'Remove from the block list',
+      'logs_action_copy': 'Copy the domain',
+      'logs_allow_added': '{domain} is now always allowed.',
+      'logs_block_added': '{domain} is now always blocked.',
+      'logs_rule_removed': 'Removed the rule for {domain}.',
+      'logs_copied': 'Copied {domain}.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': 'Successfully synced %s active ad-blocking rules!',
@@ -123,7 +132,10 @@ class AppStrings {
       'dns_adguard_desc': 'Upstream ad-blocking DNS',
       'dns_quad9_desc': 'Malware protection & threat blocking',
       'settings_doh_hint':
-          'Custom DoH URL (e.g. https://dns.nextdns.io/xxxxxx)',
+          'Custom resolver: https://dns.nextdns.io/xxxxxx or tls://1.1.1.1',
+      'settings_upstream_saved': 'Custom resolver saved.',
+      'settings_upstream_invalid':
+          'Not a usable resolver. Enter an https:// DoH URL or a tls://host[:port][#name] target.',
       'settings_split_title': 'App-by-App Split Tunneling (Bypass VPN)',
       'settings_split_desc':
           'Selected apps will bypass Aegis Local VPN and connect directly.',
@@ -240,6 +252,15 @@ class AppStrings {
       'logs_blocked': 'ĐÃ CHẶN',
       'logs_allowed': 'CHO QUA',
       'logs_empty': 'Chưa ghi nhận truy vấn nào',
+      'logs_action_allow': 'Luôn cho phép tên miền này',
+      'logs_action_unallow': 'Xoá khỏi danh sách cho phép',
+      'logs_action_block': 'Luôn chặn tên miền này',
+      'logs_action_unblock': 'Xoá khỏi danh sách chặn',
+      'logs_action_copy': 'Sao chép tên miền',
+      'logs_allow_added': 'Từ giờ luôn cho phép {domain}.',
+      'logs_block_added': 'Từ giờ luôn chặn {domain}.',
+      'logs_rule_removed': 'Đã xoá quy tắc cho {domain}.',
+      'logs_copied': 'Đã sao chép {domain}.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': 'Đã đồng bộ %s quy tắc chặn quảng cáo!',
@@ -281,7 +302,10 @@ class AppStrings {
       'dns_adguard_desc': 'DNS chặn quảng cáo từ đầu nguồn',
       'dns_quad9_desc': 'Chặn mã độc và các mối đe doạ',
       'settings_doh_hint':
-          'URL DoH tự chọn (vd: https://dns.nextdns.io/xxxxxx)',
+          'Máy chủ tự chọn: https://dns.nextdns.io/xxxxxx hoặc tls://1.1.1.1',
+      'settings_upstream_saved': 'Đã lưu máy chủ DNS tự chọn.',
+      'settings_upstream_invalid':
+          'Máy chủ không hợp lệ. Nhập URL DoH dạng https:// hoặc địa chỉ tls://host[:port][#name].',
       'settings_split_title': 'Chia Đường Truyền Theo Ứng Dụng (Bỏ Qua VPN)',
       'settings_split_desc':
           'Ứng dụng được chọn sẽ không đi qua VPN của Aegis mà kết nối thẳng.',
@@ -395,6 +419,15 @@ class AppStrings {
       'logs_blocked': '차단됨',
       'logs_allowed': '허용됨',
       'logs_empty': '아직 수집된 쿼리가 없습니다',
+      'logs_action_allow': '이 도메인 항상 허용',
+      'logs_action_unallow': '허용 목록에서 제거',
+      'logs_action_block': '이 도메인 항상 차단',
+      'logs_action_unblock': '차단 목록에서 제거',
+      'logs_action_copy': '도메인 복사',
+      'logs_allow_added': '{domain}을(를) 항상 허용합니다.',
+      'logs_block_added': '{domain}을(를) 항상 차단합니다.',
+      'logs_rule_removed': '{domain}에 대한 규칙을 제거했습니다.',
+      'logs_copied': '{domain}을(를) 복사했습니다.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': '차단 규칙 %s개를 동기화했습니다!',
@@ -433,7 +466,11 @@ class AppStrings {
       'dns_google_desc': '전 세계적으로 안정적',
       'dns_adguard_desc': '광고 차단 기능이 있는 DNS',
       'dns_quad9_desc': '악성코드 및 위협 차단',
-      'settings_doh_hint': '사용자 DoH URL (예: https://dns.nextdns.io/xxxxxx)',
+      'settings_doh_hint':
+          '사용자 지정 서버: https://dns.nextdns.io/xxxxxx 또는 tls://1.1.1.1',
+      'settings_upstream_saved': '사용자 지정 DNS 서버를 저장했습니다.',
+      'settings_upstream_invalid':
+          '사용할 수 없는 서버입니다. https:// DoH URL 또는 tls://host[:port][#name] 형식으로 입력하세요.',
       'settings_split_title': '앱별 분할 터널링 (VPN 우회)',
       'settings_split_desc': '선택한 앱은 Aegis VPN을 우회해 직접 연결됩니다.',
       'settings_pkg_hint': '패키지 이름 (예: com.example.app)',
@@ -541,6 +578,15 @@ class AppStrings {
       'logs_blocked': 'ブロック',
       'logs_allowed': '許可',
       'logs_empty': 'クエリはまだ記録されていません',
+      'logs_action_allow': 'このドメインを常に許可',
+      'logs_action_unallow': '許可リストから削除',
+      'logs_action_block': 'このドメインを常にブロック',
+      'logs_action_unblock': 'ブロックリストから削除',
+      'logs_action_copy': 'ドメインをコピー',
+      'logs_allow_added': '{domain} を常に許可します。',
+      'logs_block_added': '{domain} を常にブロックします。',
+      'logs_rule_removed': '{domain} のルールを削除しました。',
+      'logs_copied': '{domain} をコピーしました。',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': '%s件のブロックルールを同期しました！',
@@ -579,7 +625,11 @@ class AppStrings {
       'dns_google_desc': '世界的に安定した信頼性',
       'dns_adguard_desc': '広告ブロック機能付きDNS',
       'dns_quad9_desc': 'マルウェアと脅威をブロック',
-      'settings_doh_hint': 'カスタムDoH URL（例: https://dns.nextdns.io/xxxxxx）',
+      'settings_doh_hint':
+          'カスタムサーバー: https://dns.nextdns.io/xxxxxx または tls://1.1.1.1',
+      'settings_upstream_saved': 'カスタムDNSサーバーを保存しました。',
+      'settings_upstream_invalid':
+          '使用できないサーバーです。https:// のDoH URL、または tls://host[:port][#name] の形式で入力してください。',
       'settings_split_title': 'アプリ別スプリットトンネル（VPN除外）',
       'settings_split_desc': '選択したアプリはAegisのVPNを経由せず直接接続します。',
       'settings_pkg_hint': 'パッケージ名（例: com.example.app）',

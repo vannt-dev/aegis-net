@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
 import '../i18n/app_strings.dart';
+import 'download_roots.dart';
 
 class FilterSource {
   final String id;
@@ -236,7 +237,7 @@ class RuleDownloaderService {
   /// Download filter list content from HTTP URL
   static Future<String?> fetchFilterContent(String url) async {
     try {
-      final client = HttpClient();
+      final client = HttpClient(context: downloadSecurityContext());
       client.connectionTimeout = const Duration(seconds: 10);
       final request = await client.getUrl(Uri.parse(url));
       final response = await request.close();
