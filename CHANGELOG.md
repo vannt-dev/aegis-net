@@ -8,6 +8,12 @@ verified native pipeline on Android.
 
 ### Added
 
+- **Allow or block a domain from the query log.** Tapping an entry opens a
+  sheet to always allow or always block that domain, to take it off a list it
+  is already on, or to copy the name; until now the domain had to be retyped
+  on the Rules screen. Allowing a blocked domain takes it off the block list,
+  and the other way round, so a domain is never on both.
+
 - **DNS-over-TLS upstream (RFC 7858).** The engine speaks DoT to an upstream
   written `tls://host[:port][#name]` (or `dot://`). The certificate is checked
   against the host, or against the name after `#` when the host is an address
