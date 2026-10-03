@@ -34,6 +34,14 @@ verified native pipeline on Android.
   never affected. Verified on an Android 14 emulator: all three forms above
   resolve, and blocking still applies to every other app.
 
+- **Filter lists never downloaded on Android 7.0.** Every list host the app
+  ships with (GitHub, Peter Lowe, OISD) chains to Let's Encrypt's ISRG Root
+  X1, which Android only trusts from 7.1.1 on, so each download failed with
+  `CERTIFICATE_VERIFY_FAILED` and the app filtered with its seed rules alone.
+  The two ISRG roots are now bundled and trusted for list downloads in
+  addition to the system's own. Verified on Android 7.0, 9 and 11 emulators:
+  every list downloads, and domains found only in those lists are blocked.
+
 - **The custom resolver field in Settings did nothing.** It accepted text and
   never applied it. Submitting it now sets the upstream, after checking that
   it is an `https://` DoH URL or a DoT target; anything else is refused with a
