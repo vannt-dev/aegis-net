@@ -11,10 +11,12 @@ use std::sync::Arc;
 lazy_static! {
     static ref RULE_ENGINE: Arc<RuleEngine> = Arc::new(RuleEngine::new());
     static ref STATS_ENGINE: Arc<StatisticsEngine> = Arc::new(StatisticsEngine::new(1000));
-    // IP-literal DoH endpoint on purpose: when this engine runs behind a
-    // DNS-capturing VPN, resolving a hostname here would recurse back into our
-    // own resolver and deadlock. Cloudflare's certificate carries a 1.1.1.1 IP
-    // SAN, so TLS verification still succeeds without any prior DNS lookup.
+    // IP-literal DoH endpoint on purpose: the default needs no DNS lookup at
+    // all, so it works before anything else does. (A host-name upstream
+    // used to recurse back into our own captured resolver and deadlock; the
+    // Android service now keeps the app out of its own tunnel to stop that.)
+    // Cloudflare's certificate carries a 1.1.1.1 IP SAN, so TLS verification
+    // still succeeds without any prior DNS lookup.
     static ref DNS_FILTER: Arc<DnsFilterService> = Arc::new(DnsFilterService::new(
         RULE_ENGINE.clone(),
         STATS_ENGINE.clone(),

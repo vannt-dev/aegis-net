@@ -17,6 +17,17 @@ verified native pipeline on Android.
 
 ### Fixed
 
+- **A host-name upstream took DNS down for the whole device on Android.**
+  `https://dns.google/dns-query`, `https://dns.nextdns.io/<id>` (the example
+  the Settings field itself suggests) and `tls://dns.google` were all
+  accepted, and then every lookup on the phone failed after about 20 seconds.
+  The engine's sockets bypass the tunnel, but looking up the upstream's name
+  did not: inside the VPN the app's own resolver is the engine, which needed
+  that same upstream to answer. The app is now excluded from its own tunnel,
+  so the name is looked up on the real network. Address-form upstreams were
+  never affected. Verified on an Android 14 emulator: all three forms above
+  resolve, and blocking still applies to every other app.
+
 - **The custom resolver field in Settings did nothing.** It accepted text and
   never applied it. Submitting it now sets the upstream, after checking that
   it is an `https://` DoH URL or a DoT target; anything else is refused with a
@@ -25,8 +36,9 @@ verified native pipeline on Android.
 - The iOS DoH profile button no longer puts a `tls://` upstream into the
   profile as if it were a DoH URL; it falls back to the default DoH endpoint.
 
-Not verified on a device: the DoT transport was exercised from a desktop build
-against Cloudflare, Google and Quad9, and cross-compiled for Android arm64.
+The DoT transport was exercised from a desktop build against Cloudflare, Google
+and Quad9, and on an Android 14 emulator (x86_64) against Quad9 and Google, by
+address and by name. Not yet run on a physical device.
 
 ## [1.2.0] — 2026-08-13
 

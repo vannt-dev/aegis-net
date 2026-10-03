@@ -7,9 +7,9 @@
 //!   carries an IP subject alternative name.
 //! * `tls://94.140.14.14#dns.adguard-dns.com` connects to the address and
 //!   verifies the certificate against the name after `#`.
-//! * `tls://dns.example` connects to the name. Resolving it goes through the
-//!   system resolver, which on a device is this engine: prefer one of the two
-//!   address forms there, as with a DoH upstream.
+//! * `tls://dns.example` connects to the name, looked up through the system
+//!   resolver. On Android the app is kept out of its own tunnel, so that
+//!   lookup reaches the network's resolver rather than this engine.
 
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
