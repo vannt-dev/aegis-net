@@ -4,7 +4,15 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
-## [Unreleased]
+## [1.3.0] — 2026-10-03
+
+Adds DNS-over-TLS upstreams and one-tap allow/block from the query log, and
+fixes two Android bugs: a resolver given by host name took DNS down for the
+whole device, and on Android 7.0 no filter list ever downloaded.
+
+Verified on Android 7.0, 9, 11 and 14 emulators — the tunnel starts, blocking
+applies, and DoH and DoT upstreams resolve by address and by name. Not yet
+run on a physical device. **iOS is still not verified**, as with 1.2.0.
 
 ### Added
 
