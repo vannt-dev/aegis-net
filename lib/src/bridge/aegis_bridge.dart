@@ -9,6 +9,14 @@ import 'ffi_bindings.dart';
 class AegisBridge {
   static const MethodChannel _vpnChannel = MethodChannel('com.aegisnet/vpn');
   static bool _useNativeFfi = false;
+  static bool _engineInitialized = false;
+
+  /// Whether [initEngine] has run; native calls made before it are lost.
+  @visibleForTesting
+  static bool get debugEngineInitialized => _engineInitialized;
+
+  @visibleForTesting
+  static void debugResetEngine() => _engineInitialized = false;
 
   /// App Group container shared with the iOS PacketTunnel extension. Null
   /// everywhere else, and on iOS until the native side hands it over.
@@ -50,6 +58,7 @@ class AegisBridge {
   /// Initialize Aegis Core Engine (Attempts native FFI load first)
   static Future<bool> initEngine() async {
     _useNativeFfi = AegisNativeBindings.initNativeLibrary();
+    _engineInitialized = true;
     if (_usesSharedContainer) {
       await _resolveSharedContainer();
     }

@@ -338,6 +338,8 @@ class VpnProvider extends ChangeNotifier {
   /// it so the UI and the rule engine agree on state from the first query.
   Future<void> _bootstrapEngine() async {
     await AegisBridge.initEngine();
+    // After initEngine: a native call made before it never reaches the engine.
+    AegisBridge.setBlockDohHosts(_interceptHardcodedDns);
     for (final domain in _whitelist) {
       AegisBridge.addWhitelist(domain);
     }
@@ -410,7 +412,6 @@ class VpnProvider extends ChangeNotifier {
       }
 
       AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
-      AegisBridge.setBlockDohHosts(_interceptHardcodedDns);
       notifyListeners();
     } catch (_) {}
   }

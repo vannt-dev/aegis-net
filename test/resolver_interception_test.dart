@@ -20,6 +20,7 @@ void main() {
   setUp(() {
     AppStrings.lang = 'en';
     SharedPreferences.setMockInitialValues({});
+    AegisBridge.debugResetEngine();
     calls.clear();
     engineFlag.clear();
     AegisBridge.debugSetBlockDohHostsOverride = engineFlag.add;
@@ -145,5 +146,17 @@ void main() {
     expect(find.textContaining('pings 8.8.8.8'), findsNothing);
     vpn.dispose();
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  test('the flag reaches the engine after it is initialised', () async {
+    // Calls made before initEngine never reach the native library.
+    final readyAtCall = <bool>[];
+    AegisBridge.debugSetBlockDohHostsOverride =
+        (_) => readyAtCall.add(AegisBridge.debugEngineInitialized);
+    final vpn = VpnProvider(enableSimulation: false);
+    await pumpEventQueue();
+    expect(readyAtCall, isNotEmpty);
+    expect(readyAtCall.last, isTrue);
+    vpn.dispose();
   });
 }
