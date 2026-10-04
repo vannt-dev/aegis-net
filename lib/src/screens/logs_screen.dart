@@ -157,7 +157,9 @@ class _LogsScreenState extends State<LogsScreen> {
             child: logs.isEmpty
                 ? Center(
                     child: Text(
-                      AppStrings.get('logs_empty'),
+                      AppStrings.get(vpn.logAppFilter == null
+                          ? 'logs_empty'
+                          : 'logs_empty_app'),
                       style: TextStyle(color: Colors.grey.shade500),
                     ),
                   )

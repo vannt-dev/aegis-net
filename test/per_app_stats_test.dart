@@ -19,9 +19,8 @@ void main() {
         () {
       expect(const AppInfo(uid: 10123, label: 'Chrome').displayName, 'Chrome');
       expect(
-          const AppInfo(uid: 1000, label: 'Android System', sharedCount: 12)
-              .displayName,
-          'Android System (+12)');
+          const AppInfo(uid: 10500, label: 'Maps', sharedCount: 2).displayName,
+          'Maps (+2)');
     });
 
     test('falls back to the package, then system, then the uid', () {
@@ -128,6 +127,61 @@ void main() {
       expect(vpn.logAppFilter, 10123);
       vpn.setLogAppFilter(null);
       expect(vpn.logAppFilter, isNull);
+    });
+  });
+
+  group('review fixes', () {
+    test('a shared system uid is the system, not one of its packages', () {
+      expect(
+          const AppInfo(uid: 1000, label: 'Settings', sharedCount: 47)
+              .displayName,
+          'Android system (+47)');
+      expect(const AppInfo(uid: 2000, label: 'Shell').displayName, 'Shell');
+    });
+
+    test('a failed lookup is asked again on the next refresh', () async {
+      var calls = 0;
+      AegisBridge.debugResolveAppsOverride = (uids) async {
+        calls += 1;
+        if (calls == 1) throw Exception('channel down');
+        return {for (final u in uids) u: AppInfo(uid: u, label: 'Chrome')};
+      };
+      final vpn = VpnProvider(enableSimulation: false);
+      vpn.debugSetStats({
+        'top_apps': [
+          {'uid': 10123, 'total': 1, 'blocked': 0},
+        ],
+      });
+
+      await vpn.debugResolveApps();
+      expect(vpn.appInfo(10123).displayName, 'UID 10123');
+      await vpn.debugResolveApps();
+      expect(calls, 2);
+      expect(vpn.appInfo(10123).displayName, 'Chrome');
+    });
+
+    test('a uid the platform could not name is asked again after a minute',
+        () async {
+      final asked = <int>[];
+      AegisBridge.debugResolveAppsOverride = (uids) async {
+        asked.addAll(uids);
+        return {};
+      };
+      var now = DateTime(2026, 10, 4, 12);
+      final vpn = VpnProvider(enableSimulation: false)..debugNow = () => now;
+      vpn.debugSetStats({
+        'top_apps': [
+          {'uid': 10123, 'total': 1, 'blocked': 0},
+        ],
+      });
+
+      await vpn.debugResolveApps();
+      await vpn.debugResolveApps();
+      expect(asked, [10123]);
+
+      now = now.add(const Duration(seconds: 61));
+      await vpn.debugResolveApps();
+      expect(asked, [10123, 10123]);
     });
   });
 }

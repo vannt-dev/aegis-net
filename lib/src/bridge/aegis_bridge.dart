@@ -181,13 +181,14 @@ class AegisBridge {
   static Future<Map<int, AppInfo>> Function(List<int> uids)?
       debugResolveAppsOverride;
 
-  /// Names for the UIDs in the per-app statistics. Empty where the platform
-  /// has no such call (desktop, iOS) or when it fails.
-  static Future<Map<int, AppInfo>> resolveApps(List<int> uids) async {
+  /// Names for the UIDs in the per-app statistics, or null when the call
+  /// failed (no such call on desktop and iOS, or a channel error) so the
+  /// caller can ask again later.
+  static Future<Map<int, AppInfo>?> resolveApps(List<int> uids) async {
     if (uids.isEmpty) return {};
-    final override = debugResolveAppsOverride;
-    if (override != null) return override(uids);
     try {
+      final override = debugResolveAppsOverride;
+      if (override != null) return await override(uids);
       final raw = await _vpnChannel.invokeListMethod<Map<dynamic, dynamic>>(
           'resolveApps', {'uids': uids});
       return {
@@ -196,7 +197,7 @@ class AegisBridge {
               AppInfo.fromMap(map),
       };
     } catch (_) {
-      return {};
+      return null;
     }
   }
 

@@ -34,6 +34,12 @@ class AppInfo {
 
   String get displayName {
     if (uid == unknownUid) return AppStrings.get('app_unknown');
+    // The packages behind a shared OS UID (android.uid.system and the like)
+    // come in no meaningful order; naming the first one would pin the whole
+    // system's traffic on, say, Settings.
+    if (uid < firstAppUid && sharedCount > 0) {
+      return '${AppStrings.get('app_system')} (+$sharedCount)';
+    }
     final name = label ?? packageName;
     if (name != null) return sharedCount > 0 ? '$name (+$sharedCount)' : name;
     if (uid < firstAppUid) return AppStrings.get('app_system');

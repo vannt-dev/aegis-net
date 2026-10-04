@@ -14,7 +14,9 @@ verified native pipeline on Android.
   by app, and the CSV export has an App column. Android 10 and later only:
   older versions, iOS and desktop cannot say which app asked. Only queries
   that reach the tunnel are counted — answers from the system's DNS cache,
-  apps excluded from the VPN and Private DNS traffic are not.
+  apps excluded from the VPN and Private DNS traffic are not. On Android 11+
+  an app with no launcher icon is shown by its UID, since the system hides its
+  name from other apps.
 
 ## [1.3.0] — 2026-10-03
 

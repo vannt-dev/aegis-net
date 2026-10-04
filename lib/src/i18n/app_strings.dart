@@ -93,6 +93,8 @@ class AppStrings {
       'logs_blocked': 'BLOCKED',
       'logs_allowed': 'ALLOWED',
       'logs_empty': 'No queries captured yet',
+      'logs_empty_app':
+          'No recent queries from this app — the log keeps the last 50',
       'logs_action_allow': 'Always allow this domain',
       'logs_action_unallow': 'Remove from the allow list',
       'logs_action_block': 'Always block this domain',
@@ -272,6 +274,8 @@ class AppStrings {
       'logs_blocked': 'ĐÃ CHẶN',
       'logs_allowed': 'CHO QUA',
       'logs_empty': 'Chưa ghi nhận truy vấn nào',
+      'logs_empty_app':
+          'Ứng dụng này chưa có truy vấn gần đây — nhật ký chỉ giữ 50 dòng mới nhất',
       'logs_action_allow': 'Luôn cho phép tên miền này',
       'logs_action_unallow': 'Xoá khỏi danh sách cho phép',
       'logs_action_block': 'Luôn chặn tên miền này',
@@ -448,6 +452,7 @@ class AppStrings {
       'logs_blocked': '차단됨',
       'logs_allowed': '허용됨',
       'logs_empty': '아직 수집된 쿼리가 없습니다',
+      'logs_empty_app': '이 앱의 최근 쿼리가 없습니다 — 로그는 최근 50개만 보관합니다',
       'logs_action_allow': '이 도메인 항상 허용',
       'logs_action_unallow': '허용 목록에서 제거',
       'logs_action_block': '이 도메인 항상 차단',
@@ -616,6 +621,7 @@ class AppStrings {
       'logs_blocked': 'ブロック',
       'logs_allowed': '許可',
       'logs_empty': 'クエリはまだ記録されていません',
+      'logs_empty_app': 'このアプリの最近のクエリはありません — ログは直近 50 件のみ保持します',
       'logs_action_allow': 'このドメインを常に許可',
       'logs_action_unallow': '許可リストから削除',
       'logs_action_block': 'このドメインを常にブロック',

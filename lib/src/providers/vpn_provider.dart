@@ -204,19 +204,41 @@ class VpnProvider extends ChangeNotifier {
   AppInfo appInfo(int uid) => _appInfo[uid] ?? AppInfo(uid: uid);
 
   /// Asks the platform for the names of UIDs seen for the first time.
+  /// When each UID the platform could not name was last asked about.
+  final Map<int, DateTime> _unnamedAskedAt = {};
+
+  /// How long a UID the platform could not name waits before it is asked
+  /// again; a package being replaced is unnamed only for a moment.
+  static const Duration _unnamedRetry = Duration(minutes: 1);
+
+  @visibleForTesting
+  DateTime Function() debugNow = DateTime.now;
+
   Future<void> _resolveNewApps() async {
     if (_resolvingApps) return;
+    final now = debugNow();
     final wanted = <int>{
       for (final app in topApps) app.uid,
       for (final log in _logs) log.uid,
-    }..removeWhere((uid) => uid < 0 || _appInfo.containsKey(uid));
+    }..removeWhere((uid) {
+        if (uid < 0 || _appInfo.containsKey(uid)) return true;
+        final askedAt = _unnamedAskedAt[uid];
+        return askedAt != null && now.difference(askedAt) < _unnamedRetry;
+      });
     if (wanted.isEmpty) return;
     _resolvingApps = true;
     try {
       final names = await AegisBridge.resolveApps(wanted.toList()..sort());
-      // Remember every asked UID, named or not, so it is not asked again.
+      // A failed call says nothing about the apps; ask again next refresh.
+      if (names == null) return;
       for (final uid in wanted) {
-        _appInfo[uid] = names[uid] ?? AppInfo(uid: uid);
+        final info = names[uid];
+        if (info != null && (info.label != null || info.packageName != null)) {
+          _appInfo[uid] = info;
+          _unnamedAskedAt.remove(uid);
+        } else {
+          _unnamedAskedAt[uid] = now;
+        }
       }
       notifyListeners();
     } finally {

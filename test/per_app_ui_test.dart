@@ -177,4 +177,16 @@ void main() {
     await pump(tester, const LogsScreen(), sdk: 28);
     expect(find.byKey(const Key('logs_app_filter')), findsNothing);
   });
+
+  perAppTest('an app with no recent queries says the log is short',
+      (tester) async {
+    final vpn = await pump(tester, const LogsScreen());
+    vpn.setLogAppFilter(99999);
+    await tester.pumpAndSettle();
+    expect(
+        find.text(
+            'No recent queries from this app — the log keeps the last 50'),
+        findsOneWidget);
+    expect(find.text('No queries captured yet'), findsNothing);
+  });
 }
