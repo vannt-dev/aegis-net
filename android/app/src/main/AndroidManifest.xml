@@ -15,6 +15,15 @@
          below. An unused permission is just something for a store review to
          ask about. -->
 
+    <!-- Android 11+ hides other apps by default. Launcher apps are the ones a
+         person recognises in the per-app statistics; QUERY_ALL_PACKAGES is
+         not needed for that. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
     <application
         android:label="AegisNet"
         android:name="${applicationName}"
