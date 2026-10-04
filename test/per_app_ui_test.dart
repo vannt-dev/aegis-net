@@ -172,4 +172,9 @@ void main() {
     expect(lines.first, 'ID,Timestamp,Domain,Status,App');
     expect(lines[1], endsWith(',BLOCKED,"Maps, Google"'));
   });
+
+  perAppTest('below Android 10 the log has no app filter', (tester) async {
+    await pump(tester, const LogsScreen(), sdk: 28);
+    expect(find.byKey(const Key('logs_app_filter')), findsNothing);
+  });
 }

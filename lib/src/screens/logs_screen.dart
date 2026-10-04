@@ -125,7 +125,8 @@ class _LogsScreenState extends State<LogsScreen> {
                 const SizedBox(width: 8),
                 _buildFilterChip(
                     'allowed', AppStrings.get('logs_allowed'), emeraldColor),
-                if (vpn.showsPerAppUi) ...[
+                // Below Android 10 every query is an unknown app, so there is nothing to pick.
+                if (vpn.perAppSupported) ...[
                   const Spacer(),
                   IconButton(
                     key: const Key('logs_app_filter'),
