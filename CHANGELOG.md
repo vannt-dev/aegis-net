@@ -4,6 +4,18 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
+## [Unreleased]
+
+### Added
+
+- **Per-app statistics.** Analytics lists the apps that make the most DNS
+  queries, with how many were blocked; tapping one opens the query log
+  filtered to that app. Each log line names its app, the log can be filtered
+  by app, and the CSV export has an App column. Android 10 and later only:
+  older versions, iOS and desktop cannot say which app asked. Only queries
+  that reach the tunnel are counted — answers from the system's DNS cache,
+  apps excluded from the VPN and Private DNS traffic are not.
+
 ## [1.3.0] — 2026-10-03
 
 Adds DNS-over-TLS upstreams and one-tap allow/block from the query log, and
