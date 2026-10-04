@@ -673,11 +673,21 @@ class VpnProvider extends ChangeNotifier {
       await prefs.setBool('intercept_hardcoded_dns', enabled);
     } catch (_) {}
 
+    // One rebuild at a time: a start sent while the previous tunnel is still
+    // up is ignored by the service, which would leave it on the old value.
+    final rebuild = _tunnelRebuild.then((_) => _rebuildTunnel());
+    _tunnelRebuild = rebuild;
+    await rebuild;
+  }
+
+  Future<void> _tunnelRebuild = Future.value();
+
+  Future<void> _rebuildTunnel() async {
     // A paused tunnel picks the value up when the pause ends.
     if (!_isVpnActive || isPaused) return;
     if (!await AegisBridge.stopVpn()) return;
     final started = await AegisBridge.startVpn(
-        bypassApps: _bypassApps, interceptHardcodedDns: enabled);
+        bypassApps: _bypassApps, interceptHardcodedDns: _interceptHardcodedDns);
     if (!started) {
       _isVpnActive = false;
       _stopSimulation();

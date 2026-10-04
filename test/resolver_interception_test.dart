@@ -89,6 +89,38 @@ void main() {
     vpn.dispose();
   });
 
+  test('flipping the switch twice in a row leaves the tunnel on the last value',
+      () async {
+    // Like the service: a start while a tunnel is up changes nothing.
+    bool? tunnelIntercepts;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, (call) async {
+      switch (call.method) {
+        case 'startVpn':
+          tunnelIntercepts ??=
+              (call.arguments as Map)['interceptHardcodedDns'] as bool;
+          return true;
+        case 'stopVpn':
+          tunnelIntercepts = null;
+          return true;
+        case 'getVpnDiagnostics':
+          return <String, dynamic>{'sdkInt': 34};
+      }
+      return null;
+    });
+    final vpn = VpnProvider(enableSimulation: false);
+    await pumpEventQueue();
+    await vpn.toggleVpn();
+
+    final first = vpn.setInterceptHardcodedDns(false);
+    final second = vpn.setInterceptHardcodedDns(true);
+    await Future.wait([first, second]);
+
+    expect(vpn.interceptHardcodedDns, isTrue);
+    expect(tunnelIntercepts, isTrue);
+    vpn.dispose();
+  });
+
   test('changing the switch with the VPN off or paused starts nothing',
       () async {
     final vpn = VpnProvider(enableSimulation: false);

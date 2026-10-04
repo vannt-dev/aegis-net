@@ -310,14 +310,6 @@ class AegisVpnService : VpnService(), Runnable {
                 .addDnsServer(TUN_DNS_SERVER_V6)
                 .addRoute(TUN_DNS_SERVER_V6, 128)
 
-            // Keep this app out of its own tunnel. The engine's upstream socket
-            // is not routed in here, but looking up its host name is: inside
-            // the VPN this process's resolver is TUN_DNS_SERVER, i.e. the
-            // engine itself, which needs that same upstream to answer. With a
-            // host-name upstream (https://dns.google/dns-query, tls://dns.google)
-            // every lookup waited on itself until it timed out, and DNS went
-            // down for the whole device. Excluded, the lookup goes to the
-            // network's own resolver; the TUN fd is unaffected.
             if (interceptResolvers) {
                 for (address in KnownResolvers.ADDRESSES) {
                     try {
@@ -329,6 +321,14 @@ class AegisVpnService : VpnService(), Runnable {
                 }
             }
 
+            // Keep this app out of its own tunnel. The engine's upstream socket
+            // is not routed in here, but looking up its host name is: inside
+            // the VPN this process's resolver is TUN_DNS_SERVER, i.e. the
+            // engine itself, which needs that same upstream to answer. With a
+            // host-name upstream (https://dns.google/dns-query, tls://dns.google)
+            // every lookup waited on itself until it timed out, and DNS went
+            // down for the whole device. Excluded, the lookup goes to the
+            // network's own resolver; the TUN fd is unaffected.
             builder.addDisallowedApplication(packageName)
 
             // Add disallowed apps for Split Tunneling
