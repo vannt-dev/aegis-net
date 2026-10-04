@@ -436,6 +436,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 24),
 
+          // Bypass interception
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.gpp_good_rounded,
+                        color: Colors.cyanAccent, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        AppStrings.get('settings_intercept_title'),
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white),
+                      ),
+                    ),
+                    Switch(
+                      key: const Key('intercept_switch'),
+                      value: vpn.interceptHardcodedDns,
+                      activeThumbColor: Colors.cyanAccent,
+                      onChanged: (val) {
+                        if (vpn.isVpnActive) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(AppStrings.get('settings_applying')),
+                            backgroundColor: Colors.cyan.shade900,
+                          ));
+                        }
+                        vpn.setInterceptHardcodedDns(val);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  AppStrings.get(defaultTargetPlatform == TargetPlatform.android
+                      ? 'settings_intercept_desc'
+                      : 'settings_intercept_desc_names_only'),
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
           // Scheduled Parental Controls Section
           Container(
             padding: const EdgeInsets.all(16),

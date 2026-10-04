@@ -126,10 +126,14 @@ class AegisBridge {
   static String? lastVpnError;
 
   /// Start Local VPN Tunnel / Desktop DNS Proxy
-  static Future<bool> startVpn({List<String> bypassApps = const []}) async {
+  static Future<bool> startVpn({
+    List<String> bypassApps = const [],
+    bool interceptHardcodedDns = true,
+  }) async {
     try {
       final bool success = await _vpnChannel.invokeMethod('startVpn', {
         'bypassApps': bypassApps,
+        'interceptHardcodedDns': interceptHardcodedDns,
       });
       lastVpnError = success ? null : 'tunnel_refused';
       return success;
@@ -360,6 +364,22 @@ class AegisBridge {
   static void setCategory(int categoryId, bool enabled) {
     if (_useNativeFfi) {
       AegisNativeBindings.setCategory(categoryId, enabled);
+    }
+    publishSettings();
+  }
+
+  @visibleForTesting
+  static void Function(bool enabled)? debugSetBlockDohHostsOverride;
+
+  /// Block public DNS-over-HTTPS endpoint names in the engine.
+  static void setBlockDohHosts(bool enabled) {
+    final override = debugSetBlockDohHostsOverride;
+    if (override != null) {
+      override(enabled);
+      return;
+    }
+    if (_useNativeFfi) {
+      AegisNativeBindings.setBlockDohHosts(enabled);
     }
     publishSettings();
   }
