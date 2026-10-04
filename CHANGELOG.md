@@ -18,6 +18,13 @@ verified native pipeline on Android.
   an app with no launcher icon is shown by its UID, since the system hides its
   name from other apps.
 
+### Fixed
+
+- **Reopening the app no longer kills protection.** After leaving with Back
+  while the VPN was on, opening AegisNet again crashed the process and took
+  the tunnel down with it: the native engine was initialised a second time
+  and aborted on its logger.
+
 ## [1.3.0] — 2026-10-03
 
 Adds DNS-over-TLS upstreams and one-tap allow/block from the query log, and
