@@ -30,7 +30,7 @@ pub fn parse_ipv4_udp(packet: &[u8]) -> Option<Ipv4UdpPacket<'_>> {
         return None;
     }
     // Protocol must be UDP (17).
-    if packet[9] != 17 {
+    if packet[9] != PROTO_UDP {
         return None;
     }
 
@@ -82,7 +82,7 @@ pub fn parse_ipv6_udp(packet: &[u8]) -> Option<Ipv6UdpPacket<'_>> {
         return None;
     }
     // Next header must be UDP (17).
-    if packet[6] != 17 {
+    if packet[6] != PROTO_UDP {
         return None;
     }
 
