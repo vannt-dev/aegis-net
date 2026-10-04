@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
+import 'app_info.dart';
 import '../services/rule_downloader_service.dart';
 
 class DnsLogItem {
@@ -10,11 +11,15 @@ class DnsLogItem {
   final bool isBlocked;
   final DateTime timestamp;
 
+  /// The app that made the query, or [AppInfo.unknownUid].
+  final int uid;
+
   DnsLogItem({
     required this.id,
     required this.domain,
     required this.isBlocked,
     required this.timestamp,
+    this.uid = AppInfo.unknownUid,
   });
 }
 
@@ -136,6 +141,11 @@ class VpnProvider extends ChangeNotifier {
 
   Future<void> _refreshPrivateDnsState() async {
     final diagnostics = await AegisBridge.getVpnDiagnostics();
+    final sdk = (diagnostics['sdkInt'] as num?)?.toInt() ?? 0;
+    if (sdk != _androidSdkInt) {
+      _androidSdkInt = sdk;
+      notifyListeners();
+    }
     final mode = diagnostics['privateDnsMode'] as String?;
     final bypassed = mode == 'hostname';
     if (bypassed == _privateDnsBypass) return;
@@ -164,6 +174,89 @@ class VpnProvider extends ChangeNotifier {
   /// Most-resolved allowed domains, highest first. Empty until counted.
   List<Map<String, dynamic>> get topAllowedDomains =>
       _domainCounts(_stats['top_allowed']);
+
+  /// Android SDK level from the diagnostics call; 0 off Android.
+  int _androidSdkInt = 0;
+
+  /// Per-app statistics exist only on Android.
+  bool get showsPerAppUi => _androidSdkInt > 0;
+
+  /// The platform names the app behind a query from Android 10 (API 29).
+  bool get perAppSupported => _androidSdkInt >= 29;
+
+  /// Apps with the most queries, highest first. Empty until counted.
+  List<AppStat> get topApps {
+    final raw = _stats['top_apps'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => AppStat(
+              uid: (e['uid'] as num?)?.toInt() ?? AppInfo.unknownUid,
+              total: (e['total'] as num?)?.toInt() ?? 0,
+              blocked: (e['blocked'] as num?)?.toInt() ?? 0,
+            ))
+        .toList();
+  }
+
+  final Map<int, AppInfo> _appInfo = {};
+  bool _resolvingApps = false;
+
+  AppInfo appInfo(int uid) => _appInfo[uid] ?? AppInfo(uid: uid);
+
+  /// Asks the platform for the names of UIDs seen for the first time.
+  Future<void> _resolveNewApps() async {
+    if (_resolvingApps) return;
+    final wanted = <int>{
+      for (final app in topApps) app.uid,
+      for (final log in _logs) log.uid,
+    }..removeWhere((uid) => uid < 0 || _appInfo.containsKey(uid));
+    if (wanted.isEmpty) return;
+    _resolvingApps = true;
+    try {
+      final names = await AegisBridge.resolveApps(wanted.toList()..sort());
+      // Remember every asked UID, named or not, so it is not asked again.
+      for (final uid in wanted) {
+        _appInfo[uid] = names[uid] ?? AppInfo(uid: uid);
+      }
+      notifyListeners();
+    } finally {
+      _resolvingApps = false;
+    }
+  }
+
+  int? _logAppFilter;
+
+  /// The app the query log is narrowed to, or null for every app.
+  int? get logAppFilter => _logAppFilter;
+
+  void setLogAppFilter(int? uid) {
+    if (uid == _logAppFilter) return;
+    _logAppFilter = uid;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void debugSetStats(Map<String, dynamic> stats) {
+    _stats = stats;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void debugSetAppInfo(Map<int, AppInfo> apps) {
+    _appInfo
+      ..clear()
+      ..addAll(apps);
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void debugSetAndroidSdk(int sdk) {
+    _androidSdkInt = sdk;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  Future<void> debugResolveApps() => _resolveNewApps();
 
   List<Map<String, dynamic>> _domainCounts(dynamic raw) {
     if (raw is! List) return const [];
@@ -711,12 +804,14 @@ class VpnProvider extends ChangeNotifier {
               timestamp: tsSec > 0
                   ? DateTime.fromMillisecondsSinceEpoch(tsSec * 1000)
                   : DateTime.now(),
+              uid: (item['uid'] as num?)?.toInt() ?? AppInfo.unknownUid,
             ),
           );
         }
       }
 
       _stats = AegisBridge.getStats();
+      unawaited(_resolveNewApps());
       _updateQpsHistory();
       notifyListeners();
     });

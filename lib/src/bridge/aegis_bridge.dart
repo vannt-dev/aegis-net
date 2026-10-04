@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../providers/app_info.dart';
 import '../services/desktop_dns_proxy.dart';
 import 'ffi_bindings.dart';
 
@@ -172,6 +173,30 @@ class AegisBridge {
       return raw ?? <String, dynamic>{};
     } catch (_) {
       return <String, dynamic>{};
+    }
+  }
+
+  /// Replaces the channel call in tests.
+  @visibleForTesting
+  static Future<Map<int, AppInfo>> Function(List<int> uids)?
+      debugResolveAppsOverride;
+
+  /// Names for the UIDs in the per-app statistics. Empty where the platform
+  /// has no such call (desktop, iOS) or when it fails.
+  static Future<Map<int, AppInfo>> resolveApps(List<int> uids) async {
+    if (uids.isEmpty) return {};
+    final override = debugResolveAppsOverride;
+    if (override != null) return override(uids);
+    try {
+      final raw = await _vpnChannel.invokeListMethod<Map<dynamic, dynamic>>(
+          'resolveApps', {'uids': uids});
+      return {
+        for (final map in raw ?? const <Map<dynamic, dynamic>>[])
+          (map['uid'] as num?)?.toInt() ?? AppInfo.unknownUid:
+              AppInfo.fromMap(map),
+      };
+    } catch (_) {
+      return {};
     }
   }
 
