@@ -18,6 +18,16 @@ verified native pipeline on Android.
   an app with no launcher icon is shown by its UID, since the system hides its
   name from other apps.
 
+- **Stop apps from bypassing the filter** (Settings, on by default). DNS sent
+  straight to Google, Cloudflare, Quad9, OpenDNS, AdGuard or CleanBrowsing is
+  now filtered like any other query, and their encrypted DNS (DoT, DoH, DoQ)
+  is refused so apps fall back to the filtered resolver. Public DoH host
+  names (`dns.google`, `cloudflare-dns.com`, Firefox's
+  `use-application-dns.net` canary, …) are blocked on every platform; the
+  address routing is Android only. With the switch on, pinging 8.8.8.8 or
+  opening https://1.1.1.1 fails, and an app that only speaks DoH cannot
+  resolve — turn the switch off for those.
+
 ### Fixed
 
 - **Reopening the app no longer kills protection.** After leaving with Back
