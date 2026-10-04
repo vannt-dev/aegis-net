@@ -51,6 +51,7 @@ class MainActivity: FlutterActivity() {
      */
     private var pendingVpnResult: MethodChannel.Result? = null
     private var pendingBypassApps: ArrayList<String> = arrayListOf()
+    private var pendingIntercept = true
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var startTimeout: Runnable? = null
@@ -85,6 +86,8 @@ class MainActivity: FlutterActivity() {
                     val bypassAppsRaw = call.argument<List<String>>("bypassApps") ?: emptyList()
                     val bypassApps = ArrayList(bypassAppsRaw)
                     pendingBypassApps = bypassApps
+                    val intercept = call.argument<Boolean>("interceptHardcodedDns") ?: true
+                    pendingIntercept = intercept
 
                     val consent = try {
                         VpnService.prepare(this)
@@ -110,7 +113,7 @@ class MainActivity: FlutterActivity() {
                         // Consent is already on record — but that says nothing
                         // about whether the tunnel can be established, so wait
                         // for the service instead of assuming success.
-                        startAegisVpnService(bypassApps)
+                        startAegisVpnService(bypassApps, intercept)
                     }
                 }
                 "stopVpn" -> {
@@ -242,7 +245,10 @@ class MainActivity: FlutterActivity() {
         )
     }
 
-    private fun startAegisVpnService(bypassApps: ArrayList<String> = arrayListOf()) {
+    private fun startAegisVpnService(
+        bypassApps: ArrayList<String> = arrayListOf(),
+        intercept: Boolean = true,
+    ) {
         // The service reports what establish() actually did. Without this the
         // reply was success(true) the moment startService() returned, whether or
         // not a tunnel existed.
@@ -256,6 +262,7 @@ class MainActivity: FlutterActivity() {
         val intent = Intent(this, AegisVpnService::class.java).apply {
             action = AegisVpnService.ACTION_START
             putStringArrayListExtra("bypassApps", bypassApps)
+            putExtra(AegisVpnService.EXTRA_INTERCEPT, intercept)
         }
         // The service goes foreground as its first act, so it must be started
         // as one on O+ — a plain startService() is killed on MIUI within
@@ -281,7 +288,7 @@ class MainActivity: FlutterActivity() {
         if (resultCode == Activity.RESULT_OK) {
             // Consent granted; the tunnel still has to come up before the Dart
             // caller is told anything.
-            startAegisVpnService(pendingBypassApps)
+            startAegisVpnService(pendingBypassApps, pendingIntercept)
         } else {
             settleVpnResult(false, ERROR_CONSENT_DENIED)
         }
