@@ -27,7 +27,10 @@ lazy_static! {
 /// Initialize Aegis Core Engine
 #[no_mangle]
 pub extern "C" fn aegis_init() -> c_int {
-    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
+    // A second Flutter engine in the same process (activity reopened while the
+    // VPN service kept the process alive) calls this again; init_from_env
+    // would abort the process, tunnel included.
+    let _ = env_logger::try_init_from_env(env_logger::Env::default().default_filter_or("info"));
     log::info!("Aegis Core Engine Initialized");
     1
 }
@@ -517,5 +520,15 @@ mod tests {
             .get_recent_logs(1000)
             .iter()
             .any(|e| e.uid == UID && e.domain == "doubleclick.net"));
+    }
+
+    /// Android keeps the process alive for the VPN service after the activity
+    /// is closed with Back; reopening the app starts a new Flutter engine,
+    /// which initialises the native engine again in the same process. That
+    /// used to abort the whole process — and the tunnel with it.
+    #[test]
+    fn init_can_run_more_than_once_in_a_process() {
+        assert_eq!(super::aegis_init(), 1);
+        assert_eq!(super::aegis_init(), 1);
     }
 }
