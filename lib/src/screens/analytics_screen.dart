@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../i18n/app_strings.dart';
+import '../providers/app_info.dart';
 import '../providers/theme_provider.dart';
 import '../providers/vpn_provider.dart';
 
 class AnalyticsScreen extends StatelessWidget {
-  const AnalyticsScreen({super.key});
+  const AnalyticsScreen({super.key, this.onShowAppLogs});
+
+  /// Called after a top-app row set the log filter, so the host can switch
+  /// to the log.
+  final void Function(int uid)? onShowAppLogs;
 
   @override
   Widget build(BuildContext context) {
@@ -152,6 +157,11 @@ class AnalyticsScreen extends StatelessWidget {
             }).toList(),
           ),
 
+          if (vpn.showsPerAppUi) ...[
+            const SizedBox(height: 20),
+            _buildTopApps(context, vpn, accent),
+          ],
+
           const SizedBox(height: 24),
 
           // Recent query rate.
@@ -201,6 +211,93 @@ class AnalyticsScreen extends StatelessWidget {
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTopApps(BuildContext context, VpnProvider vpn, Color accent) {
+    final apps = vpn.topApps;
+    return Column(
+      key: const Key('top_apps_card'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          AppStrings.get('analytics_top_apps'),
+          style: TextStyle(
+              fontSize: 15, fontWeight: FontWeight.bold, color: accent),
+        ),
+        const SizedBox(height: 12),
+        if (!vpn.perAppSupported)
+          _buildEmptyState(AppStrings.get('analytics_apps_need_android10'))
+        else if (apps.isEmpty)
+          _buildEmptyState(AppStrings.get('analytics_no_apps'))
+        else
+          for (final app in apps) _buildAppRow(vpn, app, accent),
+      ],
+    );
+  }
+
+  Widget _buildAppRow(VpnProvider vpn, AppStat app, Color accent) {
+    final name = vpn.appInfo(app.uid).displayName;
+    return InkWell(
+      key: Key('top_app_${app.uid}'),
+      borderRadius: BorderRadius.circular(12),
+      onTap: () {
+        vpn.setLogAppFilter(app.uid);
+        onShowAppLogs?.call(app.uid);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161B22),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 14,
+              backgroundColor: accent.withValues(alpha: 0.2),
+              child: Text(
+                name.isEmpty ? '?' : name.characters.first.toUpperCase(),
+                style: TextStyle(
+                    color: accent, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13)),
+                  const SizedBox(height: 4),
+                  Text(
+                    AppStrings.get('app_query_counts')
+                        .replaceAll('%total', '${app.total}')
+                        .replaceAll('%blocked', '${app.blocked}'),
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                  ),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: app.blockRate,
+                      minHeight: 4,
+                      backgroundColor: Colors.white10,
+                      color: Colors.redAccent.shade200,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

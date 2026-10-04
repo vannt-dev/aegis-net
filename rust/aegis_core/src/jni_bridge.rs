@@ -3,12 +3,13 @@
 //!
 //! Kotlin side:
 //! ```kotlin
-//! external fun nativeProcessPacket(packet: ByteArray): ByteArray
+//! external fun nativeProcessPacket(packet: ByteArray, uid: Int): ByteArray
 //! // System.loadLibrary("aegis_core")
 //! ```
 //! An empty returned array means "no DNS reply — forward/drop the packet".
 
 use jni::objects::{JByteArray, JClass};
+use jni::sys::jint;
 use jni::JNIEnv;
 
 #[no_mangle]
@@ -16,6 +17,7 @@ pub extern "system" fn Java_com_aegisnet_app_AegisVpnService_nativeProcessPacket
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     input: JByteArray<'local>,
+    uid: jint,
 ) -> JByteArray<'local> {
     let empty = |env: &mut JNIEnv<'local>| env.new_byte_array(0).expect("alloc empty array");
 
@@ -26,11 +28,12 @@ pub extern "system" fn Java_com_aegisnet_app_AegisVpnService_nativeProcessPacket
 
     // Response can be slightly larger than the request; give generous headroom.
     let mut out = vec![0u8; bytes.len() + 1500];
-    let n = crate::api::aegis_process_ip_packet(
+    let n = crate::api::aegis_process_ip_packet_for_uid(
         bytes.as_ptr(),
         bytes.len(),
         out.as_mut_ptr(),
         out.len(),
+        uid,
     );
 
     if n == 0 {

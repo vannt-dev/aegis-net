@@ -6,12 +6,16 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.Process
+import android.system.OsConstants
 import android.util.Log
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.net.InetSocketAddress
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
@@ -24,6 +28,7 @@ class AegisVpnService : VpnService(), Runnable {
         const val ACTION_START = "com.aegisnet.app.START"
         const val ACTION_STOP = "com.aegisnet.app.STOP"
         private const val TAG = "AegisVpnService"
+        const val UNKNOWN_UID = -1
 
         private const val CHANNEL_ID = "aegis_vpn_status"
         private const val NOTIFICATION_ID = 0xA3
@@ -112,10 +117,13 @@ class AegisVpnService : VpnService(), Runnable {
         }
     }
 
-    /// Filters a raw IPv4 packet read from the TUN interface. Returns a DNS
-    /// reply packet to write back, or an empty array when there is nothing to
-    /// inject (non-DNS traffic or an allowed query).
-    private external fun nativeProcessPacket(packet: ByteArray): ByteArray
+    /// Filters a raw packet read from the TUN interface. Returns a DNS reply
+    /// packet to write back, or an empty array when there is nothing to
+    /// inject. `uid` is the app that sent the query, or -1 when unknown; it
+    /// only feeds the per-app statistics.
+    private external fun nativeProcessPacket(packet: ByteArray, uid: Int): ByteArray
+
+    private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var vpnThread: Thread? = null
@@ -406,9 +414,28 @@ class AegisVpnService : VpnService(), Runnable {
         }
     }
 
+    /// The app whose DNS query this is, for the per-app statistics. Android
+    /// 10+ lets the active VPN ask who owns a connection; the system resolver
+    /// tags its query sockets with the requesting app, so this names the app,
+    /// not the resolver. Anything that goes wrong only costs the attribution.
+    private fun ownerUid(packet: ByteArray): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return UNKNOWN_UID
+        val endpoints = PacketEndpoints.parse(packet) ?: return UNKNOWN_UID
+        return try {
+            val uid = connectivity?.getConnectionOwnerUid(
+                OsConstants.IPPROTO_UDP,
+                InetSocketAddress(endpoints.source, endpoints.sourcePort),
+                InetSocketAddress(endpoints.destination, endpoints.destinationPort),
+            ) ?: Process.INVALID_UID
+            if (uid == Process.INVALID_UID) UNKNOWN_UID else uid
+        } catch (e: Exception) {
+            UNKNOWN_UID
+        }
+    }
+
     private fun filterAndReply(packet: ByteArray, outputStream: FileOutputStream) {
         try {
-            val reply = nativeProcessPacket(packet)
+            val reply = nativeProcessPacket(packet, ownerUid(packet))
 
             // An empty reply means the packet was not a parseable IPv4/IPv6 UDP
             // DNS query. Only TUN_DNS_SERVER and TUN_DNS_SERVER_V6 are routed

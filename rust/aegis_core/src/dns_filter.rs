@@ -63,7 +63,17 @@ impl DnsFilterService {
         self.dns_cache.clear();
     }
 
-    pub fn handle_dns_payload(&self, payload: &[u8], _client_addr: SocketAddr) -> Vec<u8> {
+    pub fn handle_dns_payload(&self, payload: &[u8], client_addr: SocketAddr) -> Vec<u8> {
+        self.handle_dns_payload_for_uid(payload, client_addr, crate::statistics::UNKNOWN_UID)
+    }
+
+    /// Same as `handle_dns_payload`, counting the query against app `uid`.
+    pub fn handle_dns_payload_for_uid(
+        &self,
+        payload: &[u8],
+        _client_addr: SocketAddr,
+        uid: i32,
+    ) -> Vec<u8> {
         let question = Self::extract_question(payload);
 
         if let Some((domain, qtype)) = question {
@@ -72,7 +82,8 @@ impl DnsFilterService {
                 match Self::build_custom_host_response(payload, &custom_ip_str, qtype) {
                     Some(resp) => {
                         info!("CUSTOM HOST Override: {} -> {}", domain, custom_ip_str);
-                        self.stats_engine.record_request(&domain, false);
+                        self.stats_engine
+                            .record_request_for_uid(&domain, false, uid);
                         return resp;
                     }
                     None => warn!(
@@ -86,7 +97,8 @@ impl DnsFilterService {
             if self.safesearch_enabled {
                 if let Some(safe_resp) = Self::handle_safesearch_rewrite(&domain, payload, qtype) {
                     info!("SAFESEARCH Rewritten: {}", domain);
-                    self.stats_engine.record_request(&domain, false);
+                    self.stats_engine
+                        .record_request_for_uid(&domain, false, uid);
                     return safe_resp;
                 }
             }
@@ -96,7 +108,7 @@ impl DnsFilterService {
 
             if is_blocked {
                 info!("BLOCKED DNS Request: {}", domain);
-                self.stats_engine.record_request(&domain, true);
+                self.stats_engine.record_request_for_uid(&domain, true, uid);
                 return Self::build_blocked_response(payload);
             }
 
@@ -107,7 +119,8 @@ impl DnsFilterService {
             // 3. Check High-Speed DNS Cache
             if let Some(cached_payload) = self.dns_cache.get(&cache_key) {
                 debug!("CACHE HIT DNS Request: {}", domain);
-                self.stats_engine.record_request(&domain, false);
+                self.stats_engine
+                    .record_request_for_uid(&domain, false, uid);
                 // Stamp the cached answer with THIS request's transaction id,
                 // otherwise the resolver client rejects the mismatched id.
                 return Self::adapt_cached_response(&cached_payload, payload);
@@ -115,7 +128,8 @@ impl DnsFilterService {
 
             // 4. Forward to Upstream DNS & Cache Result
             info!("ALLOWED DNS Request (Cache Miss): {}", domain);
-            self.stats_engine.record_request(&domain, false);
+            self.stats_engine
+                .record_request_for_uid(&domain, false, uid);
             let response = self.forward_to_upstream(payload);
 
             if response.is_empty() {
@@ -819,5 +833,33 @@ mod tests {
         // A cached SERVFAIL would keep the domain broken for the whole TTL even
         // after the upstream recovers.
         assert!(service.dns_cache.get("cache.net|1").is_none());
+    }
+
+    #[test]
+    fn test_blocked_query_is_counted_against_the_asking_app() {
+        let engine = Arc::new(RuleEngine::new());
+        engine.add_blacklist("example.com");
+        let stats = Arc::new(StatisticsEngine::new(10));
+        let service = DnsFilterService::new(
+            engine,
+            stats.clone(),
+            "https://127.0.0.1:1/dns-query".to_string(),
+        );
+
+        let query = vec![
+            0xaa, 0xbb, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, b'e',
+            b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00,
+            0x01,
+        ];
+        let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
+
+        service.handle_dns_payload_for_uid(&query, client, 10_123);
+        service.handle_dns_payload(&query, client);
+
+        let logs = stats.get_recent_logs(2);
+        assert_eq!(logs[1].uid, 10_123);
+        assert_eq!(logs[0].uid, crate::statistics::UNKNOWN_UID);
+        let apps = stats.get_summary().top_apps;
+        assert!(apps.iter().any(|a| a.uid == 10_123 && a.blocked == 1));
     }
 }

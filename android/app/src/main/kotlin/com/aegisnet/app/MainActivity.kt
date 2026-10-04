@@ -3,6 +3,7 @@ package com.aegisnet.app
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
@@ -131,6 +132,12 @@ class MainActivity: FlutterActivity() {
                 // cannot fix, so at minimum it can report them.
                 "getVpnDiagnostics" -> result.success(collectDiagnostics())
                 "openPrivateDnsSettings" -> result.success(openPrivateDnsSettings())
+                // Names for the UIDs in the per-app statistics. Never fails as a
+                // whole: a UID that cannot be named comes back with nulls.
+                "resolveApps" -> {
+                    val uids = call.argument<List<Int>>("uids") ?: emptyList()
+                    result.success(uids.map { resolveApp(it) })
+                }
                 else -> result.notImplemented()
             }
         }
@@ -177,6 +184,31 @@ class MainActivity: FlutterActivity() {
             }
         }
         return false
+    }
+
+    private fun resolveApp(uid: Int): Map<String, Any?> {
+        val unknown = mapOf(
+            "uid" to uid,
+            "package" to null,
+            "label" to null,
+            "isSystem" to false,
+            "sharedCount" to 0,
+        )
+        if (uid < 0) return unknown
+        return try {
+            val packages = packageManager.getPackagesForUid(uid)
+            if (packages.isNullOrEmpty()) return unknown
+            val info = packageManager.getApplicationInfo(packages[0], 0)
+            mapOf(
+                "uid" to uid,
+                "package" to packages[0],
+                "label" to packageManager.getApplicationLabel(info).toString(),
+                "isSystem" to ((info.flags and ApplicationInfo.FLAG_SYSTEM) != 0),
+                "sharedCount" to packages.size - 1,
+            )
+        } catch (e: Exception) {
+            unknown
+        }
     }
 
     private fun collectDiagnostics(): Map<String, Any?> {

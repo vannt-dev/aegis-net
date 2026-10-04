@@ -37,8 +37,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         RulesScreen(),
         // ignore: prefer_const_constructors
         LogsScreen(),
-        // ignore: prefer_const_constructors
-        AnalyticsScreen(),
+        AnalyticsScreen(
+          // A tapped app has already narrowed the log; show it.
+          onShowAppLogs: (_) => setState(() => _currentIndex = 2),
+        ),
         // ignore: prefer_const_constructors
         SettingsScreen(),
       ];

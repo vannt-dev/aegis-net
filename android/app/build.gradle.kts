@@ -104,4 +104,6 @@ val buildRustEngine by tasks.registering(Exec::class) {
 
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(buildRustEngine) }
 
-dependencies {}
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+}
