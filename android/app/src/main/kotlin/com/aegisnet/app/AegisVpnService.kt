@@ -6,9 +6,12 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.database.ContentObserver
 import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.provider.Settings
@@ -128,9 +131,36 @@ class AegisVpnService : VpnService(), Runnable {
 
     private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
 
-    private var vpnInterface: ParcelFileDescriptor? = null
+    @Volatile private var vpnInterface: ParcelFileDescriptor? = null
     private var vpnThread: Thread? = null
     @Volatile private var isRunning = false
+
+    /// What the running tunnel was built for; see [privateDnsObserver].
+    private var builtForStrictPrivateDns = false
+
+    /// The tunnel is built differently under strict Private DNS, and the mode
+    /// can change while it is up. Left alone, switching to a fixed provider
+    /// cut DNS off for the whole device until protection was toggled, and
+    /// switching back left the tunnel filtering nothing.
+    private val privateDnsObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            if (!isRunning || strictPrivateDns() == builtForStrictPrivateDns) return
+            Log.i(TAG, "Private DNS mode changed; rebuilding the tunnel")
+            closeTunnel()
+            startVpn(loadBypassApps(), loadIntercept())
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        try {
+            contentResolver.registerContentObserver(
+                Settings.Global.getUriFor("private_dns_mode"), false, privateDnsObserver,
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Cannot watch the Private DNS mode", e)
+        }
+    }
 
     /// Filtering runs here instead of on the reader thread. Sized for the work:
     /// blocked and cached answers return in microseconds and never occupy a
@@ -324,6 +354,7 @@ class AegisVpnService : VpnService(), Runnable {
             // which the dashboard warns about. The resolver routes stay out
             // as well: the provider is usually one of those addresses.
             val strictPrivateDns = strictPrivateDns()
+            builtForStrictPrivateDns = strictPrivateDns
             if (!strictPrivateDns) {
                 builder.addDnsServer(TUN_DNS_SERVER)
                 builder.addDnsServer(TUN_DNS_SERVER_V6)
@@ -404,19 +435,25 @@ class AegisVpnService : VpnService(), Runnable {
         stopSelf()
     }
 
+    /// Takes the tunnel down and leaves the service itself running.
+    private fun closeTunnel() {
+        isRunning = false
+        // Drop in-flight work before the fd goes away, so workers are not
+        // left writing to a closed descriptor.
+        workers?.shutdownNow()
+        workers = null
+        vpnInterface?.close()
+        vpnInterface = null
+        vpnThread?.interrupt()
+        vpnThread = null
+    }
+
     private fun stopVpn() {
         isRunning = false
         markTunnelDown()
         AegisTileService.requestTileRefresh(this)
         try {
-            // Drop in-flight work before the fd goes away, so workers are not
-            // left writing to a closed descriptor.
-            workers?.shutdownNow()
-            workers = null
-            vpnInterface?.close()
-            vpnInterface = null
-            vpnThread?.interrupt()
-            vpnThread = null
+            closeTunnel()
             leaveForeground()
             stopSelf()
             Log.i(TAG, "Aegis Local VPN Stopped")
@@ -437,7 +474,9 @@ class AegisVpnService : VpnService(), Runnable {
         val outputStream = FileOutputStream(pfd.fileDescriptor)
         val buffer = ByteArray(32767)
 
-        while (isRunning) {
+        // Tied to its own descriptor: after a rebuild isRunning is true again,
+        // and this thread must not go on reading a tunnel that is gone.
+        while (isRunning && vpnInterface === pfd) {
             try {
                 val length = inputStream.read(buffer)
                 if (length <= 0) continue
@@ -455,7 +494,7 @@ class AegisVpnService : VpnService(), Runnable {
                     droppedUnderLoad.incrementAndGet()
                 }
             } catch (e: Exception) {
-                if (!isRunning) break
+                if (!isRunning || vpnInterface !== pfd) break
                 Log.e(TAG, "Error reading from the TUN interface", e)
             }
         }
@@ -517,6 +556,7 @@ class AegisVpnService : VpnService(), Runnable {
     }
 
     override fun onDestroy() {
+        contentResolver.unregisterContentObserver(privateDnsObserver)
         stopVpn()
         super.onDestroy()
     }
