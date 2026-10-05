@@ -39,15 +39,17 @@ class _LogsScreenState extends State<LogsScreen> {
   String _searchQuery = '';
   String _statusFilter = 'all'; // 'all', 'blocked', 'allowed'
 
+  /// Copies the log to the clipboard as CSV. The app has no way to write a
+  /// file the user can reach, and it used to claim an export it never made.
   void _exportLogsCsv(List<DnsLogItem> logs) {
-    // Built but not yet saved anywhere; the button has only ever shown this
-    // confirmation. Kept as is here: saving the file is a separate change.
-    logsToCsv(
+    final csv = logsToCsv(
         logs, (uid) => context.read<VpnProvider>().appInfo(uid).displayName);
+    Clipboard.setData(ClipboardData(text: csv));
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('CSV Logs Exported (${logs.length} entries)'),
+        content: Text(AppStrings.get('logs_csv_copied')
+            .replaceAll('{count}', '${logs.length}')),
         backgroundColor: Colors.cyan.shade900,
       ),
     );
