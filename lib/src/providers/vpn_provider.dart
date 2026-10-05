@@ -338,6 +338,8 @@ class VpnProvider extends ChangeNotifier {
   /// it so the UI and the rule engine agree on state from the first query.
   Future<void> _bootstrapEngine() async {
     await AegisBridge.initEngine();
+    // After initEngine: a native call made before it never reaches the engine.
+    AegisBridge.setBlockDohHosts(_interceptHardcodedDns);
     for (final domain in _whitelist) {
       AegisBridge.addWhitelist(domain);
     }
@@ -369,6 +371,7 @@ class VpnProvider extends ChangeNotifier {
       _blockTrackers = prefs.getBool('block_trackers') ?? true;
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
+      _interceptHardcodedDns = prefs.getBool('intercept_hardcoded_dns') ?? true;
 
       _scheduleEnabled = prefs.getBool(_prefScheduleEnabled) ?? false;
       // The bounds were whole hours before; migrate them once so an existing
@@ -476,7 +479,9 @@ class VpnProvider extends ChangeNotifier {
         _stopSimulation();
       }
     } else {
-      if (await AegisBridge.startVpn(bypassApps: _bypassApps)) {
+      if (await AegisBridge.startVpn(
+          bypassApps: _bypassApps,
+          interceptHardcodedDns: _interceptHardcodedDns)) {
         _isVpnActive = true;
         _lastError = null;
         // A tunnel that came up is not the same as a tunnel that sees traffic;
@@ -541,7 +546,8 @@ class VpnProvider extends ChangeNotifier {
   /// active flag so the UI stops claiming protection the engine isn't giving.
   Future<void> _restoreTunnelAfterPause() async {
     if (!_isVpnActive) return;
-    final started = await AegisBridge.startVpn(bypassApps: _bypassApps);
+    final started = await AegisBridge.startVpn(
+        bypassApps: _bypassApps, interceptHardcodedDns: _interceptHardcodedDns);
     if (!started) {
       _isVpnActive = false;
       _stopSimulation();
@@ -646,6 +652,47 @@ class VpnProvider extends ChangeNotifier {
     _logs
       ..clear()
       ..addAll(logs);
+    notifyListeners();
+  }
+
+  bool _interceptHardcodedDns = true;
+
+  /// The "stop apps from bypassing the filter" switch.
+  bool get interceptHardcodedDns => _interceptHardcodedDns;
+
+  /// The "stop apps from bypassing the filter" switch. Host-name blocking
+  /// applies at once; the resolver routes are fixed when the tunnel is
+  /// built, so a running tunnel is rebuilt.
+  Future<void> setInterceptHardcodedDns(bool enabled) async {
+    if (enabled == _interceptHardcodedDns) return;
+    _interceptHardcodedDns = enabled;
+    AegisBridge.setBlockDohHosts(enabled);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('intercept_hardcoded_dns', enabled);
+    } catch (_) {}
+
+    // One rebuild at a time: a start sent while the previous tunnel is still
+    // up is ignored by the service, which would leave it on the old value.
+    final rebuild = _tunnelRebuild.then((_) => _rebuildTunnel());
+    _tunnelRebuild = rebuild;
+    await rebuild;
+  }
+
+  Future<void> _tunnelRebuild = Future.value();
+
+  Future<void> _rebuildTunnel() async {
+    // A paused tunnel picks the value up when the pause ends.
+    if (!_isVpnActive || isPaused) return;
+    if (!await AegisBridge.stopVpn()) return;
+    final started = await AegisBridge.startVpn(
+        bypassApps: _bypassApps, interceptHardcodedDns: _interceptHardcodedDns);
+    if (!started) {
+      _isVpnActive = false;
+      _stopSimulation();
+      _lastError = AegisBridge.lastVpnError ?? 'tunnel_refused';
+    }
     notifyListeners();
   }
 

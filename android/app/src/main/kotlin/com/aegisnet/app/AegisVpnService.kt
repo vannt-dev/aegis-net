@@ -11,6 +11,7 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.Process
+import android.provider.Settings
 import android.system.OsConstants
 import android.util.Log
 import java.io.FileInputStream
@@ -35,6 +36,8 @@ class AegisVpnService : VpnService(), Runnable {
 
         private const val PREFS_NAME = "aegis_vpn_service"
         private const val KEY_BYPASS_APPS = "bypass_apps"
+        private const val KEY_INTERCEPT = "intercept_hardcoded_dns"
+        const val EXTRA_INTERCEPT = "interceptHardcodedDns"
 
         /// ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE (API 34). Spelled as
         /// a literal so the module still compiles against an older compileSdk.
@@ -149,7 +152,7 @@ class AegisVpnService : VpnService(), Runnable {
         if (intent == null) {
             Log.i(TAG, "Restarted by the system; rebuilding the tunnel")
             enterForeground()
-            startVpn(loadBypassApps())
+            startVpn(loadBypassApps(), loadIntercept())
             return START_STICKY
         }
 
@@ -163,7 +166,9 @@ class AegisVpnService : VpnService(), Runnable {
                 enterForeground()
                 val bypassApps = intent.getStringArrayListExtra("bypassApps") ?: arrayListOf()
                 saveBypassApps(bypassApps)
-                startVpn(bypassApps)
+                val intercept = intent.getBooleanExtra(EXTRA_INTERCEPT, true)
+                saveIntercept(intercept)
+                startVpn(bypassApps, intercept)
             }
             ACTION_STOP -> stopVpn()
             else -> Log.w(TAG, "Ignoring unknown action ${intent.action}")
@@ -189,6 +194,25 @@ class AegisVpnService : VpnService(), Runnable {
             .getStringSet(KEY_BYPASS_APPS, emptySet())
             .orEmpty()
         return ArrayList(saved)
+    }
+
+    /// The bypass-interception switch, kept for the same reason as the
+    /// exclusions: a sticky restart must rebuild the same tunnel.
+    private fun saveIntercept(enabled: Boolean) {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_INTERCEPT, enabled)
+            .apply()
+    }
+
+    private fun loadIntercept(): Boolean =
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_INTERCEPT, true)
+
+    /// Private DNS set to a fixed provider ("hostname" mode).
+    private fun strictPrivateDns(): Boolean = try {
+        Settings.Global.getString(contentResolver, "private_dns_mode") == "hostname"
+    } catch (e: Exception) {
+        false
     }
 
     private fun enterForeground() {
@@ -262,7 +286,7 @@ class AegisVpnService : VpnService(), Runnable {
         }
     }
 
-    private fun startVpn(bypassApps: ArrayList<String>) {
+    private fun startVpn(bypassApps: ArrayList<String>, interceptResolvers: Boolean) {
         if (isRunning) {
             publishStartResult(true, null)
             return
@@ -275,24 +299,47 @@ class AegisVpnService : VpnService(), Runnable {
             // non-DNS traffic is untouched. This also removes the need to
             // protect() upstream sockets.
             //
-            // Routing public resolver IPs (1.1.1.1, 8.8.8.8, ...) in here to
-            // stop apps from bypassing us looks tempting, but a VpnService
-            // route captures every port, not just 53. The engine's own DoH
-            // upstream is https://1.1.1.1/dns-query by default, so those routes
-            // fed its TCP/443 traffic back into the TUN, where the DNS-only
-            // filter dropped it and every lookup ended in SERVFAIL. Doing this
-            // safely needs a protected upstream socket plus a forwarding path
-            // for the non-DNS traffic it captures — tracked in ROADMAP.md.
+            // With the bypass switch on, public resolver addresses are routed
+            // here too (KnownResolvers). A route captures every port, so the
+            // engine answers what it cannot filter — TCP with a reset, other
+            // UDP with port-unreachable — and apps fall back to the system
+            // resolver. This used to swallow the engine's own DoH upstream
+            // (https://1.1.1.1/dns-query) and break DNS; since the app excludes
+            // itself from the VPN (addDisallowedApplication below), its own
+            // sockets never enter the tunnel.
             val builder = Builder()
                 .setSession("AegisNet Shield")
                 .addAddress("10.0.0.2", 24)
-                .addDnsServer(TUN_DNS_SERVER)
                 .addRoute(TUN_DNS_SERVER, 32)
                 // The v6 half closes the IPv6 DNS leak that MIUI / Android 14
                 // open by handing apps an IPv6 resolver alongside the v4 one.
                 .addAddress(TUN_ADDRESS_V6, 128)
-                .addDnsServer(TUN_DNS_SERVER_V6)
                 .addRoute(TUN_DNS_SERVER_V6, 128)
+
+            // Strict Private DNS ("hostname" mode) cannot be filtered: Android
+            // speaks DoT to its provider for every lookup, on this network
+            // too, and a tunnel that forwards nothing cannot carry that. With
+            // our DNS server advertised the device was left with no DNS at
+            // all. Without one, lookups stay on the real network — unfiltered,
+            // which the dashboard warns about. The resolver routes stay out
+            // as well: the provider is usually one of those addresses.
+            val strictPrivateDns = strictPrivateDns()
+            if (!strictPrivateDns) {
+                builder.addDnsServer(TUN_DNS_SERVER)
+                builder.addDnsServer(TUN_DNS_SERVER_V6)
+            } else {
+                Log.w(TAG, "Strict Private DNS is on; the tunnel will not filter")
+            }
+            if (interceptResolvers && !strictPrivateDns) {
+                for (address in KnownResolvers.ADDRESSES) {
+                    try {
+                        builder.addRoute(address, KnownResolvers.prefixLength(address))
+                    } catch (e: IllegalArgumentException) {
+                        // One bad route must not cost the whole tunnel.
+                        Log.w(TAG, "Skipping resolver route $address", e)
+                    }
+                }
+            }
 
             // Keep this app out of its own tunnel. The engine's upstream socket
             // is not routed in here, but looking up its host name is: inside

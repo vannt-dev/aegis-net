@@ -9,6 +9,14 @@ import 'ffi_bindings.dart';
 class AegisBridge {
   static const MethodChannel _vpnChannel = MethodChannel('com.aegisnet/vpn');
   static bool _useNativeFfi = false;
+  static bool _engineInitialized = false;
+
+  /// Whether [initEngine] has run; native calls made before it are lost.
+  @visibleForTesting
+  static bool get debugEngineInitialized => _engineInitialized;
+
+  @visibleForTesting
+  static void debugResetEngine() => _engineInitialized = false;
 
   /// App Group container shared with the iOS PacketTunnel extension. Null
   /// everywhere else, and on iOS until the native side hands it over.
@@ -50,6 +58,7 @@ class AegisBridge {
   /// Initialize Aegis Core Engine (Attempts native FFI load first)
   static Future<bool> initEngine() async {
     _useNativeFfi = AegisNativeBindings.initNativeLibrary();
+    _engineInitialized = true;
     if (_usesSharedContainer) {
       await _resolveSharedContainer();
     }
@@ -126,10 +135,14 @@ class AegisBridge {
   static String? lastVpnError;
 
   /// Start Local VPN Tunnel / Desktop DNS Proxy
-  static Future<bool> startVpn({List<String> bypassApps = const []}) async {
+  static Future<bool> startVpn({
+    List<String> bypassApps = const [],
+    bool interceptHardcodedDns = true,
+  }) async {
     try {
       final bool success = await _vpnChannel.invokeMethod('startVpn', {
         'bypassApps': bypassApps,
+        'interceptHardcodedDns': interceptHardcodedDns,
       });
       lastVpnError = success ? null : 'tunnel_refused';
       return success;
@@ -360,6 +373,22 @@ class AegisBridge {
   static void setCategory(int categoryId, bool enabled) {
     if (_useNativeFfi) {
       AegisNativeBindings.setCategory(categoryId, enabled);
+    }
+    publishSettings();
+  }
+
+  @visibleForTesting
+  static void Function(bool enabled)? debugSetBlockDohHostsOverride;
+
+  /// Block public DNS-over-HTTPS endpoint names in the engine.
+  static void setBlockDohHosts(bool enabled) {
+    final override = debugSetBlockDohHostsOverride;
+    if (override != null) {
+      override(enabled);
+      return;
+    }
+    if (_useNativeFfi) {
+      AegisNativeBindings.setBlockDohHosts(enabled);
     }
     publishSettings();
   }

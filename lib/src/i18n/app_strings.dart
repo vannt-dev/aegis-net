@@ -152,6 +152,12 @@ class AppStrings {
       'settings_split_desc':
           'Selected apps will bypass Aegis Local VPN and connect directly.',
       'settings_pkg_hint': 'Package name (e.g. com.example.app)',
+      'settings_intercept_title': 'Stop apps from bypassing the filter',
+      'settings_intercept_desc':
+          'Catches DNS sent straight to Google, Cloudflare, Quad9 and other public resolvers, and blocks their encrypted DNS so apps fall back to the filtered one. Turn off if an app pings 8.8.8.8 to check the connection or needs its own DNS-over-HTTPS.',
+      'settings_intercept_desc_names_only':
+          'Blocks the encrypted-DNS servers of Google, Cloudflare, Quad9 and others by name, so apps fall back to the filtered DNS.',
+      'settings_applying': 'Applying…',
       'settings_schedule_title': 'Scheduled Parental Controls',
       'settings_schedule_desc':
           'Enforces Adult content filtering from %1 to %2, then restores your own setting.',
@@ -334,6 +340,12 @@ class AppStrings {
       'settings_split_desc':
           'Ứng dụng được chọn sẽ không đi qua VPN của Aegis mà kết nối thẳng.',
       'settings_pkg_hint': 'Tên package (vd: com.example.app)',
+      'settings_intercept_title': 'Chặn ứng dụng lách bộ lọc',
+      'settings_intercept_desc':
+          'Bắt truy vấn gửi thẳng tới Google, Cloudflare, Quad9 và các resolver công khai khác, chặn DNS mã hóa của chúng để ứng dụng quay về DNS đã lọc. Tắt đi nếu có ứng dụng ping 8.8.8.8 để kiểm tra mạng hoặc cần DNS-over-HTTPS riêng.',
+      'settings_intercept_desc_names_only':
+          'Chặn theo tên các máy chủ DNS mã hóa của Google, Cloudflare, Quad9… để ứng dụng quay về DNS đã lọc.',
+      'settings_applying': 'Đang áp dụng…',
       'settings_schedule_title': 'Hẹn Giờ Kiểm Soát Trẻ Em',
       'settings_schedule_desc':
           'Bật lọc nội dung người lớn từ %1 đến %2, sau đó trả lại thiết lập của bạn.',
@@ -508,6 +520,12 @@ class AppStrings {
       'settings_split_title': '앱별 분할 터널링 (VPN 우회)',
       'settings_split_desc': '선택한 앱은 Aegis VPN을 우회해 직접 연결됩니다.',
       'settings_pkg_hint': '패키지 이름 (예: com.example.app)',
+      'settings_intercept_title': '앱의 필터 우회 차단',
+      'settings_intercept_desc':
+          'Google, Cloudflare, Quad9 등 공개 리졸버로 직접 보내는 DNS를 가로채고 암호화 DNS를 차단해 앱이 필터링된 DNS를 쓰게 합니다. 앱이 8.8.8.8 핑으로 연결을 확인하거나 자체 DNS-over-HTTPS가 필요하면 끄세요.',
+      'settings_intercept_desc_names_only':
+          'Google, Cloudflare, Quad9 등의 암호화 DNS 서버를 이름으로 차단해 앱이 필터링된 DNS를 쓰게 합니다.',
+      'settings_applying': '적용 중…',
       'settings_schedule_title': '예약된 자녀 보호',
       'settings_schedule_desc': '%1부터 %2까지 성인 콘텐츠 필터를 적용한 뒤 원래 설정으로 되돌립니다.',
       'settings_backup_title': '설정 백업 및 복원',
@@ -677,6 +695,12 @@ class AppStrings {
       'settings_split_title': 'アプリ別スプリットトンネル（VPN除外）',
       'settings_split_desc': '選択したアプリはAegisのVPNを経由せず直接接続します。',
       'settings_pkg_hint': 'パッケージ名（例: com.example.app）',
+      'settings_intercept_title': 'アプリによるフィルター回避を防ぐ',
+      'settings_intercept_desc':
+          'Google、Cloudflare、Quad9 などの公開リゾルバーへ直接送られる DNS を捕捉し、暗号化 DNS をブロックしてアプリをフィルター済み DNS に戻します。アプリが 8.8.8.8 への ping で接続を確認する場合や独自の DNS-over-HTTPS が必要な場合はオフにしてください。',
+      'settings_intercept_desc_names_only':
+          'Google、Cloudflare、Quad9 などの暗号化 DNS サーバーを名前でブロックし、アプリをフィルター済み DNS に戻します。',
+      'settings_applying': '適用中…',
       'settings_schedule_title': 'ペアレンタルコントロールのスケジュール',
       'settings_schedule_desc': '%1から%2まで成人向けコンテンツをフィルタし、その後元の設定に戻します。',
       'settings_backup_title': '設定のバックアップと復元',

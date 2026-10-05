@@ -41,11 +41,12 @@
       MIUI / Android 14
 - [x] Scheduled Parental Control / Quiet Hours Blocking, restoring the user's
       own category setting when the window ends
-- [ ] Intercept hardcoded public resolvers (1.1.1.1, 8.8.8.8, ...) to stop apps
-      bypassing the tunnel. A first attempt routed those IPs into the TUN, but
-      a `VpnService` route captures every port, so it swallowed the engine's
-      own DoH upstream and broke DNS outright. Needs a `protect()`ed upstream
-      socket plus a forwarding path for the non-DNS traffic it captures
+- [x] Intercept hardcoded public resolvers (Google, Cloudflare, Quad9,
+      OpenDNS, AdGuard, CleanBrowsing): their addresses are routed into the
+      tunnel, plain DNS to them is filtered, DoT/DoH/DoQ is refused (TCP reset,
+      ICMP port-unreachable) so apps fall back, and public DoH host names are
+      blocked. The earlier attempt broke DNS because the routes captured the
+      engine's own upstream; the app now excludes itself from the VPN.
 - [x] Real DNS-over-TLS transport (RFC 7858, port 853) in the Rust core
       (`dot.rs`): `tls://host[:port][#name]` and `dot://` upstreams, certificate
       verified against the host or the name after `#`, connections reused.
