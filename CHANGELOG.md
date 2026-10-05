@@ -30,6 +30,9 @@ verified native pipeline on Android.
 
 ### Fixed
 
+- **The dashboard shows a tunnel that was already running.** Opened again
+  after leaving with Back, the app said UNPROTECTED while the VPN was still
+  filtering.
 - **Reopening the app no longer kills protection.** After leaving with Back
   while the VPN was on, opening AegisNet again crashed the process and took
   the tunnel down with it: the native engine was initialised a second time
