@@ -130,6 +130,33 @@ void main() {
     vpn.dispose();
   });
 
+  testWidgets('the export button copies the log as CSV and says so',
+      (tester) async {
+    final vpn = await pumpLogs(tester);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.byTooltip('EXPORT LOGS (CSV)'));
+    await tester.pump();
+
+    expect(copied, startsWith('ID,Timestamp,Domain,Status,App'));
+    expect(copied, contains('ads.Example.com'));
+    expect(copied, contains('cdn.example.org'));
+    expect(find.text('Copied 2 log entries to the clipboard as CSV.'),
+        findsOneWidget);
+    tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null);
+    vpn.dispose();
+  });
+
   test('allowDomain and blockDomain keep the two lists disjoint', () async {
     SharedPreferences.setMockInitialValues({});
     final vpn = VpnProvider(enableSimulation: false);

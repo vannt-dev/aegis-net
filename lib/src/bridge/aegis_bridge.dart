@@ -2,12 +2,21 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../providers/app_info.dart';
 import '../services/desktop_dns_proxy.dart';
 import 'ffi_bindings.dart';
 
 class AegisBridge {
   static const MethodChannel _vpnChannel = MethodChannel('com.aegisnet/vpn');
   static bool _useNativeFfi = false;
+  static bool _engineInitialized = false;
+
+  /// Whether [initEngine] has run; native calls made before it are lost.
+  @visibleForTesting
+  static bool get debugEngineInitialized => _engineInitialized;
+
+  @visibleForTesting
+  static void debugResetEngine() => _engineInitialized = false;
 
   /// App Group container shared with the iOS PacketTunnel extension. Null
   /// everywhere else, and on iOS until the native side hands it over.
@@ -49,6 +58,7 @@ class AegisBridge {
   /// Initialize Aegis Core Engine (Attempts native FFI load first)
   static Future<bool> initEngine() async {
     _useNativeFfi = AegisNativeBindings.initNativeLibrary();
+    _engineInitialized = true;
     if (_usesSharedContainer) {
       await _resolveSharedContainer();
     }
@@ -125,10 +135,14 @@ class AegisBridge {
   static String? lastVpnError;
 
   /// Start Local VPN Tunnel / Desktop DNS Proxy
-  static Future<bool> startVpn({List<String> bypassApps = const []}) async {
+  static Future<bool> startVpn({
+    List<String> bypassApps = const [],
+    bool interceptHardcodedDns = true,
+  }) async {
     try {
       final bool success = await _vpnChannel.invokeMethod('startVpn', {
         'bypassApps': bypassApps,
+        'interceptHardcodedDns': interceptHardcodedDns,
       });
       lastVpnError = success ? null : 'tunnel_refused';
       return success;
@@ -172,6 +186,31 @@ class AegisBridge {
       return raw ?? <String, dynamic>{};
     } catch (_) {
       return <String, dynamic>{};
+    }
+  }
+
+  /// Replaces the channel call in tests.
+  @visibleForTesting
+  static Future<Map<int, AppInfo>> Function(List<int> uids)?
+      debugResolveAppsOverride;
+
+  /// Names for the UIDs in the per-app statistics, or null when the call
+  /// failed (no such call on desktop and iOS, or a channel error) so the
+  /// caller can ask again later.
+  static Future<Map<int, AppInfo>?> resolveApps(List<int> uids) async {
+    if (uids.isEmpty) return {};
+    try {
+      final override = debugResolveAppsOverride;
+      if (override != null) return await override(uids);
+      final raw = await _vpnChannel.invokeListMethod<Map<dynamic, dynamic>>(
+          'resolveApps', {'uids': uids});
+      return {
+        for (final map in raw ?? const <Map<dynamic, dynamic>>[])
+          (map['uid'] as num?)?.toInt() ?? AppInfo.unknownUid:
+              AppInfo.fromMap(map),
+      };
+    } catch (_) {
+      return null;
     }
   }
 
@@ -332,14 +371,46 @@ class AegisBridge {
   /// Enable/disable a rule category on the engine.
   /// (0: Ads, 1: Trackers, 2: Malware, 3: Adult)
   static void setCategory(int categoryId, bool enabled) {
+    final override = debugSetCategoryOverride;
+    if (override != null) {
+      override(categoryId, enabled);
+      return;
+    }
     if (_useNativeFfi) {
       AegisNativeBindings.setCategory(categoryId, enabled);
     }
     publishSettings();
   }
 
+  @visibleForTesting
+  static void Function(bool enabled)? debugSetBlockDohHostsOverride;
+
+  /// Block public DNS-over-HTTPS endpoint names in the engine.
+  static void setBlockDohHosts(bool enabled) {
+    final override = debugSetBlockDohHostsOverride;
+    if (override != null) {
+      override(enabled);
+      return;
+    }
+    if (_useNativeFfi) {
+      AegisNativeBindings.setBlockDohHosts(enabled);
+    }
+    publishSettings();
+  }
+
+  @visibleForTesting
+  static void Function(int categoryId, bool enabled)? debugSetCategoryOverride;
+
+  @visibleForTesting
+  static void Function(String upstream)? debugSetUpstreamDnsOverride;
+
   /// Point the engine's upstream DoH resolver at a new host/IP/URL.
   static void setUpstreamDns(String upstream) {
+    final override = debugSetUpstreamDnsOverride;
+    if (override != null) {
+      override(upstream);
+      return;
+    }
     if (_useNativeFfi) {
       AegisNativeBindings.setUpstreamDns(upstream);
     }

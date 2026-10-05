@@ -47,6 +47,8 @@
 - **⏱️ DNS Latency Benchmark**: Interactive built-in benchmark tool to test and automatically select the fastest upstream DNS provider.
 - **📱 System-Wide Protection**: Intercepts OS-level DNS traffic via local split-tunnel VPN (`VpnService` on Android, `NEPacketTunnelProvider` on iOS) without routing web traffic to remote servers.
 - **📊 Real-time Dashboard & Analytics**: Interactive traffic graphs, query counters, ad-block stats, bandwidth savings, and detailed category analytics.
+- **📱 Per-app statistics (Android 10+)**: See which apps make the most DNS queries and how many were blocked, and filter the live query log by app.
+- **🛡️ Bypass protection**: DNS sent straight to public resolvers is filtered too, and their encrypted DNS is refused so apps fall back to the filter.
 - **📜 Live Query Log & CSV Export**: Real-time query monitoring with status filter chips (`ALL LOGS`, `BLOCKED`, `ALLOWED`), instant domain search and CSV export. Tap an entry to allow or block that domain on the spot.
 - **⚡ Custom Whitelist & Blacklist**: Flexible custom rule management with instant hot-reloading.
 - **🔄 Background Auto-Sync**: Automatic blocklist updates and background rule synchronization.

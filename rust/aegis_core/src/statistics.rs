@@ -9,6 +9,9 @@ pub struct DnsLogEntry {
     pub timestamp: u64,
     pub domain: String,
     pub blocked: bool,
+    /// The app that asked, or `UNKNOWN_UID`.
+    #[serde(default = "unknown_uid")]
+    pub uid: i32,
 }
 
 /// Distinct domains the top-N tracker keeps per direction before evicting the
@@ -19,10 +22,38 @@ const MAX_TRACKED_DOMAINS: usize = 2_000;
 /// How many domains each top list reports.
 const TOP_DOMAIN_COUNT: usize = 5;
 
+/// UID recorded when the app behind a query is not known: below Android 10,
+/// on iOS and desktop, or when the platform refuses to say.
+pub const UNKNOWN_UID: i32 = -1;
+
+/// Distinct apps tracked before the quietest half is dropped. A phone has a
+/// few hundred apps at most, so this rarely triggers.
+const MAX_TRACKED_APPS: usize = 500;
+
+/// How many apps the top list reports.
+const TOP_APP_COUNT: usize = 20;
+
+fn unknown_uid() -> i32 {
+    UNKNOWN_UID
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DomainCount {
     pub domain: String,
     pub count: u64,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct AppTally {
+    total: u64,
+    blocked: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppCount {
+    pub uid: i32,
+    pub total: u64,
+    pub blocked: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +65,9 @@ pub struct StatsSummary {
     pub estimated_data_saved_bytes: u64,
     pub top_blocked: Vec<DomainCount>,
     pub top_allowed: Vec<DomainCount>,
+    /// Busiest apps by query count. Missing in snapshots from before 1.4.
+    #[serde(default)]
+    pub top_apps: Vec<AppCount>,
 }
 
 pub struct StatisticsEngine {
@@ -42,6 +76,7 @@ pub struct StatisticsEngine {
     logs: RwLock<VecDeque<DnsLogEntry>>,
     blocked_counts: RwLock<HashMap<String, u64>>,
     allowed_counts: RwLock<HashMap<String, u64>>,
+    app_counts: RwLock<HashMap<i32, AppTally>>,
     max_log_capacity: usize,
     counter_id: AtomicU64,
 }
@@ -54,12 +89,17 @@ impl StatisticsEngine {
             logs: RwLock::new(VecDeque::with_capacity(max_log_capacity)),
             blocked_counts: RwLock::new(HashMap::new()),
             allowed_counts: RwLock::new(HashMap::new()),
+            app_counts: RwLock::new(HashMap::new()),
             max_log_capacity,
             counter_id: AtomicU64::new(1),
         }
     }
 
     pub fn record_request(&self, domain: &str, blocked: bool) {
+        self.record_request_for_uid(domain, blocked, UNKNOWN_UID);
+    }
+
+    pub fn record_request_for_uid(&self, domain: &str, blocked: bool, uid: i32) {
         self.total_queries.fetch_add(1, Ordering::Relaxed);
         let domain_str = domain.to_string();
 
@@ -69,6 +109,7 @@ impl StatisticsEngine {
         } else {
             Self::record_domain(&self.allowed_counts, domain);
         }
+        self.record_app(uid, blocked);
 
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -82,6 +123,7 @@ impl StatisticsEngine {
             timestamp,
             domain: domain_str,
             blocked,
+            uid,
         };
 
         let mut logs = self.logs.write().unwrap();
@@ -89,6 +131,40 @@ impl StatisticsEngine {
             logs.pop_back();
         }
         logs.push_front(entry);
+    }
+
+    /// Count a query against the app that made it, keeping the table bounded
+    /// the same way the domain tables are.
+    fn record_app(&self, uid: i32, blocked: bool) {
+        let mut apps = self.app_counts.write().unwrap();
+        if !apps.contains_key(&uid) && apps.len() >= MAX_TRACKED_APPS {
+            let keep = MAX_TRACKED_APPS / 2;
+            let mut entries: Vec<(i32, AppTally)> = apps.drain().collect();
+            entries.select_nth_unstable_by(keep, |a, b| b.1.total.cmp(&a.1.total));
+            entries.truncate(keep);
+            *apps = entries.into_iter().collect();
+        }
+        let tally = apps.entry(uid).or_default();
+        tally.total += 1;
+        if blocked {
+            tally.blocked += 1;
+        }
+    }
+
+    /// The busiest apps, highest first; ties ordered by UID so the list is stable.
+    fn top_apps(&self) -> Vec<AppCount> {
+        let apps = self.app_counts.read().unwrap();
+        let mut items: Vec<AppCount> = apps
+            .iter()
+            .map(|(uid, tally)| AppCount {
+                uid: *uid,
+                total: tally.total,
+                blocked: tally.blocked,
+            })
+            .collect();
+        items.sort_unstable_by(|a, b| b.total.cmp(&a.total).then(a.uid.cmp(&b.uid)));
+        items.truncate(TOP_APP_COUNT);
+        items
     }
 
     /// Bump a domain's hit count, keeping the table bounded.
@@ -178,6 +254,7 @@ impl StatisticsEngine {
             estimated_data_saved_bytes: data_saved,
             top_blocked,
             top_allowed,
+            top_apps: self.top_apps(),
         }
     }
 
@@ -206,6 +283,18 @@ impl StatisticsEngine {
 
         adopt(&self.blocked_counts, &summary.top_blocked);
         adopt(&self.allowed_counts, &summary.top_allowed);
+
+        let mut apps = self.app_counts.write().unwrap();
+        apps.clear();
+        for app in &summary.top_apps {
+            apps.insert(
+                app.uid,
+                AppTally {
+                    total: app.total,
+                    blocked: app.blocked,
+                },
+            );
+        }
     }
 
     pub fn get_recent_logs(&self, limit: usize) -> Vec<DnsLogEntry> {
@@ -219,6 +308,7 @@ impl StatisticsEngine {
         self.logs.write().unwrap().clear();
         self.blocked_counts.write().unwrap().clear();
         self.allowed_counts.write().unwrap().clear();
+        self.app_counts.write().unwrap().clear();
     }
 }
 
@@ -305,5 +395,103 @@ mod tests {
         assert_eq!(summary.total_queries, 3);
         assert_eq!(summary.top_blocked[0].domain, "ads.example.com");
         assert_eq!(summary.top_blocked[0].count, 3);
+    }
+    #[test]
+    fn app_tallies_rank_by_total_and_count_blocked_queries() {
+        let stats = StatisticsEngine::new(64);
+        for _ in 0..3 {
+            stats.record_request_for_uid("ads.example.com", true, 10_123);
+        }
+        stats.record_request_for_uid("cdn.example.com", false, 10_123);
+        stats.record_request_for_uid("cdn.example.com", false, 10_456);
+
+        let apps = stats.get_summary().top_apps;
+        assert_eq!(apps[0].uid, 10_123);
+        assert_eq!(apps[0].total, 4);
+        assert_eq!(apps[0].blocked, 3);
+        assert_eq!(apps[1].uid, 10_456);
+        assert_eq!(apps[1].blocked, 0);
+    }
+
+    #[test]
+    fn requests_without_an_app_count_under_the_unknown_uid() {
+        let stats = StatisticsEngine::new(64);
+        stats.record_request("example.com", false);
+
+        let apps = stats.get_summary().top_apps;
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].uid, UNKNOWN_UID);
+        assert_eq!(stats.get_recent_logs(1)[0].uid, UNKNOWN_UID);
+    }
+
+    #[test]
+    fn log_entries_carry_the_uid() {
+        let stats = StatisticsEngine::new(64);
+        stats.record_request_for_uid("example.com", false, 10_200);
+        assert_eq!(stats.get_recent_logs(1)[0].uid, 10_200);
+    }
+
+    #[test]
+    fn top_apps_lists_at_most_twenty() {
+        let stats = StatisticsEngine::new(64);
+        for uid in 0..50 {
+            stats.record_request_for_uid("example.com", false, 10_000 + uid);
+        }
+        assert_eq!(stats.get_summary().top_apps.len(), TOP_APP_COUNT);
+    }
+
+    #[test]
+    fn app_table_stays_bounded_and_keeps_busy_apps() {
+        let stats = StatisticsEngine::new(64);
+        for _ in 0..100 {
+            stats.record_request_for_uid("example.com", true, 10_001);
+        }
+        for uid in 0..(MAX_TRACKED_APPS as i32 * 3) {
+            stats.record_request_for_uid("example.com", false, 20_000 + uid);
+        }
+
+        assert!(stats.app_counts.read().unwrap().len() <= MAX_TRACKED_APPS);
+        let apps = stats.get_summary().top_apps;
+        assert_eq!(apps[0].uid, 10_001);
+        assert_eq!(apps[0].total, 100);
+    }
+
+    #[test]
+    fn reset_clears_app_tallies() {
+        let stats = StatisticsEngine::new(64);
+        stats.record_request_for_uid("example.com", false, 10_123);
+        stats.reset();
+        assert!(stats.get_summary().top_apps.is_empty());
+    }
+
+    #[test]
+    fn adopted_summary_carries_top_apps() {
+        let tunnel = StatisticsEngine::new(64);
+        tunnel.record_request_for_uid("ads.example.com", true, 10_123);
+
+        let app = StatisticsEngine::new(64);
+        app.apply_summary(&tunnel.get_summary());
+
+        let apps = app.get_summary().top_apps;
+        assert_eq!(apps[0].uid, 10_123);
+        assert_eq!(apps[0].blocked, 1);
+    }
+
+    #[test]
+    fn json_from_before_per_app_stats_still_parses() {
+        // iOS snapshots written by 1.3.0 have neither field.
+        let summary: StatsSummary = serde_json::from_str(
+            r#"{"total_queries":1,"blocked_queries":0,"allowed_queries":1,
+                "block_rate_percentage":0.0,"estimated_data_saved_bytes":0,
+                "top_blocked":[],"top_allowed":[]}"#,
+        )
+        .expect("old summary");
+        assert!(summary.top_apps.is_empty());
+
+        let entry: DnsLogEntry = serde_json::from_str(
+            r#"{"id":1,"timestamp":0,"domain":"example.com","blocked":false}"#,
+        )
+        .expect("old log entry");
+        assert_eq!(entry.uid, UNKNOWN_UID);
     }
 }

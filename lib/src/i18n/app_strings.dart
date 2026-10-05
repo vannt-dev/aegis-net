@@ -74,6 +74,16 @@ class AppStrings {
       'analytics_no_blocked': 'No blocked queries yet',
       'analytics_top_requested': 'Top Requested Domains',
       'analytics_no_resolved': 'No resolved queries yet',
+      'app_unknown': 'Unknown app',
+      'app_system': 'Android system',
+      'app_uid': 'UID %s',
+      'analytics_top_apps': 'Top apps',
+      'analytics_no_apps': 'No app has made a query yet',
+      'analytics_apps_need_android10':
+          'Needs Android 10 or later to tell apps apart',
+      'app_query_counts': '%total queries · %blocked blocked',
+      'logs_filter_app': 'Filter by app',
+      'logs_app_chip': 'App: %s',
       'analytics_recent_rate': 'Recent Query Rate',
       'analytics_no_traffic': 'No traffic recorded yet',
 
@@ -83,6 +93,8 @@ class AppStrings {
       'logs_blocked': 'BLOCKED',
       'logs_allowed': 'ALLOWED',
       'logs_empty': 'No queries captured yet',
+      'logs_empty_app':
+          'No recent queries from this app — the log keeps the last 50',
       'logs_action_allow': 'Always allow this domain',
       'logs_action_unallow': 'Remove from the allow list',
       'logs_action_block': 'Always block this domain',
@@ -92,6 +104,7 @@ class AppStrings {
       'logs_block_added': '{domain} is now always blocked.',
       'logs_rule_removed': 'Removed the rule for {domain}.',
       'logs_copied': 'Copied {domain}.',
+      'logs_csv_copied': 'Copied {count} log entries to the clipboard as CSV.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': 'Successfully synced %s active ad-blocking rules!',
@@ -140,6 +153,12 @@ class AppStrings {
       'settings_split_desc':
           'Selected apps will bypass Aegis Local VPN and connect directly.',
       'settings_pkg_hint': 'Package name (e.g. com.example.app)',
+      'settings_intercept_title': 'Stop apps from bypassing the filter',
+      'settings_intercept_desc':
+          'Catches DNS sent straight to Google, Cloudflare, Quad9 and other public resolvers, and blocks their encrypted DNS so apps fall back to the filtered one. Turn off if an app pings 8.8.8.8 to check the connection or needs its own DNS-over-HTTPS.',
+      'settings_intercept_desc_names_only':
+          'Blocks the encrypted-DNS servers of Google, Cloudflare, Quad9 and others by name, so apps fall back to the filtered DNS.',
+      'settings_applying': 'Applying…',
       'settings_schedule_title': 'Scheduled Parental Controls',
       'settings_schedule_desc':
           'Enforces Adult content filtering from %1 to %2, then restores your own setting.',
@@ -243,6 +262,16 @@ class AppStrings {
       'analytics_no_blocked': 'Chưa có truy vấn nào bị chặn',
       'analytics_top_requested': 'Tên Miền Được Truy Vấn Nhiều Nhất',
       'analytics_no_resolved': 'Chưa có truy vấn nào được phân giải',
+      'app_unknown': 'Không rõ ứng dụng',
+      'app_system': 'Hệ thống Android',
+      'app_uid': 'UID %s',
+      'analytics_top_apps': 'Ứng dụng truy vấn nhiều nhất',
+      'analytics_no_apps': 'Chưa có ứng dụng nào truy vấn',
+      'analytics_apps_need_android10':
+          'Cần Android 10 trở lên để phân biệt ứng dụng',
+      'app_query_counts': '%total truy vấn · %blocked bị chặn',
+      'logs_filter_app': 'Lọc theo ứng dụng',
+      'logs_app_chip': 'Ứng dụng: %s',
       'analytics_recent_rate': 'Tốc Độ Truy Vấn Gần Đây',
       'analytics_no_traffic': 'Chưa ghi nhận lưu lượng nào',
 
@@ -252,6 +281,8 @@ class AppStrings {
       'logs_blocked': 'ĐÃ CHẶN',
       'logs_allowed': 'CHO QUA',
       'logs_empty': 'Chưa ghi nhận truy vấn nào',
+      'logs_empty_app':
+          'Ứng dụng này chưa có truy vấn gần đây — nhật ký chỉ giữ 50 dòng mới nhất',
       'logs_action_allow': 'Luôn cho phép tên miền này',
       'logs_action_unallow': 'Xoá khỏi danh sách cho phép',
       'logs_action_block': 'Luôn chặn tên miền này',
@@ -261,6 +292,7 @@ class AppStrings {
       'logs_block_added': 'Từ giờ luôn chặn {domain}.',
       'logs_rule_removed': 'Đã xoá quy tắc cho {domain}.',
       'logs_copied': 'Đã sao chép {domain}.',
+      'logs_csv_copied': 'Đã sao chép {count} dòng log dạng CSV vào clipboard.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': 'Đã đồng bộ %s quy tắc chặn quảng cáo!',
@@ -310,6 +342,12 @@ class AppStrings {
       'settings_split_desc':
           'Ứng dụng được chọn sẽ không đi qua VPN của Aegis mà kết nối thẳng.',
       'settings_pkg_hint': 'Tên package (vd: com.example.app)',
+      'settings_intercept_title': 'Chặn ứng dụng lách bộ lọc',
+      'settings_intercept_desc':
+          'Bắt truy vấn gửi thẳng tới Google, Cloudflare, Quad9 và các resolver công khai khác, chặn DNS mã hóa của chúng để ứng dụng quay về DNS đã lọc. Tắt đi nếu có ứng dụng ping 8.8.8.8 để kiểm tra mạng hoặc cần DNS-over-HTTPS riêng.',
+      'settings_intercept_desc_names_only':
+          'Chặn theo tên các máy chủ DNS mã hóa của Google, Cloudflare, Quad9… để ứng dụng quay về DNS đã lọc.',
+      'settings_applying': 'Đang áp dụng…',
       'settings_schedule_title': 'Hẹn Giờ Kiểm Soát Trẻ Em',
       'settings_schedule_desc':
           'Bật lọc nội dung người lớn từ %1 đến %2, sau đó trả lại thiết lập của bạn.',
@@ -410,6 +448,15 @@ class AppStrings {
       'analytics_no_blocked': '아직 차단된 쿼리가 없습니다',
       'analytics_top_requested': '요청이 많은 도메인',
       'analytics_no_resolved': '아직 처리된 쿼리가 없습니다',
+      'app_unknown': '알 수 없는 앱',
+      'app_system': 'Android 시스템',
+      'app_uid': 'UID %s',
+      'analytics_top_apps': '쿼리가 많은 앱',
+      'analytics_no_apps': '아직 쿼리한 앱이 없습니다',
+      'analytics_apps_need_android10': '앱을 구분하려면 Android 10 이상이 필요합니다',
+      'app_query_counts': '쿼리 %total개 · 차단 %blocked개',
+      'logs_filter_app': '앱별 필터',
+      'logs_app_chip': '앱: %s',
       'analytics_recent_rate': '최근 쿼리 속도',
       'analytics_no_traffic': '아직 기록된 트래픽이 없습니다',
 
@@ -419,6 +466,7 @@ class AppStrings {
       'logs_blocked': '차단됨',
       'logs_allowed': '허용됨',
       'logs_empty': '아직 수집된 쿼리가 없습니다',
+      'logs_empty_app': '이 앱의 최근 쿼리가 없습니다 — 로그는 최근 50개만 보관합니다',
       'logs_action_allow': '이 도메인 항상 허용',
       'logs_action_unallow': '허용 목록에서 제거',
       'logs_action_block': '이 도메인 항상 차단',
@@ -428,6 +476,7 @@ class AppStrings {
       'logs_block_added': '{domain}을(를) 항상 차단합니다.',
       'logs_rule_removed': '{domain}에 대한 규칙을 제거했습니다.',
       'logs_copied': '{domain}을(를) 복사했습니다.',
+      'logs_csv_copied': '로그 {count}건을 CSV로 클립보드에 복사했습니다.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': '차단 규칙 %s개를 동기화했습니다!',
@@ -474,6 +523,12 @@ class AppStrings {
       'settings_split_title': '앱별 분할 터널링 (VPN 우회)',
       'settings_split_desc': '선택한 앱은 Aegis VPN을 우회해 직접 연결됩니다.',
       'settings_pkg_hint': '패키지 이름 (예: com.example.app)',
+      'settings_intercept_title': '앱의 필터 우회 차단',
+      'settings_intercept_desc':
+          'Google, Cloudflare, Quad9 등 공개 리졸버로 직접 보내는 DNS를 가로채고 암호화 DNS를 차단해 앱이 필터링된 DNS를 쓰게 합니다. 앱이 8.8.8.8 핑으로 연결을 확인하거나 자체 DNS-over-HTTPS가 필요하면 끄세요.',
+      'settings_intercept_desc_names_only':
+          'Google, Cloudflare, Quad9 등의 암호화 DNS 서버를 이름으로 차단해 앱이 필터링된 DNS를 쓰게 합니다.',
+      'settings_applying': '적용 중…',
       'settings_schedule_title': '예약된 자녀 보호',
       'settings_schedule_desc': '%1부터 %2까지 성인 콘텐츠 필터를 적용한 뒤 원래 설정으로 되돌립니다.',
       'settings_backup_title': '설정 백업 및 복원',
@@ -569,6 +624,15 @@ class AppStrings {
       'analytics_no_blocked': 'ブロックされたクエリはまだありません',
       'analytics_top_requested': 'リクエストの多いドメイン',
       'analytics_no_resolved': '解決されたクエリはまだありません',
+      'app_unknown': '不明なアプリ',
+      'app_system': 'Android システム',
+      'app_uid': 'UID %s',
+      'analytics_top_apps': 'クエリの多いアプリ',
+      'analytics_no_apps': 'まだクエリしたアプリはありません',
+      'analytics_apps_need_android10': 'アプリを区別するには Android 10 以降が必要です',
+      'app_query_counts': 'クエリ %total 件 · ブロック %blocked 件',
+      'logs_filter_app': 'アプリで絞り込む',
+      'logs_app_chip': 'アプリ: %s',
       'analytics_recent_rate': '直近のクエリ数',
       'analytics_no_traffic': 'トラフィックはまだ記録されていません',
 
@@ -578,6 +642,7 @@ class AppStrings {
       'logs_blocked': 'ブロック',
       'logs_allowed': '許可',
       'logs_empty': 'クエリはまだ記録されていません',
+      'logs_empty_app': 'このアプリの最近のクエリはありません — ログは直近 50 件のみ保持します',
       'logs_action_allow': 'このドメインを常に許可',
       'logs_action_unallow': '許可リストから削除',
       'logs_action_block': 'このドメインを常にブロック',
@@ -587,6 +652,7 @@ class AppStrings {
       'logs_block_added': '{domain} を常にブロックします。',
       'logs_rule_removed': '{domain} のルールを削除しました。',
       'logs_copied': '{domain} をコピーしました。',
+      'logs_csv_copied': 'ログ {count} 件を CSV としてクリップボードにコピーしました。',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': '%s件のブロックルールを同期しました！',
@@ -633,6 +699,12 @@ class AppStrings {
       'settings_split_title': 'アプリ別スプリットトンネル（VPN除外）',
       'settings_split_desc': '選択したアプリはAegisのVPNを経由せず直接接続します。',
       'settings_pkg_hint': 'パッケージ名（例: com.example.app）',
+      'settings_intercept_title': 'アプリによるフィルター回避を防ぐ',
+      'settings_intercept_desc':
+          'Google、Cloudflare、Quad9 などの公開リゾルバーへ直接送られる DNS を捕捉し、暗号化 DNS をブロックしてアプリをフィルター済み DNS に戻します。アプリが 8.8.8.8 への ping で接続を確認する場合や独自の DNS-over-HTTPS が必要な場合はオフにしてください。',
+      'settings_intercept_desc_names_only':
+          'Google、Cloudflare、Quad9 などの暗号化 DNS サーバーを名前でブロックし、アプリをフィルター済み DNS に戻します。',
+      'settings_applying': '適用中…',
       'settings_schedule_title': 'ペアレンタルコントロールのスケジュール',
       'settings_schedule_desc': '%1から%2まで成人向けコンテンツをフィルタし、その後元の設定に戻します。',
       'settings_backup_title': '設定のバックアップと復元',

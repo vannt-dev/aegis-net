@@ -5,6 +5,7 @@ use crate::statistics::StatisticsEngine;
 use lazy_static::lazy_static;
 use log::{debug, info, warn};
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 lazy_static! {
@@ -19,12 +20,45 @@ lazy_static! {
 const QTYPE_A: u16 = 1;
 const QTYPE_AAAA: u16 = 28;
 
+/// Public DNS-over-HTTPS endpoints. Blocking their names makes apps that use
+/// DoH by name (Chrome and Firefox "secure DNS", many SDKs) fall back to the
+/// system resolver, which the tunnel filters. `use-application-dns.net` is
+/// Firefox's canary: NXDOMAIN there switches its automatic DoH off.
+const DOH_HOSTS: &[&str] = &[
+    "dns.google",
+    "dns.google.com",
+    "cloudflare-dns.com",
+    "mozilla.cloudflare-dns.com",
+    "one.one.one.one",
+    "1dot1dot1dot1.cloudflare-dns.com",
+    "dns.quad9.net",
+    "dns11.quad9.net",
+    "doh.opendns.com",
+    "dns.adguard-dns.com",
+    "doh.cleanbrowsing.org",
+    "dns.nextdns.io",
+    "doh.dns.sb",
+    "use-application-dns.net",
+];
+
+/// True for a DoH endpoint name or any name under one.
+pub fn is_doh_host(domain: &str) -> bool {
+    let name = domain.trim_end_matches('.').to_ascii_lowercase();
+    DOH_HOSTS.iter().any(|host| {
+        name == *host
+            || (name.len() > host.len()
+                && name.ends_with(host)
+                && name.as_bytes()[name.len() - host.len() - 1] == b'.')
+    })
+}
+
 pub struct DnsFilterService {
     rule_engine: Arc<RuleEngine>,
     stats_engine: Arc<StatisticsEngine>,
     dns_cache: Arc<DnsCache>,
     upstream_dns: RwLock<String>,
     safesearch_enabled: bool,
+    block_doh_hosts: AtomicBool,
 }
 
 impl DnsFilterService {
@@ -39,7 +73,17 @@ impl DnsFilterService {
             dns_cache: Arc::new(DnsCache::new(300)), // 5 minute TTL cache
             upstream_dns: RwLock::new(upstream_dns),
             safesearch_enabled: true,
+            block_doh_hosts: AtomicBool::new(false),
         }
+    }
+
+    /// Answer public DoH endpoint names as blocked (see `DOH_HOSTS`).
+    pub fn set_block_doh_hosts(&self, enabled: bool) {
+        self.block_doh_hosts.store(enabled, Ordering::Relaxed);
+    }
+
+    pub fn blocks_doh_hosts(&self) -> bool {
+        self.block_doh_hosts.load(Ordering::Relaxed)
     }
 
     /// The upstream DoH target currently configured.
@@ -63,7 +107,17 @@ impl DnsFilterService {
         self.dns_cache.clear();
     }
 
-    pub fn handle_dns_payload(&self, payload: &[u8], _client_addr: SocketAddr) -> Vec<u8> {
+    pub fn handle_dns_payload(&self, payload: &[u8], client_addr: SocketAddr) -> Vec<u8> {
+        self.handle_dns_payload_for_uid(payload, client_addr, crate::statistics::UNKNOWN_UID)
+    }
+
+    /// Same as `handle_dns_payload`, counting the query against app `uid`.
+    pub fn handle_dns_payload_for_uid(
+        &self,
+        payload: &[u8],
+        _client_addr: SocketAddr,
+        uid: i32,
+    ) -> Vec<u8> {
         let question = Self::extract_question(payload);
 
         if let Some((domain, qtype)) = question {
@@ -72,7 +126,8 @@ impl DnsFilterService {
                 match Self::build_custom_host_response(payload, &custom_ip_str, qtype) {
                     Some(resp) => {
                         info!("CUSTOM HOST Override: {} -> {}", domain, custom_ip_str);
-                        self.stats_engine.record_request(&domain, false);
+                        self.stats_engine
+                            .record_request_for_uid(&domain, false, uid);
                         return resp;
                     }
                     None => warn!(
@@ -82,11 +137,20 @@ impl DnsFilterService {
                 }
             }
 
+            // 0b. Public DoH endpoints. Ahead of the rule lookup on purpose:
+            // a whitelisted DoH name would reopen the bypass this closes.
+            if self.blocks_doh_hosts() && is_doh_host(&domain) {
+                info!("BLOCKED DoH endpoint: {}", domain);
+                self.stats_engine.record_request_for_uid(&domain, true, uid);
+                return Self::build_blocked_response(payload);
+            }
+
             // 1. Check SafeSearch Enforcement
             if self.safesearch_enabled {
                 if let Some(safe_resp) = Self::handle_safesearch_rewrite(&domain, payload, qtype) {
                     info!("SAFESEARCH Rewritten: {}", domain);
-                    self.stats_engine.record_request(&domain, false);
+                    self.stats_engine
+                        .record_request_for_uid(&domain, false, uid);
                     return safe_resp;
                 }
             }
@@ -96,7 +160,7 @@ impl DnsFilterService {
 
             if is_blocked {
                 info!("BLOCKED DNS Request: {}", domain);
-                self.stats_engine.record_request(&domain, true);
+                self.stats_engine.record_request_for_uid(&domain, true, uid);
                 return Self::build_blocked_response(payload);
             }
 
@@ -107,7 +171,8 @@ impl DnsFilterService {
             // 3. Check High-Speed DNS Cache
             if let Some(cached_payload) = self.dns_cache.get(&cache_key) {
                 debug!("CACHE HIT DNS Request: {}", domain);
-                self.stats_engine.record_request(&domain, false);
+                self.stats_engine
+                    .record_request_for_uid(&domain, false, uid);
                 // Stamp the cached answer with THIS request's transaction id,
                 // otherwise the resolver client rejects the mismatched id.
                 return Self::adapt_cached_response(&cached_payload, payload);
@@ -115,7 +180,8 @@ impl DnsFilterService {
 
             // 4. Forward to Upstream DNS & Cache Result
             info!("ALLOWED DNS Request (Cache Miss): {}", domain);
-            self.stats_engine.record_request(&domain, false);
+            self.stats_engine
+                .record_request_for_uid(&domain, false, uid);
             let response = self.forward_to_upstream(payload);
 
             if response.is_empty() {
@@ -819,5 +885,94 @@ mod tests {
         // A cached SERVFAIL would keep the domain broken for the whole TTL even
         // after the upstream recovers.
         assert!(service.dns_cache.get("cache.net|1").is_none());
+    }
+
+    #[test]
+    fn test_blocked_query_is_counted_against_the_asking_app() {
+        let engine = Arc::new(RuleEngine::new());
+        engine.add_blacklist("example.com");
+        let stats = Arc::new(StatisticsEngine::new(10));
+        let service = DnsFilterService::new(
+            engine,
+            stats.clone(),
+            "https://127.0.0.1:1/dns-query".to_string(),
+        );
+
+        let query = vec![
+            0xaa, 0xbb, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, b'e',
+            b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00, 0x00, 0x01, 0x00,
+            0x01,
+        ];
+        let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
+
+        service.handle_dns_payload_for_uid(&query, client, 10_123);
+        service.handle_dns_payload(&query, client);
+
+        let logs = stats.get_recent_logs(2);
+        assert_eq!(logs[1].uid, 10_123);
+        assert_eq!(logs[0].uid, crate::statistics::UNKNOWN_UID);
+        let apps = stats.get_summary().top_apps;
+        assert!(apps.iter().any(|a| a.uid == 10_123 && a.blocked == 1));
+    }
+
+    fn query_for(name: &str) -> Vec<u8> {
+        let mut q = vec![0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0];
+        for label in name.split('.') {
+            q.push(label.len() as u8);
+            q.extend_from_slice(label.as_bytes());
+        }
+        q.extend_from_slice(&[0, 0, 1, 0, 1]);
+        q
+    }
+
+    #[test]
+    fn test_doh_hosts_are_recognised_with_subdomains() {
+        assert!(is_doh_host("dns.google"));
+        assert!(is_doh_host("DNS.Google."));
+        assert!(is_doh_host("x.cloudflare-dns.com"));
+        assert!(is_doh_host("use-application-dns.net"));
+        assert!(!is_doh_host("google.com"));
+        assert!(!is_doh_host("notdns.google.evil.com"));
+    }
+
+    #[test]
+    fn test_doh_hosts_are_blocked_only_with_the_flag() {
+        // Unreachable upstream keeps this hermetic: an allowed name answers
+        // SERVFAIL (rcode 2), a blocked one NXDOMAIN (rcode 3).
+        let service = DnsFilterService::new(
+            Arc::new(RuleEngine::new()),
+            Arc::new(StatisticsEngine::new(10)),
+            "https://127.0.0.1:1/dns-query".to_string(),
+        );
+        let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let rcode = |name: &str| service.handle_dns_payload(&query_for(name), client)[3] & 0x0f;
+
+        assert!(!service.blocks_doh_hosts());
+        assert_eq!(rcode("dns.google"), 2);
+
+        service.set_block_doh_hosts(true);
+        assert_eq!(rcode("dns.google"), 3);
+        assert_eq!(rcode("mozilla.cloudflare-dns.com"), 3);
+        assert_eq!(rcode("use-application-dns.net"), 3);
+
+        service.set_block_doh_hosts(false);
+        assert_eq!(rcode("dns.google"), 2);
+    }
+
+    #[test]
+    fn test_the_whitelist_does_not_reopen_doh() {
+        let engine = Arc::new(RuleEngine::new());
+        engine.add_whitelist("dns.google");
+        let service = DnsFilterService::new(
+            engine,
+            Arc::new(StatisticsEngine::new(10)),
+            "https://127.0.0.1:1/dns-query".to_string(),
+        );
+        service.set_block_doh_hosts(true);
+        let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        assert_eq!(
+            service.handle_dns_payload(&query_for("dns.google"), client)[3] & 0x0f,
+            3
+        );
     }
 }

@@ -35,6 +35,9 @@ pub struct SettingsSnapshot {
     /// between writes so a diff of two snapshots is readable.
     #[serde(default)]
     pub custom_hosts: Vec<(String, String)>,
+    /// Missing in snapshots from before 1.4; off then.
+    #[serde(default)]
+    pub block_doh_hosts: bool,
 }
 
 #[derive(Debug)]
@@ -63,6 +66,7 @@ pub fn settings_snapshot(engine: &RuleEngine, filter: &DnsFilterService) -> Sett
         blacklist: engine.blacklist(),
         upstream_dns: filter.upstream_dns(),
         custom_hosts: engine.custom_hosts(),
+        block_doh_hosts: filter.blocks_doh_hosts(),
     }
 }
 
@@ -96,6 +100,7 @@ pub fn import_settings(
         &snapshot.custom_hosts,
     );
     filter.set_upstream_dns(&snapshot.upstream_dns);
+    filter.set_block_doh_hosts(snapshot.block_doh_hosts);
     Ok(())
 }
 
@@ -313,5 +318,35 @@ mod tests {
         assert_eq!(summary.allowed_queries, 1);
 
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_doh_flag_crosses_the_snapshot_and_old_snapshots_default_it_off() {
+        let dir = std::env::temp_dir().join(format!("aegis-doh-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+
+        let engine = RuleEngine::new();
+        let tunnel = DnsFilterService::new(
+            Arc::new(RuleEngine::new()),
+            Arc::new(StatisticsEngine::new(4)),
+            "https://1.1.1.1/dns-query".to_string(),
+        );
+        tunnel.set_block_doh_hosts(true);
+        export_settings(&engine, &tunnel, &path).expect("export");
+
+        let app = DnsFilterService::new(
+            Arc::new(RuleEngine::new()),
+            Arc::new(StatisticsEngine::new(4)),
+            "https://1.1.1.1/dns-query".to_string(),
+        );
+        import_settings(&engine, &app, &path).expect("import");
+        assert!(app.blocks_doh_hosts());
+
+        let old: SettingsSnapshot = serde_json::from_str(
+            r#"{"version":2,"enabled_categories":[],"whitelist":[],"blacklist":[],"upstream_dns":"x"}"#,
+        )
+        .expect("old snapshot");
+        assert!(!old.block_doh_hosts);
     }
 }

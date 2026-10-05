@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
+import 'app_info.dart';
 import '../services/rule_downloader_service.dart';
 
 class DnsLogItem {
@@ -10,11 +11,15 @@ class DnsLogItem {
   final bool isBlocked;
   final DateTime timestamp;
 
+  /// The app that made the query, or [AppInfo.unknownUid].
+  final int uid;
+
   DnsLogItem({
     required this.id,
     required this.domain,
     required this.isBlocked,
     required this.timestamp,
+    this.uid = AppInfo.unknownUid,
   });
 }
 
@@ -136,6 +141,11 @@ class VpnProvider extends ChangeNotifier {
 
   Future<void> _refreshPrivateDnsState() async {
     final diagnostics = await AegisBridge.getVpnDiagnostics();
+    final sdk = (diagnostics['sdkInt'] as num?)?.toInt() ?? 0;
+    if (sdk != _androidSdkInt) {
+      _androidSdkInt = sdk;
+      notifyListeners();
+    }
     final mode = diagnostics['privateDnsMode'] as String?;
     final bypassed = mode == 'hostname';
     if (bypassed == _privateDnsBypass) return;
@@ -164,6 +174,111 @@ class VpnProvider extends ChangeNotifier {
   /// Most-resolved allowed domains, highest first. Empty until counted.
   List<Map<String, dynamic>> get topAllowedDomains =>
       _domainCounts(_stats['top_allowed']);
+
+  /// Android SDK level from the diagnostics call; 0 off Android.
+  int _androidSdkInt = 0;
+
+  /// Per-app statistics exist only on Android.
+  bool get showsPerAppUi => _androidSdkInt > 0;
+
+  /// The platform names the app behind a query from Android 10 (API 29).
+  bool get perAppSupported => _androidSdkInt >= 29;
+
+  /// Apps with the most queries, highest first. Empty until counted.
+  List<AppStat> get topApps {
+    final raw = _stats['top_apps'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => AppStat(
+              uid: (e['uid'] as num?)?.toInt() ?? AppInfo.unknownUid,
+              total: (e['total'] as num?)?.toInt() ?? 0,
+              blocked: (e['blocked'] as num?)?.toInt() ?? 0,
+            ))
+        .toList();
+  }
+
+  final Map<int, AppInfo> _appInfo = {};
+  bool _resolvingApps = false;
+
+  AppInfo appInfo(int uid) => _appInfo[uid] ?? AppInfo(uid: uid);
+
+  /// Asks the platform for the names of UIDs seen for the first time.
+  /// When each UID the platform could not name was last asked about.
+  final Map<int, DateTime> _unnamedAskedAt = {};
+
+  /// How long a UID the platform could not name waits before it is asked
+  /// again; a package being replaced is unnamed only for a moment.
+  static const Duration _unnamedRetry = Duration(minutes: 1);
+
+  @visibleForTesting
+  DateTime Function() debugNow = DateTime.now;
+
+  Future<void> _resolveNewApps() async {
+    if (_resolvingApps) return;
+    final now = debugNow();
+    final wanted = <int>{
+      for (final app in topApps) app.uid,
+      for (final log in _logs) log.uid,
+    }..removeWhere((uid) {
+        if (uid < 0 || _appInfo.containsKey(uid)) return true;
+        final askedAt = _unnamedAskedAt[uid];
+        return askedAt != null && now.difference(askedAt) < _unnamedRetry;
+      });
+    if (wanted.isEmpty) return;
+    _resolvingApps = true;
+    try {
+      final names = await AegisBridge.resolveApps(wanted.toList()..sort());
+      // A failed call says nothing about the apps; ask again next refresh.
+      if (names == null) return;
+      for (final uid in wanted) {
+        final info = names[uid];
+        if (info != null && (info.label != null || info.packageName != null)) {
+          _appInfo[uid] = info;
+          _unnamedAskedAt.remove(uid);
+        } else {
+          _unnamedAskedAt[uid] = now;
+        }
+      }
+      notifyListeners();
+    } finally {
+      _resolvingApps = false;
+    }
+  }
+
+  int? _logAppFilter;
+
+  /// The app the query log is narrowed to, or null for every app.
+  int? get logAppFilter => _logAppFilter;
+
+  void setLogAppFilter(int? uid) {
+    if (uid == _logAppFilter) return;
+    _logAppFilter = uid;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void debugSetStats(Map<String, dynamic> stats) {
+    _stats = stats;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void debugSetAppInfo(Map<int, AppInfo> apps) {
+    _appInfo
+      ..clear()
+      ..addAll(apps);
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void debugSetAndroidSdk(int sdk) {
+    _androidSdkInt = sdk;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  Future<void> debugResolveApps() => _resolveNewApps();
 
   List<Map<String, dynamic>> _domainCounts(dynamic raw) {
     if (raw is! List) return const [];
@@ -217,12 +332,38 @@ class VpnProvider extends ChangeNotifier {
     // Last, so a window that ended while the app was closed hands the Adult
     // toggle back instead of leaving it forced on.
     await _evaluateSchedule();
+    await _adoptRunningTunnel();
+  }
+
+  /// The tunnel can outlive the screen: leaving with Back ends the activity
+  /// while the VPN service keeps running, and the provider built on return
+  /// starts from "off". Take the service's word for it instead.
+  Future<void> _adoptRunningTunnel() async {
+    final diagnostics = await AegisBridge.getVpnDiagnostics();
+    // A toggle made while this was loading has already settled the state.
+    if (_isVpnActive || _isConnecting || diagnostics['tunnelUp'] != true) {
+      return;
+    }
+    _isVpnActive = true;
+    await _refreshPrivateDnsState();
+    if (enableSimulation) {
+      _startSimulation();
+    }
+    notifyListeners();
   }
 
   /// Initialize the core engine, then push the persisted allow/deny lists into
   /// it so the UI and the rule engine agree on state from the first query.
   Future<void> _bootstrapEngine() async {
     await AegisBridge.initEngine();
+    // After initEngine: a native call made before it never reaches the engine,
+    // which would then run on its defaults whatever the user had saved.
+    AegisBridge.setBlockDohHosts(_interceptHardcodedDns);
+    AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
+    AegisBridge.setCategory(0, _blockAds);
+    AegisBridge.setCategory(1, _blockTrackers);
+    AegisBridge.setCategory(2, _blockMalware);
+    AegisBridge.setCategory(_adultCategoryId, _blockAdult);
     for (final domain in _whitelist) {
       AegisBridge.addWhitelist(domain);
     }
@@ -254,6 +395,7 @@ class VpnProvider extends ChangeNotifier {
       _blockTrackers = prefs.getBool('block_trackers') ?? true;
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
+      _interceptHardcodedDns = prefs.getBool('intercept_hardcoded_dns') ?? true;
 
       _scheduleEnabled = prefs.getBool(_prefScheduleEnabled) ?? false;
       // The bounds were whole hours before; migrate them once so an existing
@@ -293,7 +435,6 @@ class VpnProvider extends ChangeNotifier {
         }
       }
 
-      AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
       notifyListeners();
     } catch (_) {}
   }
@@ -361,7 +502,9 @@ class VpnProvider extends ChangeNotifier {
         _stopSimulation();
       }
     } else {
-      if (await AegisBridge.startVpn(bypassApps: _bypassApps)) {
+      if (await AegisBridge.startVpn(
+          bypassApps: _bypassApps,
+          interceptHardcodedDns: _interceptHardcodedDns)) {
         _isVpnActive = true;
         _lastError = null;
         // A tunnel that came up is not the same as a tunnel that sees traffic;
@@ -426,7 +569,8 @@ class VpnProvider extends ChangeNotifier {
   /// active flag so the UI stops claiming protection the engine isn't giving.
   Future<void> _restoreTunnelAfterPause() async {
     if (!_isVpnActive) return;
-    final started = await AegisBridge.startVpn(bypassApps: _bypassApps);
+    final started = await AegisBridge.startVpn(
+        bypassApps: _bypassApps, interceptHardcodedDns: _interceptHardcodedDns);
     if (!started) {
       _isVpnActive = false;
       _stopSimulation();
@@ -531,6 +675,47 @@ class VpnProvider extends ChangeNotifier {
     _logs
       ..clear()
       ..addAll(logs);
+    notifyListeners();
+  }
+
+  bool _interceptHardcodedDns = true;
+
+  /// The "stop apps from bypassing the filter" switch.
+  bool get interceptHardcodedDns => _interceptHardcodedDns;
+
+  /// The "stop apps from bypassing the filter" switch. Host-name blocking
+  /// applies at once; the resolver routes are fixed when the tunnel is
+  /// built, so a running tunnel is rebuilt.
+  Future<void> setInterceptHardcodedDns(bool enabled) async {
+    if (enabled == _interceptHardcodedDns) return;
+    _interceptHardcodedDns = enabled;
+    AegisBridge.setBlockDohHosts(enabled);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('intercept_hardcoded_dns', enabled);
+    } catch (_) {}
+
+    // One rebuild at a time: a start sent while the previous tunnel is still
+    // up is ignored by the service, which would leave it on the old value.
+    final rebuild = _tunnelRebuild.then((_) => _rebuildTunnel());
+    _tunnelRebuild = rebuild;
+    await rebuild;
+  }
+
+  Future<void> _tunnelRebuild = Future.value();
+
+  Future<void> _rebuildTunnel() async {
+    // A paused tunnel picks the value up when the pause ends.
+    if (!_isVpnActive || isPaused) return;
+    if (!await AegisBridge.stopVpn()) return;
+    final started = await AegisBridge.startVpn(
+        bypassApps: _bypassApps, interceptHardcodedDns: _interceptHardcodedDns);
+    if (!started) {
+      _isVpnActive = false;
+      _stopSimulation();
+      _lastError = AegisBridge.lastVpnError ?? 'tunnel_refused';
+    }
     notifyListeners();
   }
 
@@ -711,12 +896,14 @@ class VpnProvider extends ChangeNotifier {
               timestamp: tsSec > 0
                   ? DateTime.fromMillisecondsSinceEpoch(tsSec * 1000)
                   : DateTime.now(),
+              uid: (item['uid'] as num?)?.toInt() ?? AppInfo.unknownUid,
             ),
           );
         }
       }
 
       _stats = AegisBridge.getStats();
+      unawaited(_resolveNewApps());
       _updateQpsHistory();
       notifyListeners();
     });

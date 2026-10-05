@@ -4,6 +4,59 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
+## [1.4.0] — 2026-10-05
+
+Adds per-app statistics and a switch that stops apps from slipping past the
+filter with their own resolver, and fixes how the app behaves around restarts
+and Android's Private DNS setting.
+
+Verified on Android 7.0, 11 and 14 emulators. Not yet run on a physical
+device. **iOS is still not verified**, as with 1.3.0.
+
+### Added
+
+- **Per-app statistics.** Analytics lists the apps that make the most DNS
+  queries, with how many were blocked; tapping one opens the query log
+  filtered to that app. Each log line names its app, the log can be filtered
+  by app, and the CSV export has an App column. Android 10 and later only:
+  older versions, iOS and desktop cannot say which app asked. Only queries
+  that reach the tunnel are counted — answers from the system's DNS cache,
+  apps excluded from the VPN and Private DNS traffic are not. On Android 11+
+  an app with no launcher icon is shown by its UID, since the system hides its
+  name from other apps.
+
+- **Stop apps from bypassing the filter** (Settings, on by default). DNS sent
+  straight to Google, Cloudflare, Quad9, OpenDNS, AdGuard or CleanBrowsing is
+  now filtered like any other query, and their encrypted DNS (DoT, DoH, DoQ)
+  is refused so apps fall back to the filtered resolver. Public DoH host
+  names (`dns.google`, `cloudflare-dns.com`, Firefox's
+  `use-application-dns.net` canary, …) are blocked on every platform; the
+  address routing is Android only. With the switch on, pinging 8.8.8.8 or
+  opening https://1.1.1.1 fails, and an app that only speaks DoH cannot
+  resolve — turn the switch off for those.
+
+### Fixed
+
+- **Saved settings are applied when the app starts.** After a restart the
+  engine ran on its defaults while Settings showed the saved choices: a custom
+  upstream resolver was dropped, and the Ads, Trackers, Malware and Adult
+  categories went back to their defaults.
+- **Export Logs works.** The button did nothing; it now copies the query log
+  as CSV to the clipboard.
+- **The dashboard shows a tunnel that was already running.** Opened again
+  after leaving with Back, the app said UNPROTECTED while the VPN was still
+  filtering.
+- **Reopening the app no longer kills protection.** After leaving with Back
+  while the VPN was on, opening AegisNet again crashed the process and took
+  the tunnel down with it: the native engine was initialised a second time
+  and aborted on its logger.
+- **Android, Private DNS set to a fixed provider:** turning protection on left
+  the device unable to resolve anything. The tunnel now stands aside in that
+  mode — lookups go to the Private DNS provider, unfiltered, as the dashboard
+  warning says. Changing the Private DNS setting while protection is on now
+  rebuilds the tunnel, so lookups keep working when a provider is set and
+  filtering comes back when it is set to Automatic or Off.
+
 ## [1.3.0] — 2026-10-03
 
 Adds DNS-over-TLS upstreams and one-tap allow/block from the query log, and

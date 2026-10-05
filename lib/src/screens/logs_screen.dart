@@ -2,12 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../providers/app_info.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 import '../i18n/app_strings.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
 const Color emeraldDarkColor = Color(0xFF065F46);
+
+/// The query log as CSV. Fields with a comma, quote or newline are quoted.
+String logsToCsv(List<DnsLogItem> logs, String Function(int uid) appName) {
+  String field(String value) => value.contains(RegExp(r'[",\n]'))
+      ? '"${value.replaceAll('"', '""')}"'
+      : value;
+  final csv = StringBuffer()..writeln('ID,Timestamp,Domain,Status,App');
+  for (final item in logs) {
+    csv.writeln([
+      field(item.id),
+      item.timestamp.toIso8601String(),
+      field(item.domain),
+      item.isBlocked ? 'BLOCKED' : 'ALLOWED',
+      field(appName(item.uid)),
+    ].join(','));
+  }
+  return csv.toString();
+}
 
 class LogsScreen extends StatefulWidget {
   const LogsScreen({super.key});
@@ -20,17 +39,17 @@ class _LogsScreenState extends State<LogsScreen> {
   String _searchQuery = '';
   String _statusFilter = 'all'; // 'all', 'blocked', 'allowed'
 
+  /// Copies the log to the clipboard as CSV. The app has no way to write a
+  /// file the user can reach, and it used to claim an export it never made.
   void _exportLogsCsv(List<DnsLogItem> logs) {
-    final StringBuffer csv = StringBuffer();
-    csv.writeln('ID,Timestamp,Domain,Status');
-    for (final item in logs) {
-      csv.writeln(
-          '${item.id},${item.timestamp.toIso8601String()},${item.domain},${item.isBlocked ? "BLOCKED" : "ALLOWED"}');
-    }
+    final csv = logsToCsv(
+        logs, (uid) => context.read<VpnProvider>().appInfo(uid).displayName);
+    Clipboard.setData(ClipboardData(text: csv));
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('CSV Logs Exported (${logs.length} entries)'),
+        content: Text(AppStrings.get('logs_csv_copied')
+            .replaceAll('{count}', '${logs.length}')),
         backgroundColor: Colors.cyan.shade900,
       ),
     );
@@ -43,6 +62,8 @@ class _LogsScreenState extends State<LogsScreen> {
     final accent = theme.primaryAccent;
 
     final logs = vpn.logs.where((log) {
+      final appFilter = vpn.logAppFilter;
+      if (appFilter != null && log.uid != appFilter) return false;
       final matchesSearch =
           log.domain.toLowerCase().contains(_searchQuery.toLowerCase());
       if (!matchesSearch) return false;
@@ -106,15 +127,41 @@ class _LogsScreenState extends State<LogsScreen> {
                 const SizedBox(width: 8),
                 _buildFilterChip(
                     'allowed', AppStrings.get('logs_allowed'), emeraldColor),
+                // Below Android 10 every query is an unknown app, so there is nothing to pick.
+                if (vpn.perAppSupported) ...[
+                  const Spacer(),
+                  IconButton(
+                    key: const Key('logs_app_filter'),
+                    tooltip: AppStrings.get('logs_filter_app'),
+                    icon: Icon(Icons.apps_rounded, color: accent),
+                    onPressed: () => _pickApp(vpn),
+                  ),
+                ],
               ],
             ),
           ),
+          if (vpn.logAppFilter != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: InputChip(
+                  key: const Key('logs_app_chip'),
+                  label: Text(AppStrings.get('logs_app_chip').replaceAll(
+                      '%s', vpn.appInfo(vpn.logAppFilter!).displayName)),
+                  deleteIcon: const Icon(Icons.cancel, size: 18),
+                  onDeleted: () => vpn.setLogAppFilter(null),
+                ),
+              ),
+            ),
           const SizedBox(height: 6),
           Expanded(
             child: logs.isEmpty
                 ? Center(
                     child: Text(
-                      AppStrings.get('logs_empty'),
+                      AppStrings.get(vpn.logAppFilter == null
+                          ? 'logs_empty'
+                          : 'logs_empty_app'),
                       style: TextStyle(color: Colors.grey.shade500),
                     ),
                   )
@@ -161,7 +208,9 @@ class _LogsScreenState extends State<LogsScreen> {
                           ),
                         ),
                         subtitle: Text(
-                          timeStr,
+                          vpn.showsPerAppUi && item.uid != AppInfo.unknownUid
+                              ? '$timeStr · ${vpn.appInfo(item.uid).displayName}'
+                              : timeStr,
                           style: TextStyle(
                               color: Colors.grey.shade500, fontSize: 11),
                         ),
@@ -192,6 +241,34 @@ class _LogsScreenState extends State<LogsScreen> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Lists the apps present in the current log so one can be picked.
+  void _pickApp(VpnProvider vpn) {
+    final uids = {for (final log in vpn.logs) log.uid}.toList()
+      ..sort((a, b) =>
+          vpn.appInfo(a).displayName.compareTo(vpn.appInfo(b).displayName));
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF161B22),
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final uid in uids)
+              ListTile(
+                key: Key('logs_app_option_$uid'),
+                title: Text(vpn.appInfo(uid).displayName,
+                    style: const TextStyle(color: Colors.white)),
+                onTap: () {
+                  vpn.setLogAppFilter(uid);
+                  Navigator.of(sheetContext).pop();
+                },
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -27,7 +27,10 @@ lazy_static! {
 /// Initialize Aegis Core Engine
 #[no_mangle]
 pub extern "C" fn aegis_init() -> c_int {
-    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
+    // A second Flutter engine in the same process (activity reopened while the
+    // VPN service kept the process alive) calls this again; init_from_env
+    // would abort the process, tunnel included.
+    let _ = env_logger::try_init_from_env(env_logger::Env::default().default_filter_or("info"));
     log::info!("Aegis Core Engine Initialized");
     1
 }
@@ -293,12 +296,33 @@ pub extern "C" fn aegis_handle_dns_packet(
 /// fully-formed IPv4/UDP reply packet is written to `out_buf`; the reply length
 /// is returned. Returns 0 when the packet is not a DNS query, is malformed, or
 /// the reply would not fit in `out_max_len` (caller should then drop/forward it).
+///
+/// Desktop and iOS do not know which app sent a packet; Android passes it to
+/// `aegis_process_ip_packet_for_uid` instead.
 #[no_mangle]
 pub extern "C" fn aegis_process_ip_packet(
     in_buf: *const u8,
     in_len: usize,
     out_buf: *mut u8,
     out_max_len: usize,
+) -> usize {
+    aegis_process_ip_packet_for_uid(
+        in_buf,
+        in_len,
+        out_buf,
+        out_max_len,
+        crate::statistics::UNKNOWN_UID,
+    )
+}
+
+/// Same as `aegis_process_ip_packet`, recording `uid` as the asking app (Android).
+#[no_mangle]
+pub extern "C" fn aegis_process_ip_packet_for_uid(
+    in_buf: *const u8,
+    in_len: usize,
+    out_buf: *mut u8,
+    out_max_len: usize,
+    uid: i32,
 ) -> usize {
     if in_buf.is_null() || out_buf.is_null() || in_len == 0 {
         return 0;
@@ -310,7 +334,7 @@ pub extern "C" fn aegis_process_ip_packet(
     // Check IPv4 UDP port 53
     if let Some(p) = crate::packet::parse_ipv4_udp(packet) {
         if p.dst_port == 53 {
-            let dns_response = DNS_FILTER.handle_dns_payload(p.payload, dummy_client);
+            let dns_response = DNS_FILTER.handle_dns_payload_for_uid(p.payload, dummy_client, uid);
             if dns_response.is_empty() {
                 return 0;
             }
@@ -334,7 +358,7 @@ pub extern "C" fn aegis_process_ip_packet(
     // Check IPv6 UDP port 53
     if let Some(p) = crate::packet::parse_ipv6_udp(packet) {
         if p.dst_port == 53 {
-            let dns_response = DNS_FILTER.handle_dns_payload(p.payload, dummy_client);
+            let dns_response = DNS_FILTER.handle_dns_payload_for_uid(p.payload, dummy_client, uid);
             if dns_response.is_empty() {
                 return 0;
             }
@@ -355,7 +379,32 @@ pub extern "C" fn aegis_process_ip_packet(
         }
     }
 
-    0
+    // Anything else here was sent to a public resolver address routed into
+    // the tunnel to stop apps bypassing the filter (or is TCP to our own DNS
+    // address). Refuse it at once so the app falls back to the system
+    // resolver instead of waiting for a timeout.
+    let refusal = match packet.first().map(|b| b >> 4) {
+        Some(4) => crate::packet::build_tcp_reset_v4(packet)
+            .or_else(|| crate::packet::build_udp_port_unreachable_v4(packet)),
+        Some(6) => crate::packet::build_tcp_reset_v6(packet)
+            .or_else(|| crate::packet::build_udp_port_unreachable_v6(packet)),
+        _ => None,
+    };
+    match refusal {
+        Some(reply) if reply.len() <= out_max_len => {
+            unsafe {
+                std::ptr::copy_nonoverlapping(reply.as_ptr(), out_buf, reply.len());
+            }
+            reply.len()
+        }
+        _ => 0,
+    }
+}
+
+/// Block public DNS-over-HTTPS endpoint names (see `dns_filter::DOH_HOSTS`).
+#[no_mangle]
+pub extern "C" fn aegis_set_block_doh_hosts(enabled: c_int) {
+    DNS_FILTER.set_block_doh_hosts(enabled != 0);
 }
 
 /// Get current statistics as JSON string
@@ -474,5 +523,108 @@ mod tests {
         for h in handles {
             h.join().expect("a worker thread panicked");
         }
+    }
+
+    #[test]
+    fn process_ip_packet_for_uid_records_the_uid() {
+        // A UID no other test uses, so the shared engine's log can be searched.
+        const UID: i32 = 4_242;
+        let packet = dns_packet("doubleclick.net", 0x4242);
+        let mut out = vec![0u8; packet.len() + 1500];
+
+        let n = super::aegis_process_ip_packet_for_uid(
+            packet.as_ptr(),
+            packet.len(),
+            out.as_mut_ptr(),
+            out.len(),
+            UID,
+        );
+
+        assert!(n > 0);
+        assert!(super::STATS_ENGINE
+            .get_recent_logs(1000)
+            .iter()
+            .any(|e| e.uid == UID && e.domain == "doubleclick.net"));
+    }
+
+    /// Android keeps the process alive for the VPN service after the activity
+    /// is closed with Back; reopening the app starts a new Flutter engine,
+    /// which initialises the native engine again in the same process. That
+    /// used to abort the whole process — and the tunnel with it.
+    #[test]
+    fn init_can_run_more_than_once_in_a_process() {
+        assert_eq!(super::aegis_init(), 1);
+        assert_eq!(super::aegis_init(), 1);
+    }
+
+    fn run(packet: &[u8]) -> Vec<u8> {
+        let mut out = vec![0u8; packet.len() + 1500];
+        let n = super::aegis_process_ip_packet_for_uid(
+            packet.as_ptr(),
+            packet.len(),
+            out.as_mut_ptr(),
+            out.len(),
+            -1,
+        );
+        out.truncate(n);
+        out
+    }
+
+    #[test]
+    fn tcp_reaching_the_tunnel_is_reset() {
+        let mut syn = vec![0u8; 40];
+        syn[0] = 0x45;
+        syn[2..4].copy_from_slice(&40u16.to_be_bytes());
+        syn[9] = 6;
+        syn[12..16].copy_from_slice(&[10, 0, 0, 2]);
+        syn[16..20].copy_from_slice(&[8, 8, 8, 8]);
+        syn[20..22].copy_from_slice(&40000u16.to_be_bytes());
+        syn[22..24].copy_from_slice(&853u16.to_be_bytes());
+        syn[32] = 5 << 4;
+        syn[33] = crate::packet::TCP_SYN;
+
+        let reply = run(&syn);
+        let (_, _, h) = crate::packet::parse_ipv4_tcp(&reply).expect("a TCP reply");
+        assert_eq!(h.flags & crate::packet::TCP_RST, crate::packet::TCP_RST);
+    }
+
+    #[test]
+    fn udp_to_another_port_gets_port_unreachable() {
+        let mut quic = dns_packet("example.com", 1);
+        quic[22..24].copy_from_slice(&443u16.to_be_bytes());
+        let reply = run(&quic);
+        assert_eq!(reply[9], 1, "ICMP");
+        assert_eq!((reply[20], reply[21]), (3, 3));
+    }
+
+    #[test]
+    fn plain_dns_to_a_public_resolver_is_filtered() {
+        let mut query = dns_packet("doubleclick.net", 7);
+        query[16..20].copy_from_slice(&[8, 8, 8, 8]);
+        let csum = {
+            query[10] = 0;
+            query[11] = 0;
+            crate::packet::internet_checksum(&query[..20])
+        };
+        query[10..12].copy_from_slice(&csum.to_be_bytes());
+
+        let reply = run(&query);
+        let udp = crate::packet::parse_ipv4_udp(&reply).expect("a DNS reply");
+        assert_eq!(
+            udp.src_ip,
+            [8, 8, 8, 8],
+            "answers as the resolver the app asked"
+        );
+        assert_eq!(udp.payload[3] & 0x0f, 3, "NXDOMAIN");
+    }
+
+    #[test]
+    fn icmp_reaching_the_tunnel_is_dropped() {
+        let mut echo = vec![0u8; 28];
+        echo[0] = 0x45;
+        echo[2..4].copy_from_slice(&28u16.to_be_bytes());
+        echo[9] = 1;
+        echo[20] = 8;
+        assert!(run(&echo).is_empty());
     }
 }
