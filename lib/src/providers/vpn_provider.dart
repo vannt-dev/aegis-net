@@ -332,6 +332,24 @@ class VpnProvider extends ChangeNotifier {
     // Last, so a window that ended while the app was closed hands the Adult
     // toggle back instead of leaving it forced on.
     await _evaluateSchedule();
+    await _adoptRunningTunnel();
+  }
+
+  /// The tunnel can outlive the screen: leaving with Back ends the activity
+  /// while the VPN service keeps running, and the provider built on return
+  /// starts from "off". Take the service's word for it instead.
+  Future<void> _adoptRunningTunnel() async {
+    final diagnostics = await AegisBridge.getVpnDiagnostics();
+    // A toggle made while this was loading has already settled the state.
+    if (_isVpnActive || _isConnecting || diagnostics['tunnelUp'] != true) {
+      return;
+    }
+    _isVpnActive = true;
+    await _refreshPrivateDnsState();
+    if (enableSimulation) {
+      _startSimulation();
+    }
+    notifyListeners();
   }
 
   /// Initialize the core engine, then push the persisted allow/deny lists into

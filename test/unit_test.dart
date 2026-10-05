@@ -320,6 +320,25 @@ void main() {
       provider.dispose();
     });
 
+    test('a tunnel already running when the app opens is shown as on',
+        () async {
+      // Leaving with Back ends the activity but not the VPN service; the
+      // provider built on return used to start from "off" regardless.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(vpnChannel, (MethodCall call) async {
+        if (call.method == 'getVpnDiagnostics') {
+          return <String, dynamic>{'tunnelUp': true};
+        }
+        return true;
+      });
+
+      final provider = VpnProvider(enableSimulation: false);
+      await provider.ready;
+
+      expect(provider.isVpnActive, isTrue);
+      provider.dispose();
+    });
+
     test('automatic and off Private DNS modes do not raise the warning',
         () async {
       // "opportunistic" probes DoT against the tunnel's own DNS server, which
