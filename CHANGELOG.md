@@ -34,6 +34,11 @@ verified native pipeline on Android.
   while the VPN was on, opening AegisNet again crashed the process and took
   the tunnel down with it: the native engine was initialised a second time
   and aborted on its logger.
+- **Android, Private DNS set to a fixed provider:** turning protection on left
+  the device unable to resolve anything. The tunnel now stands aside in that
+  mode — lookups go to the Private DNS provider, unfiltered, as the dashboard
+  warning says — and filtering starts once Private DNS is set to Automatic or
+  Off and protection is switched on again.
 
 ## [1.3.0] — 2026-10-03
 

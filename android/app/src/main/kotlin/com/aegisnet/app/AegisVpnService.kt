@@ -11,6 +11,7 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.Process
+import android.provider.Settings
 import android.system.OsConstants
 import android.util.Log
 import java.io.FileInputStream
@@ -207,6 +208,13 @@ class AegisVpnService : VpnService(), Runnable {
     private fun loadIntercept(): Boolean =
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_INTERCEPT, true)
 
+    /// Private DNS set to a fixed provider ("hostname" mode).
+    private fun strictPrivateDns(): Boolean = try {
+        Settings.Global.getString(contentResolver, "private_dns_mode") == "hostname"
+    } catch (e: Exception) {
+        false
+    }
+
     private fun enterForeground() {
         val manager = getSystemService(NotificationManager::class.java)
 
@@ -302,15 +310,27 @@ class AegisVpnService : VpnService(), Runnable {
             val builder = Builder()
                 .setSession("AegisNet Shield")
                 .addAddress("10.0.0.2", 24)
-                .addDnsServer(TUN_DNS_SERVER)
                 .addRoute(TUN_DNS_SERVER, 32)
                 // The v6 half closes the IPv6 DNS leak that MIUI / Android 14
                 // open by handing apps an IPv6 resolver alongside the v4 one.
                 .addAddress(TUN_ADDRESS_V6, 128)
-                .addDnsServer(TUN_DNS_SERVER_V6)
                 .addRoute(TUN_DNS_SERVER_V6, 128)
 
-            if (interceptResolvers) {
+            // Strict Private DNS ("hostname" mode) cannot be filtered: Android
+            // speaks DoT to its provider for every lookup, on this network
+            // too, and a tunnel that forwards nothing cannot carry that. With
+            // our DNS server advertised the device was left with no DNS at
+            // all. Without one, lookups stay on the real network — unfiltered,
+            // which the dashboard warns about. The resolver routes stay out
+            // as well: the provider is usually one of those addresses.
+            val strictPrivateDns = strictPrivateDns()
+            if (!strictPrivateDns) {
+                builder.addDnsServer(TUN_DNS_SERVER)
+                builder.addDnsServer(TUN_DNS_SERVER_V6)
+            } else {
+                Log.w(TAG, "Strict Private DNS is on; the tunnel will not filter")
+            }
+            if (interceptResolvers && !strictPrivateDns) {
                 for (address in KnownResolvers.ADDRESSES) {
                     try {
                         builder.addRoute(address, KnownResolvers.prefixLength(address))
