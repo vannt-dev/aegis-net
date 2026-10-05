@@ -4,7 +4,14 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
-## [Unreleased]
+## [1.4.0] — 2026-10-05
+
+Adds per-app statistics and a switch that stops apps from slipping past the
+filter with their own resolver, and fixes how the app behaves around restarts
+and Android's Private DNS setting.
+
+Verified on Android 7.0, 11 and 14 emulators. Not yet run on a physical
+device. **iOS is still not verified**, as with 1.3.0.
 
 ### Added
 
@@ -30,6 +37,12 @@ verified native pipeline on Android.
 
 ### Fixed
 
+- **Saved settings are applied when the app starts.** After a restart the
+  engine ran on its defaults while Settings showed the saved choices: a custom
+  upstream resolver was dropped, and the Ads, Trackers, Malware and Adult
+  categories went back to their defaults.
+- **Export Logs works.** The button did nothing; it now copies the query log
+  as CSV to the clipboard.
 - **The dashboard shows a tunnel that was already running.** Opened again
   after leaving with Back, the app said UNPROTECTED while the VPN was still
   filtering.
@@ -40,8 +53,9 @@ verified native pipeline on Android.
 - **Android, Private DNS set to a fixed provider:** turning protection on left
   the device unable to resolve anything. The tunnel now stands aside in that
   mode — lookups go to the Private DNS provider, unfiltered, as the dashboard
-  warning says — and filtering starts once Private DNS is set to Automatic or
-  Off and protection is switched on again.
+  warning says. Changing the Private DNS setting while protection is on now
+  rebuilds the tunnel, so lookups keep working when a provider is set and
+  filtering comes back when it is set to Automatic or Off.
 
 ## [1.3.0] — 2026-10-03
 
