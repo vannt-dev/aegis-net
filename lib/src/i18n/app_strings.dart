@@ -104,6 +104,7 @@ class AppStrings {
       'logs_block_added': '{domain} is now always blocked.',
       'logs_rule_removed': 'Removed the rule for {domain}.',
       'logs_copied': 'Copied {domain}.',
+      'logs_csv_copied': 'Copied {count} log entries to the clipboard as CSV.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': 'Successfully synced %s active ad-blocking rules!',
@@ -291,6 +292,7 @@ class AppStrings {
       'logs_block_added': 'Từ giờ luôn chặn {domain}.',
       'logs_rule_removed': 'Đã xoá quy tắc cho {domain}.',
       'logs_copied': 'Đã sao chép {domain}.',
+      'logs_csv_copied': 'Đã sao chép {count} dòng log dạng CSV vào clipboard.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': 'Đã đồng bộ %s quy tắc chặn quảng cáo!',
@@ -474,6 +476,7 @@ class AppStrings {
       'logs_block_added': '{domain}을(를) 항상 차단합니다.',
       'logs_rule_removed': '{domain}에 대한 규칙을 제거했습니다.',
       'logs_copied': '{domain}을(를) 복사했습니다.',
+      'logs_csv_copied': '로그 {count}건을 CSV로 클립보드에 복사했습니다.',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': '차단 규칙 %s개를 동기화했습니다!',
@@ -649,6 +652,7 @@ class AppStrings {
       'logs_block_added': '{domain} を常にブロックします。',
       'logs_rule_removed': '{domain} のルールを削除しました。',
       'logs_copied': '{domain} をコピーしました。',
+      'logs_csv_copied': 'ログ {count} 件を CSV としてクリップボードにコピーしました。',
 
       // -------------------------------------------------------------- rules
       'rules_synced_count': '%s件のブロックルールを同期しました！',
