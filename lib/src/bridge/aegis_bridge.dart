@@ -371,6 +371,11 @@ class AegisBridge {
   /// Enable/disable a rule category on the engine.
   /// (0: Ads, 1: Trackers, 2: Malware, 3: Adult)
   static void setCategory(int categoryId, bool enabled) {
+    final override = debugSetCategoryOverride;
+    if (override != null) {
+      override(categoryId, enabled);
+      return;
+    }
     if (_useNativeFfi) {
       AegisNativeBindings.setCategory(categoryId, enabled);
     }
@@ -393,8 +398,19 @@ class AegisBridge {
     publishSettings();
   }
 
+  @visibleForTesting
+  static void Function(int categoryId, bool enabled)? debugSetCategoryOverride;
+
+  @visibleForTesting
+  static void Function(String upstream)? debugSetUpstreamDnsOverride;
+
   /// Point the engine's upstream DoH resolver at a new host/IP/URL.
   static void setUpstreamDns(String upstream) {
+    final override = debugSetUpstreamDnsOverride;
+    if (override != null) {
+      override(upstream);
+      return;
+    }
     if (_useNativeFfi) {
       AegisNativeBindings.setUpstreamDns(upstream);
     }
