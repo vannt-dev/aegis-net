@@ -180,6 +180,36 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  test('saved upstream and categories reach the engine after it starts',
+      () async {
+    // Pushed while the preferences loaded, they were dropped: the native
+    // library was not open yet, so a restart ran on the engine's defaults.
+    SharedPreferences.setMockInitialValues({
+      'upstream_dns': 'tls://9.9.9.9#dns.quad9.net',
+      'block_ads': false,
+      'block_adult': true,
+    });
+    final upstreams = <String>[];
+    final categories = <int, bool>{};
+    AegisBridge.debugSetUpstreamDnsOverride = (upstream) {
+      if (AegisBridge.debugEngineInitialized) upstreams.add(upstream);
+    };
+    AegisBridge.debugSetCategoryOverride = (id, enabled) {
+      if (AegisBridge.debugEngineInitialized) categories[id] = enabled;
+    };
+    addTearDown(() {
+      AegisBridge.debugSetUpstreamDnsOverride = null;
+      AegisBridge.debugSetCategoryOverride = null;
+    });
+
+    final vpn = VpnProvider(enableSimulation: false);
+    await vpn.ready;
+
+    expect(upstreams, ['tls://9.9.9.9#dns.quad9.net']);
+    expect(categories, {0: false, 1: true, 2: true, 3: true});
+    vpn.dispose();
+  });
+
   test('the flag reaches the engine after it is initialised', () async {
     // Calls made before initEngine never reach the native library.
     final readyAtCall = <bool>[];
