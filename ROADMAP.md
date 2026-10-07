@@ -55,7 +55,7 @@
       verified against the host or the name after `#`, connections reused.
       Checked against Cloudflare, Google and Quad9 from a desktop build and
       cross-compiled for Android arm64; **not yet run on a device or emulator**.
-      No EDNS padding yet
+      Queries are padded to 128-octet blocks (`edns.rs`, RFC 7830 / RFC 8467)
 
 ## 📍 Phase 3: Premium UI/UX & User Customization
 - [x] Cyberpunk Glassmorphic Dashboard with Pulsing Power Switch
