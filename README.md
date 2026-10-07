@@ -47,6 +47,7 @@
 - **⏱️ DNS Latency Benchmark**: Interactive built-in benchmark tool to test and automatically select the fastest upstream DNS provider.
 - **📱 System-Wide Protection**: Intercepts OS-level DNS traffic via local split-tunnel VPN (`VpnService` on Android, `NEPacketTunnelProvider` on iOS) without routing web traffic to remote servers.
 - **📊 Real-time Dashboard & Analytics**: Interactive traffic graphs, query counters, ad-block stats, bandwidth savings, and detailed category analytics.
+- **🚫 Block an app (Android 10+)**: Refuse every DNS lookup a chosen app makes, from the Top apps list in Analytics. It stops name lookups, not connections to fixed IP addresses.
 - **📱 Per-app statistics (Android 10+)**: See which apps make the most DNS queries and how many were blocked, and filter the live query log by app.
 - **🛡️ Bypass protection**: DNS sent straight to public resolvers is filtered too, and their encrypted DNS is refused so apps fall back to the filter.
 - **📜 Live Query Log & CSV Export**: Real-time query monitoring with status filter chips (`ALL LOGS`, `BLOCKED`, `ALLOWED`), instant domain search and CSV export. Tap an entry to allow or block that domain on the spot.
@@ -181,6 +182,8 @@ flutter pub get
 
 #### Step 2: Build Rust Core Engine (Optional for Web)
 > **Note**: If the native engine is not compiled, AegisNet automatically falls back to its built-in **Pure Dart Engine**, allowing UI testing without native compilation.
+
+> **The engine's source is not in this repository.** `rust/aegis_core` is a git submodule of the private repository `vannt-dev/aegis-core`. With read access to it, fetch it with `git submodule update --init rust/aegis_core` (or clone with `--recurse-submodules`). Without access the directory stays empty: the Flutter app still runs on the Pure Dart Engine, but the native filter cannot be built.
 
 ```bash
 cd rust/aegis_core

@@ -4,6 +4,44 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
+## [Unreleased]
+
+## [1.5.0] — 2026-10-07
+
+Adds a way to cut one app off from DNS, pads DNS-over-TLS queries, and moves
+the Rust engine to a private repository.
+
+The engine built from the private repository was verified on an Android 14
+emulator. The first obfuscated release build is this one. Not yet run on a
+physical device. **iOS is still not verified**, as with 1.4.0.
+
+### Changed
+
+- **The Rust engine moved to a private repository.** `rust/aegis_core` is now
+  a git submodule of `vannt-dev/aegis-core`; this repository keeps the Flutter
+  app, the Android and iOS shells and the workflows. The engine as it was up
+  to this change remains in this repository's history. Release builds of the
+  APK are also built with Dart obfuscation.
+
+### Added
+
+- **Padded DNS-over-TLS queries.** Queries sent to a `tls://` resolver are
+  padded to a multiple of 128 octets (EDNS(0) padding, RFC 7830, with the
+  block size RFC 8467 recommends), so the length of a query no longer hints
+  at the name inside the encrypted connection. A query without an OPT record
+  gets one for the padding, and it is removed from the answer again.
+  DNS-over-HTTPS queries are not padded.
+- **Block an app.** Each app in Analytics → Top apps has a block button:
+  every DNS lookup the app makes is then refused, whatever the name and
+  whatever the allow list or custom hosts say, and the app is marked
+  "Blocked" in the list. The same button allows it again. The choice is kept
+  by package name and survives restarts and reinstalls of the blocked app.
+  Android 10 and later only, like the per-app statistics it builds on, and
+  only for installed apps: the OS's own UIDs cannot be blocked. It takes
+  effect on the app's next lookup — addresses Android has already cached keep
+  working until they expire — and an app that connects to fixed IP addresses
+  without looking anything up is not affected.
+
 ## [1.4.0] — 2026-10-05
 
 Adds per-app statistics and a switch that stops apps from slipping past the

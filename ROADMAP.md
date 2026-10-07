@@ -47,12 +47,15 @@
       ICMP port-unreachable) so apps fall back, and public DoH host names are
       blocked. The earlier attempt broke DNS because the routes captured the
       engine's own upstream; the app now excludes itself from the VPN.
+- [x] Block an app: refuse every lookup made by a chosen Android UID
+      (Android 10+). The list is held in the engine and checked before any
+      other rule; the app keeps it by package name
 - [x] Real DNS-over-TLS transport (RFC 7858, port 853) in the Rust core
       (`dot.rs`): `tls://host[:port][#name]` and `dot://` upstreams, certificate
       verified against the host or the name after `#`, connections reused.
       Checked against Cloudflare, Google and Quad9 from a desktop build and
       cross-compiled for Android arm64; **not yet run on a device or emulator**.
-      No EDNS padding yet
+      Queries are padded to 128-octet blocks (`edns.rs`, RFC 7830 / RFC 8467)
 
 ## 📍 Phase 3: Premium UI/UX & User Customization
 - [x] Cyberpunk Glassmorphic Dashboard with Pulsing Power Switch

@@ -141,9 +141,29 @@ class MainActivity: FlutterActivity() {
                     val uids = call.argument<List<Int>>("uids") ?: emptyList()
                     result.success(uids.map { resolveApp(it) })
                 }
+                // The UID behind each package the user has blocked. A UID is
+                // only stable while the app stays installed, so the list is
+                // kept by package name and looked up again at every start.
+                "resolvePackageUids" -> {
+                    val packages = call.argument<List<String>>("packages") ?: emptyList()
+                    result.success(resolvePackageUids(packages))
+                }
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /// Packages that are not installed are left out rather than reported.
+    private fun resolvePackageUids(packages: List<String>): Map<String, Int> {
+        val uids = HashMap<String, Int>()
+        for (name in packages) {
+            try {
+                uids[name] = packageManager.getApplicationInfo(name, 0).uid
+            } catch (e: Exception) {
+                // Uninstalled, or hidden from this app by package visibility.
+            }
+        }
+        return uids
     }
 
     /// True when the ongoing tunnel notification can actually be shown.
