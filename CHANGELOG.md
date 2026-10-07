@@ -4,6 +4,21 @@ All notable engineering changes to **AegisNet**. This log records the work that
 turned the app from a UI shell with mocked data into a working DNS filter with a
 verified native pipeline on Android.
 
+## [Unreleased]
+
+### Added
+
+- **Block an app.** Each app in Analytics → Top apps has a block button:
+  every DNS lookup the app makes is then refused, whatever the name and
+  whatever the allow list or custom hosts say, and the app is marked
+  "Blocked" in the list. The same button allows it again. The choice is kept
+  by package name and survives restarts and reinstalls of the blocked app.
+  Android 10 and later only, like the per-app statistics it builds on, and
+  only for installed apps: the OS's own UIDs cannot be blocked. It takes
+  effect on the app's next lookup — addresses Android has already cached keep
+  working until they expire — and an app that connects to fixed IP addresses
+  without looking anything up is not affected.
+
 ## [1.4.0] — 2026-10-05
 
 Adds per-app statistics and a switch that stops apps from slipping past the

@@ -4,6 +4,7 @@ use crate::rule_engine::RuleEngine;
 use crate::statistics::StatisticsEngine;
 use lazy_static::lazy_static;
 use log::{debug, info, warn};
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
@@ -59,6 +60,7 @@ pub struct DnsFilterService {
     upstream_dns: RwLock<String>,
     safesearch_enabled: bool,
     block_doh_hosts: AtomicBool,
+    blocked_uids: RwLock<HashSet<i32>>,
 }
 
 impl DnsFilterService {
@@ -74,7 +76,22 @@ impl DnsFilterService {
             upstream_dns: RwLock::new(upstream_dns),
             safesearch_enabled: true,
             block_doh_hosts: AtomicBool::new(false),
+            blocked_uids: RwLock::new(HashSet::new()),
         }
+    }
+
+    /// Replace the apps whose every lookup is refused, named by Android UID.
+    ///
+    /// Negative UIDs are dropped: `UNKNOWN_UID` stands for every query the
+    /// platform could not attribute, and refusing those would take the whole
+    /// device's DNS down on Android 9 and older, where nothing is attributed.
+    pub fn set_blocked_uids(&self, uids: &[i32]) {
+        *self.blocked_uids.write().unwrap() =
+            uids.iter().copied().filter(|uid| *uid >= 0).collect();
+    }
+
+    pub fn is_uid_blocked(&self, uid: i32) -> bool {
+        uid >= 0 && self.blocked_uids.read().unwrap().contains(&uid)
     }
 
     /// Answer public DoH endpoint names as blocked (see `DOH_HOSTS`).
@@ -121,6 +138,15 @@ impl DnsFilterService {
         let question = Self::extract_question(payload);
 
         if let Some((domain, qtype)) = question {
+            // An app the user has cut off gets no answers at all. Ahead of
+            // everything else, the whitelist and custom hosts included: those
+            // say which names are fine, this says the asker is not.
+            if self.is_uid_blocked(uid) {
+                info!("BLOCKED app (uid {}): {}", uid, domain);
+                self.stats_engine.record_request_for_uid(&domain, true, uid);
+                return Self::build_blocked_response(payload);
+            }
+
             // 0. Check Custom Host Override
             if let Some(custom_ip_str) = self.rule_engine.get_custom_host(&domain) {
                 match Self::build_custom_host_response(payload, &custom_ip_str, qtype) {
@@ -933,6 +959,66 @@ mod tests {
         assert!(is_doh_host("use-application-dns.net"));
         assert!(!is_doh_host("google.com"));
         assert!(!is_doh_host("notdns.google.evil.com"));
+    }
+
+    #[test]
+    fn test_a_blocked_app_gets_no_answers_and_other_apps_are_untouched() {
+        // Unreachable upstream keeps this hermetic: an allowed name answers
+        // SERVFAIL (rcode 2), a refused one NXDOMAIN (rcode 3).
+        let engine = Arc::new(RuleEngine::new());
+        engine.add_custom_host("myrouter.local", "192.168.1.1");
+        let stats = Arc::new(StatisticsEngine::new(10));
+        let service = DnsFilterService::new(
+            engine,
+            stats.clone(),
+            "https://127.0.0.1:1/dns-query".to_string(),
+        );
+        let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let rcode = |name: &str, uid: i32| {
+            service.handle_dns_payload_for_uid(&query_for(name), client, uid)[3] & 0x0f
+        };
+
+        assert_eq!(rcode("example.com", 10_200), 2);
+        assert_eq!(rcode("myrouter.local", 10_200), 0);
+
+        service.set_blocked_uids(&[10_200, 10_300]);
+        assert!(service.is_uid_blocked(10_200));
+        assert_eq!(rcode("example.com", 10_200), 3);
+        // Even a name the user mapped by hand: the app is cut off, not the name.
+        assert_eq!(rcode("myrouter.local", 10_200), 3);
+        assert_eq!(rcode("example.com", 10_201), 2);
+        assert_eq!(rcode("myrouter.local", 10_201), 0);
+
+        let apps = stats.get_summary().top_apps;
+        let blocked_app = apps.iter().find(|a| a.uid == 10_200).unwrap();
+        assert_eq!(blocked_app.blocked, 2);
+
+        // The list is replaced, not added to.
+        service.set_blocked_uids(&[10_300]);
+        assert!(!service.is_uid_blocked(10_200));
+        assert_eq!(rcode("example.com", 10_200), 2);
+
+        service.set_blocked_uids(&[]);
+        assert!(!service.is_uid_blocked(10_300));
+    }
+
+    #[test]
+    fn test_queries_without_an_app_are_never_blocked_by_uid() {
+        let service = DnsFilterService::new(
+            Arc::new(RuleEngine::new()),
+            Arc::new(StatisticsEngine::new(10)),
+            "https://127.0.0.1:1/dns-query".to_string(),
+        );
+        let client: SocketAddr = "127.0.0.1:0".parse().unwrap();
+
+        // A caller that passes the unknown UID along must not be able to
+        // switch off DNS for everything the platform could not attribute.
+        service.set_blocked_uids(&[crate::statistics::UNKNOWN_UID, -7]);
+        assert!(!service.is_uid_blocked(crate::statistics::UNKNOWN_UID));
+        assert_eq!(
+            service.handle_dns_payload(&query_for("example.com"), client)[3] & 0x0f,
+            2
+        );
     }
 
     #[test]

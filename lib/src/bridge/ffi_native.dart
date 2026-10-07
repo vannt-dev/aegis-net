@@ -26,6 +26,9 @@ typedef AegisRemoveCustomHostDart = void Function(Pointer<Utf8> domain);
 typedef AegisIsBlockedC = Int32 Function(Pointer<Utf8> domain);
 typedef AegisIsBlockedDart = int Function(Pointer<Utf8> domain);
 
+typedef AegisSetBlockedUidsC = Void Function(Pointer<Int32> uids, UintPtr len);
+typedef AegisSetBlockedUidsDart = void Function(Pointer<Int32> uids, int len);
+
 typedef AegisSetCategoryC = Void Function(Int32 categoryId, Int32 enabled);
 typedef AegisSetCategoryDart = void Function(int categoryId, int enabled);
 typedef AegisSetFlagC = Void Function(Int32 enabled);
@@ -78,6 +81,7 @@ class AegisNativeBindings {
   static AegisIsBlockedDart? _isDomainBlocked;
   static AegisSetCategoryDart? _setCategory;
   static AegisSetFlagDart? _setBlockDohHosts;
+  static AegisSetBlockedUidsDart? _setBlockedUids;
   static AegisVoidDart? _clearDownloadedRules;
   static AegisSetUpstreamDnsDart? _setUpstreamDns;
   static AegisGetStatsDart? _getStatsJson;
@@ -136,6 +140,9 @@ class AegisNativeBindings {
         _setBlockDohHosts = _lib!
             .lookupFunction<AegisSetFlagC, AegisSetFlagDart>(
                 'aegis_set_block_doh_hosts');
+        _setBlockedUids = _lib!
+            .lookupFunction<AegisSetBlockedUidsC, AegisSetBlockedUidsDart>(
+                'aegis_set_blocked_uids');
         _clearDownloadedRules = _lib!.lookupFunction<AegisVoidC, AegisVoidDart>(
             'aegis_clear_downloaded_rules');
         _setUpstreamDns = _lib!
@@ -231,6 +238,22 @@ class AegisNativeBindings {
   static void setBlockDohHosts(bool enabled) {
     if (!_isLoaded || _setBlockDohHosts == null) return;
     _setBlockDohHosts!(enabled ? 1 : 0);
+  }
+
+  /// Replaces the engine's list of apps whose lookups are all refused.
+  static void setBlockedUids(List<int> uids) {
+    if (!_isLoaded || _setBlockedUids == null) return;
+    if (uids.isEmpty) {
+      _setBlockedUids!(nullptr, 0);
+      return;
+    }
+    final buffer = malloc<Int32>(uids.length);
+    try {
+      buffer.asTypedList(uids.length).setAll(0, uids);
+      _setBlockedUids!(buffer, uids.length);
+    } finally {
+      malloc.free(buffer);
+    }
   }
 
   static void setCategory(int categoryId, bool enabled) {
