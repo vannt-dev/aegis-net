@@ -6,6 +6,15 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-10-07
+
+Adds a way to cut one app off from DNS, pads DNS-over-TLS queries, and moves
+the Rust engine to a private repository.
+
+The engine built from the private repository was verified on an Android 14
+emulator. The first obfuscated release build is this one. Not yet run on a
+physical device. **iOS is still not verified**, as with 1.4.0.
+
 ### Changed
 
 - **The Rust engine moved to a private repository.** `rust/aegis_core` is now
