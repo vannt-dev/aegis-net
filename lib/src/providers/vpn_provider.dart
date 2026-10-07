@@ -359,6 +359,7 @@ class VpnProvider extends ChangeNotifier {
     // After initEngine: a native call made before it never reaches the engine,
     // which would then run on its defaults whatever the user had saved.
     AegisBridge.setBlockDohHosts(_interceptHardcodedDns);
+    await _applyBlockedApps();
     AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
     AegisBridge.setCategory(0, _blockAds);
     AegisBridge.setCategory(1, _blockTrackers);
@@ -422,6 +423,12 @@ class VpnProvider extends ChangeNotifier {
       if (savedBypass != null) {
         _bypassApps.clear();
         _bypassApps.addAll(savedBypass);
+      }
+
+      final savedBlocked = prefs.getStringList('blocked_apps');
+      if (savedBlocked != null) {
+        _blockedApps.clear();
+        _blockedApps.addAll(savedBlocked);
       }
 
       final savedHosts = prefs.getStringList('custom_hosts');
@@ -733,6 +740,74 @@ class VpnProvider extends ChangeNotifier {
     _bypassApps.remove(packageName);
     _saveListPref('bypass_apps', _bypassApps);
     notifyListeners();
+  }
+
+  /// Packages the user has cut off: every lookup they make is refused.
+  final List<String> _blockedApps = [];
+
+  /// The UIDs those packages run under now, which is what the engine is
+  /// given. A UID lasts only while its app stays installed, so the choice is
+  /// kept by package name and looked up again at every start.
+  Set<int> _blockedUids = {};
+
+  List<String> get blockedApps => List.unmodifiable(_blockedApps);
+
+  /// Whether the app behind [uid] is cut off.
+  bool isUidBlocked(int uid) => _blockedUids.contains(uid);
+
+  /// Whether [info] can be cut off: an installed app the platform names.
+  /// The OS's own UIDs are left out — refusing their lookups breaks the
+  /// device rather than an app.
+  bool canBlockApp(AppInfo info) =>
+      perAppSupported &&
+      info.uid >= AppInfo.firstAppUid &&
+      info.packageName != null;
+
+  /// Refuse, or allow again, every lookup made by [info]'s app. It applies
+  /// to the next lookup; addresses Android already holds for the app keep
+  /// working until they expire.
+  Future<void> setAppBlocked(AppInfo info, bool blocked) async {
+    final package = info.packageName;
+    if (package == null || !canBlockApp(info)) return;
+    if (blocked == _blockedApps.contains(package)) return;
+    if (blocked) {
+      _blockedApps.add(package);
+      _blockedUids = {..._blockedUids, info.uid};
+    } else {
+      _blockedApps.remove(package);
+      _blockedUids = {..._blockedUids}..remove(info.uid);
+    }
+    // At once, from what is already known; the look-up below then settles
+    // the cases this cannot see, such as two blocked packages sharing a UID.
+    AegisBridge.setBlockedUids(_blockedUids.toList()..sort());
+    notifyListeners();
+    await _saveListPref('blocked_apps', _blockedApps);
+    await _applyBlockedApps();
+  }
+
+  /// Looks the blocked packages' UIDs up and hands them to the engine. A
+  /// failed look-up leaves what is in force alone; a package that is no
+  /// longer installed stays in the list and takes effect if it comes back.
+  Future<void> _applyBlockedApps() async {
+    Map<String, int>? uids;
+    while (true) {
+      final asked = List<String>.of(_blockedApps);
+      uids = await AegisBridge.resolvePackageUids(asked);
+      // The list changed while the platform was answering: that answer is
+      // about a list nobody holds any more, and applying it would undo the
+      // change. Ask again about the list as it is now.
+      if (listEquals(asked, _blockedApps)) break;
+    }
+    if (uids == null) return;
+    final next = {
+      for (final uid in uids.values)
+        if (uid >= AppInfo.firstAppUid) uid,
+    };
+    final changed =
+        next.length != _blockedUids.length || !next.containsAll(_blockedUids);
+    _blockedUids = next;
+    AegisBridge.setBlockedUids(next.toList()..sort());
+    if (changed) notifyListeners();
   }
 
   /// Update the schedule. Bounds are minutes since midnight; pass null to

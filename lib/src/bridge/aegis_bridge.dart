@@ -214,6 +214,47 @@ class AegisBridge {
     }
   }
 
+  /// Replaces the channel call in tests.
+  @visibleForTesting
+  static Future<Map<String, int>> Function(List<String> packages)?
+      debugResolvePackageUidsOverride;
+
+  /// The UID each installed package runs under. A package that is not
+  /// installed is left out; null means the call itself failed (no such call
+  /// on desktop and iOS, or a channel error).
+  static Future<Map<String, int>?> resolvePackageUids(
+      List<String> packages) async {
+    if (packages.isEmpty) return {};
+    try {
+      final override = debugResolvePackageUidsOverride;
+      if (override != null) return await override(packages);
+      final raw = await _vpnChannel.invokeMapMethod<String, dynamic>(
+          'resolvePackageUids', {'packages': packages});
+      return {
+        for (final entry in (raw ?? const <String, dynamic>{}).entries)
+          if (entry.value is num) entry.key: (entry.value as num).toInt(),
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @visibleForTesting
+  static void Function(List<int> uids)? debugSetBlockedUidsOverride;
+
+  /// Refuse every lookup made by these apps (Android UIDs); replaces the
+  /// previous list.
+  static void setBlockedUids(List<int> uids) {
+    final override = debugSetBlockedUidsOverride;
+    if (override != null) {
+      override(uids);
+      return;
+    }
+    if (_useNativeFfi) {
+      AegisNativeBindings.setBlockedUids(uids);
+    }
+  }
+
   /// Stop Local VPN Tunnel / Desktop DNS Proxy
   static Future<bool> stopVpn() async {
     try {

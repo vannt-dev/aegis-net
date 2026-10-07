@@ -407,6 +407,19 @@ pub extern "C" fn aegis_set_block_doh_hosts(enabled: c_int) {
     DNS_FILTER.set_block_doh_hosts(enabled != 0);
 }
 
+/// Replace the list of apps (Android UIDs) whose every lookup is refused.
+/// `len == 0` clears it; `uids` may then be null.
+#[no_mangle]
+pub extern "C" fn aegis_set_blocked_uids(uids: *const i32, len: usize) {
+    if uids.is_null() || len == 0 {
+        DNS_FILTER.set_blocked_uids(&[]);
+        return;
+    }
+    // SAFETY: the caller hands over `len` readable i32 values at `uids`.
+    let list = unsafe { std::slice::from_raw_parts(uids, len) };
+    DNS_FILTER.set_blocked_uids(list);
+}
+
 /// Get current statistics as JSON string
 #[no_mangle]
 pub extern "C" fn aegis_get_stats_json() -> *mut c_char {
@@ -545,6 +558,19 @@ mod tests {
             .get_recent_logs(1000)
             .iter()
             .any(|e| e.uid == UID && e.domain == "doubleclick.net"));
+    }
+
+    #[test]
+    fn set_blocked_uids_takes_a_list_and_a_null_clears_it() {
+        // UIDs no other test uses: the engine is shared by the whole binary.
+        let uids = [7_301, 7_302];
+        super::aegis_set_blocked_uids(uids.as_ptr(), uids.len());
+        assert!(super::DNS_FILTER.is_uid_blocked(7_301));
+        assert!(super::DNS_FILTER.is_uid_blocked(7_302));
+
+        super::aegis_set_blocked_uids(std::ptr::null(), 0);
+        assert!(!super::DNS_FILTER.is_uid_blocked(7_301));
+        assert!(!super::DNS_FILTER.is_uid_blocked(7_302));
     }
 
     /// Android keeps the process alive for the VPN service after the activity

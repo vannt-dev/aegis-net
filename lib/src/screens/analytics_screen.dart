@@ -232,13 +232,16 @@ class AnalyticsScreen extends StatelessWidget {
         else if (apps.isEmpty)
           _buildEmptyState(AppStrings.get('analytics_no_apps'))
         else
-          for (final app in apps) _buildAppRow(vpn, app, accent),
+          for (final app in apps) _buildAppRow(context, vpn, app, accent),
       ],
     );
   }
 
-  Widget _buildAppRow(VpnProvider vpn, AppStat app, Color accent) {
-    final name = vpn.appInfo(app.uid).displayName;
+  Widget _buildAppRow(
+      BuildContext context, VpnProvider vpn, AppStat app, Color accent) {
+    final info = vpn.appInfo(app.uid);
+    final name = info.displayName;
+    final blocked = vpn.isUidBlocked(app.uid);
     return InkWell(
       key: Key('top_app_${app.uid}'),
       borderRadius: BorderRadius.circular(12),
@@ -270,12 +273,37 @@ class AnalyticsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13)),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(name,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13)),
+                      ),
+                      if (blocked) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          key: Key('app_blocked_badge_${app.uid}'),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            AppStrings.get('app_blocked_badge'),
+                            style: TextStyle(
+                                color: Colors.redAccent.shade100,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     AppStrings.get('app_query_counts')
@@ -296,6 +324,28 @@ class AnalyticsScreen extends StatelessWidget {
                 ],
               ),
             ),
+            if (vpn.canBlockApp(info))
+              IconButton(
+                key: Key('app_block_toggle_${app.uid}'),
+                tooltip: AppStrings.get(blocked ? 'app_unblock' : 'app_block'),
+                icon: Icon(
+                  blocked ? Icons.block : Icons.block_outlined,
+                  size: 20,
+                  color: blocked ? Colors.redAccent : Colors.grey.shade500,
+                ),
+                onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  await vpn.setAppBlocked(info, !blocked);
+                  messenger
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(SnackBar(
+                      content: Text(AppStrings.get(blocked
+                              ? 'app_unblocked_notice'
+                              : 'app_blocked_notice')
+                          .replaceAll('%s', name)),
+                    ));
+                },
+              ),
           ],
         ),
       ),
