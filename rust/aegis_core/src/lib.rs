@@ -2,6 +2,7 @@ pub mod api;
 pub mod cache;
 pub mod dns_filter;
 pub mod dot;
+pub mod edns;
 pub mod jni_bridge;
 pub mod packet;
 pub mod rule_engine;

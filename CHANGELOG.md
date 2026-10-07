@@ -8,6 +8,12 @@ verified native pipeline on Android.
 
 ### Added
 
+- **Padded DNS-over-TLS queries.** Queries sent to a `tls://` resolver are
+  padded to a multiple of 128 octets (EDNS(0) padding, RFC 7830, with the
+  block size RFC 8467 recommends), so the length of a query no longer hints
+  at the name inside the encrypted connection. A query without an OPT record
+  gets one for the padding, and it is removed from the answer again.
+  DNS-over-HTTPS queries are not padded.
 - **Block an app.** Each app in Analytics → Top apps has a block button:
   every DNS lookup the app makes is then refused, whatever the name and
   whatever the allow list or custom hosts say, and the app is marked

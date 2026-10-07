@@ -139,20 +139,31 @@ impl DotClient {
             return None;
         }
 
+        // TLS hides the name being asked for but not its length; padding
+        // takes that away too (RFC 7830, with the block size of RFC 8467).
+        let padded = crate::edns::pad_query(query);
+        let finish = |answer: Vec<u8>| {
+            if padded.added_opt {
+                crate::edns::strip_added_opt(answer)
+            } else {
+                answer
+            }
+        };
+
         // An idle connection may have been closed by the resolver since it was
         // last used; that only shows on the next write or read, so a failure
         // on a reused connection is retried once on a fresh one.
         if let Some(mut connection) = self.take_idle(target) {
-            if let Some(answer) = Self::round_trip(&mut connection, query) {
+            if let Some(answer) = Self::round_trip(&mut connection, &padded.message) {
                 self.keep(target, connection);
-                return Some(answer);
+                return Some(finish(answer));
             }
         }
 
         let mut connection = self.connect(target)?;
-        let answer = Self::round_trip(&mut connection, query)?;
+        let answer = Self::round_trip(&mut connection, &padded.message)?;
         self.keep(target, connection);
-        Some(answer)
+        Some(finish(answer))
     }
 
     fn take_idle(&self, target: &DotTarget) -> Option<Connection> {
@@ -410,6 +421,30 @@ mod tests {
             assert_eq!(answer.len(), query(id).len());
         }
         assert_eq!(server.connections.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn queries_go_out_padded_to_a_block() {
+        let server = serve(Behaviour::KeepOpen);
+        let client = client();
+        let target = target(server.port, "127.0.0.1");
+
+        // The test server echoes what it received. A query that carries its
+        // own OPT record keeps it in the answer, so the echo shows the size
+        // that was on the wire.
+        let mut with_edns = query(0x2001);
+        with_edns[11] = 1;
+        with_edns.extend_from_slice(&[0, 0, 41, 0x10, 0, 0, 0, 0, 0, 0, 0]);
+        let echoed = client.exchange(&target, &with_edns).expect("an answer");
+        assert_eq!(echoed.len(), crate::edns::QUERY_BLOCK);
+        assert_eq!(echoed[with_edns.len()..with_edns.len() + 2], [0, 12]);
+
+        // A query without one gets its answer back without the OPT record
+        // that was added to carry the padding.
+        let plain = query(0x2002);
+        let answer = client.exchange(&target, &plain).expect("an answer");
+        assert_eq!(answer.len(), plain.len());
+        assert_eq!(answer[10..12], [0, 0]);
     }
 
     #[test]
