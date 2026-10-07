@@ -6,6 +6,14 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+### Changed
+
+- **The Rust engine moved to a private repository.** `rust/aegis_core` is now
+  a git submodule of `vannt-dev/aegis-core`; this repository keeps the Flutter
+  app, the Android and iOS shells and the workflows. The engine as it was up
+  to this change remains in this repository's history. Release builds of the
+  APK are also built with Dart obfuscation.
+
 ### Added
 
 - **Padded DNS-over-TLS queries.** Queries sent to a `tls://` resolver are

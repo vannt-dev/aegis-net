@@ -15,6 +15,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/fetch-core
+        with:
+          deploy-key: ${{ secrets.CORE_DEPLOY_KEY }}
 
       - name: Install Rust Toolchain + iOS targets
         uses: dtolnay/rust-toolchain@stable
@@ -52,6 +55,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/fetch-core
+        with:
+          deploy-key: ${{ secrets.CORE_DEPLOY_KEY }}
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
