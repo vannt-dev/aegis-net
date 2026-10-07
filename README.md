@@ -183,6 +183,8 @@ flutter pub get
 #### Step 2: Build Rust Core Engine (Optional for Web)
 > **Note**: If the native engine is not compiled, AegisNet automatically falls back to its built-in **Pure Dart Engine**, allowing UI testing without native compilation.
 
+> **The engine's source is not in this repository.** `rust/aegis_core` is a git submodule of the private repository `vannt-dev/aegis-core`. With read access to it, fetch it with `git submodule update --init rust/aegis_core` (or clone with `--recurse-submodules`). Without access the directory stays empty: the Flutter app still runs on the Pure Dart Engine, but the native filter cannot be built.
+
 ```bash
 cd rust/aegis_core
 cargo build --release   # host build (desktop/tests)

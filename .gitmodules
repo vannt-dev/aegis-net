@@ -1,0 +1,3 @@
+[submodule "rust/aegis_core"]
+	path = rust/aegis_core
+	url = https://github.com/vannt-dev/aegis-core.git

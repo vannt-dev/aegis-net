@@ -1,0 +1,40 @@
+name: Fetch the private core
+description: >-
+  Checks out rust/aegis_core, a submodule of the private repository
+  vannt-dev/aegis-core, with a read-only deploy key. Run it after
+  actions/checkout in every job that tests or builds the Rust engine.
+
+inputs:
+  deploy-key:
+    description: Private half of the read-only deploy key registered on vannt-dev/aegis-core
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Check out the engine submodule
+      shell: bash
+      env:
+        CORE_DEPLOY_KEY: ${{ inputs.deploy-key }}
+      run: |
+        if [ -z "$CORE_DEPLOY_KEY" ]; then
+          echo "::error::The CORE_DEPLOY_KEY secret is not available to this run, so the private core cannot be fetched. A pull request from a fork never receives it."
+          exit 1
+        fi
+
+        key="$RUNNER_TEMP/core_deploy_key"
+        hosts="$RUNNER_TEMP/core_known_hosts"
+        printf '%s\n' "$CORE_DEPLOY_KEY" > "$key"
+        chmod 600 "$key"
+        ssh-keyscan -t ed25519 github.com > "$hosts" 2>/dev/null
+
+        # The deploy key speaks SSH; .gitmodules names the HTTPS address so a
+        # developer's own credentials work without one. Point this checkout
+        # at the SSH address instead.
+        git submodule init rust/aegis_core
+        git config submodule.rust/aegis_core.url git@github.com:vannt-dev/aegis-core.git
+        GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$hosts" \
+          git submodule update rust/aegis_core
+        rm -f "$key"
+
+        test -f rust/aegis_core/Cargo.toml

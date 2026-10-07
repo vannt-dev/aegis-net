@@ -31,6 +31,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/fetch-core
+        with:
+          deploy-key: ${{ secrets.CORE_DEPLOY_KEY }}
 
       # ---------------------------------------------------------------- version
       - name: Xác định phiên bản
@@ -181,7 +184,12 @@ jobs:
       # ----------------------------------------------------------------- build
       - name: Build APK release
         run: |
+          # Obfuscated: the names in the shipped Dart code are replaced, which
+          # makes the APK harder to read back. The symbol files stay on the
+          # runner: an artifact of a public repository can be downloaded by
+          # anyone, and with the APK they undo the obfuscation.
           flutter build apk --release \
+            --obfuscate --split-debug-info=build/symbols \
             --build-name="${{ steps.ver.outputs.version }}" \
             --build-number="${{ github.run_number }}"
 
