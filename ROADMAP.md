@@ -50,6 +50,9 @@
 - [x] Block an app: refuse every lookup made by a chosen Android UID
       (Android 10+). The list is held in the engine and checked before any
       other rule; the app keeps it by package name
+- [x] DNS-over-QUIC transport (RFC 9250, UDP port 853) in the Rust core
+      (`doq.rs`): `quic://host[:port][#name]` and `doq://` upstreams, one
+      reused connection, a stream per query, message id 0, padded like DoT
 - [x] Real DNS-over-TLS transport (RFC 7858, port 853) in the Rust core
       (`dot.rs`): `tls://host[:port][#name]` and `dot://` upstreams, certificate
       verified against the host or the name after `#`, connections reused.

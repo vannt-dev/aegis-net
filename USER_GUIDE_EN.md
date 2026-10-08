@@ -77,7 +77,7 @@ Switch to the **Settings** tab:
 Switch to the **Settings** tab:
 * **Cyberpunk Neon Themes**: Choose from 4 vibrant accent themes (Neon Cyan, Emerald Green, Electric Purple, Sunset Gold).
 * **DNS Speed Test**: Tap the **`SPEED TEST`** button next to Upstream Resolver. AegisNet will measure latency ($ms$) across Cloudflare, Google, AdGuard, and Quad9, automatically tagging the **`FASTEST`** provider.
-* **Custom resolver**: Type a resolver into the field under the provider list and press Done. Use an `https://` DoH URL (`https://dns.nextdns.io/abc123`) or a DNS-over-TLS target (`tls://1.1.1.1`). When the DoT host is an IP address whose certificate is issued for a name, add the name after `#`: `tls://94.140.14.14#dns.adguard-dns.com`. Prefer an address over a hostname: with protection on, the hostname of the resolver would have to be resolved through the resolver itself.
+* **Custom resolver**: Type a resolver into the field under the provider list and press Done. Use an `https://` DoH URL (`https://dns.nextdns.io/abc123`) or a DNS-over-TLS target (`tls://1.1.1.1`). When the DoT host is an IP address whose certificate is issued for a name, add the name after `#`: `tls://94.140.14.14#dns.adguard-dns.com`. A DNS-over-QUIC resolver is written the same way under `quic://`: `quic://94.140.14.14#dns.adguard-dns.com`. It needs UDP port 853 to be open on your network; where it is not, lookups fail until you choose another resolver. Prefer an address over a hostname: with protection on, the hostname of the resolver would have to be resolved through the resolver itself.
 
 ---
 
