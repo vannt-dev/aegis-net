@@ -541,6 +541,10 @@ void main() {
         'tls://[2606:4700:4700::1111]:853#one.one.one.one',
         'tls://2606:4700:4700::1111',
         'tls://1.1.1.1/',
+        'quic://dns.adguard-dns.com',
+        'quic://94.140.14.14#dns.adguard-dns.com',
+        'doq://94.140.14.14:8853#dns.adguard-dns.com',
+        'quic://[2a10:50c0::ad1:ff]:853#dns.adguard-dns.com',
       ];
       for (final upstream in accepted) {
         expect(VpnProvider.normalizeCustomUpstream(upstream), upstream,
@@ -562,6 +566,9 @@ void main() {
         'tls://1.1.1.1/dns-query',
         'tls://user@1.1.1.1',
         'tls://1.1.1.1:port',
+        'quic://',
+        'quic://dns.adguard-dns.com/dns-query',
+        'h3://dns.google',
         'tls://1.1.1.1 #dns.google',
         'Cloudflare (1.1.1.1)',
       ];

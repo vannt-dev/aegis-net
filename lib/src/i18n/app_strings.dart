@@ -154,7 +154,7 @@ class AppStrings {
           'Custom resolver: https://dns.nextdns.io/xxxxxx or tls://1.1.1.1',
       'settings_upstream_saved': 'Custom resolver saved.',
       'settings_upstream_invalid':
-          'Not a usable resolver. Enter an https:// DoH URL or a tls://host[:port][#name] target.',
+          'Not a usable resolver. Enter an https:// DoH URL, or a tls:// or quic:// target written host[:port][#name].',
       'settings_split_title': 'App-by-App Split Tunneling (Bypass VPN)',
       'settings_split_desc':
           'Selected apps will bypass Aegis Local VPN and connect directly.',
@@ -349,7 +349,7 @@ class AppStrings {
           'Máy chủ tự chọn: https://dns.nextdns.io/xxxxxx hoặc tls://1.1.1.1',
       'settings_upstream_saved': 'Đã lưu máy chủ DNS tự chọn.',
       'settings_upstream_invalid':
-          'Máy chủ không hợp lệ. Nhập URL DoH dạng https:// hoặc địa chỉ tls://host[:port][#name].',
+          'Máy chủ không hợp lệ. Nhập URL DoH dạng https://, hoặc địa chỉ tls:// hay quic:// viết theo dạng host[:port][#name].',
       'settings_split_title': 'Chia Đường Truyền Theo Ứng Dụng (Bỏ Qua VPN)',
       'settings_split_desc':
           'Ứng dụng được chọn sẽ không đi qua VPN của Aegis mà kết nối thẳng.',
@@ -537,7 +537,7 @@ class AppStrings {
           '사용자 지정 서버: https://dns.nextdns.io/xxxxxx 또는 tls://1.1.1.1',
       'settings_upstream_saved': '사용자 지정 DNS 서버를 저장했습니다.',
       'settings_upstream_invalid':
-          '사용할 수 없는 서버입니다. https:// DoH URL 또는 tls://host[:port][#name] 형식으로 입력하세요.',
+          '사용할 수 없는 서버입니다. https:// DoH URL, 또는 tls:// 나 quic:// 뒤에 host[:port][#name] 형식으로 입력하세요.',
       'settings_split_title': '앱별 분할 터널링 (VPN 우회)',
       'settings_split_desc': '선택한 앱은 Aegis VPN을 우회해 직접 연결됩니다.',
       'settings_pkg_hint': '패키지 이름 (예: com.example.app)',
@@ -718,7 +718,7 @@ class AppStrings {
           'カスタムサーバー: https://dns.nextdns.io/xxxxxx または tls://1.1.1.1',
       'settings_upstream_saved': 'カスタムDNSサーバーを保存しました。',
       'settings_upstream_invalid':
-          '使用できないサーバーです。https:// のDoH URL、または tls://host[:port][#name] の形式で入力してください。',
+          '使用できないサーバーです。https:// のDoH URL、または tls:// か quic:// に続けて host[:port][#name] の形式で入力してください。',
       'settings_split_title': 'アプリ別スプリットトンネル（VPN除外）',
       'settings_split_desc': '選択したアプリはAegisのVPNを経由せず直接接続します。',
       'settings_pkg_hint': 'パッケージ名（例: com.example.app）',
