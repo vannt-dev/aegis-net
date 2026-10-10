@@ -760,10 +760,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ?.group(1) ??
                               IosDohProfileService.defaultDohUrl
                           : vpn.upstreamDns;
-                      // The profile is a DoH profile; a DNS-over-TLS upstream
-                      // has no URL to put in it.
-                      final dohUrl = configured.startsWith('tls://') ||
-                              configured.startsWith('dot://')
+                      // The profile is a DoH profile; a DNS-over-TLS or
+                      // DNS-over-QUIC upstream has no URL to put in it.
+                      final dohUrl = !configured.startsWith('https://') &&
+                              configured.contains('://')
                           ? IosDohProfileService.defaultDohUrl
                           : configured;
                       final ok = await IosDohProfileService.installProfile(

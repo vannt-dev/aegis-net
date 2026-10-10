@@ -454,14 +454,15 @@ class VpnProvider extends ChangeNotifier {
   }
 
   static final RegExp _dotUpstream = RegExp(
-      r'^(?:tls|dot)://(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.\-]+|[0-9A-Fa-f:]+)'
+      r'^(?:tls|dot|quic|doq)://(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.\-]+|[0-9A-Fa-f:]+)'
       r'(?::\d{1,5})?(?:#[A-Za-z0-9.\-]+)?/?$');
 
   /// Checks a resolver typed by the user and returns it trimmed, or null when
   /// it is not one the engine can use.
   ///
-  /// Accepted: an `https://` DoH URL, or a DNS-over-TLS target written
-  /// `tls://host[:port][#name]` (`dot://` works too). A bad value must be
+  /// Accepted: an `https://` DoH URL, a DNS-over-TLS target written
+  /// `tls://host[:port][#name]` (`dot://` works too), or a DNS-over-QUIC
+  /// target written the same way under `quic://` (or `doq://`). A bad value must be
   /// refused here: the engine answers every query SERVFAIL for an upstream it
   /// cannot reach, so saving a typo would take DNS down for the whole device.
   static String? normalizeCustomUpstream(String input) {

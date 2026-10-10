@@ -6,6 +6,24 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-10-10
+
+Adds DNS-over-QUIC as a third encrypted way to reach a custom resolver, next to
+DNS-over-HTTPS and DNS-over-TLS.
+
+Verified on an Android 14 emulator, with a dead port as the control. Not yet
+run on a physical device. **iOS is still not verified**, as with 1.5.0.
+
+- **DNS-over-QUIC upstream (RFC 9250).** A custom resolver can now be written
+  `quic://host[:port][#name]` (`doq://` works too), with the same parts as a
+  `tls://` one. The engine opens one QUIC connection to the resolver, sends
+  each query on a stream of its own with message id 0 and the same padding as
+  DoT, and reconnects when the resolver closes it. An unreachable resolver
+  answers SERVFAIL within the usual 2.5 s. QUIC needs UDP port 853; a network
+  that blocks it makes every lookup fail, and the engine does not fall back to
+  another protocol on its own. Built with `quinn` and a one-thread `tokio`
+  runtime; the TLS is the `rustls` and `ring` already in the engine.
+
 ## [1.5.0] — 2026-10-07
 
 Adds a way to cut one app off from DNS, pads DNS-over-TLS queries, and moves
