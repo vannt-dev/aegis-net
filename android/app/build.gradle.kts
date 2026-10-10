@@ -1,6 +1,9 @@
 import java.io.File
 import java.io.FileInputStream
+import java.net.URI
+import java.security.MessageDigest
 import java.util.Properties
+import java.util.zip.ZipInputStream
 
 plugins {
     id("com.android.application")
@@ -83,11 +86,15 @@ fun isOnPath(exe: String): Boolean {
     } ?: false
 }
 
+// The engine's source is a private submodule. A checkout without it has an
+// empty rust/aegis_core, and the prebuilt engine below stands in.
+val engineSourcePresent = file("../../rust/aegis_core/Cargo.toml").exists()
+
 val buildRustEngine by tasks.registering(Exec::class) {
     val rustDir = file("../../rust/aegis_core")
     val jniLibs = file("src/main/jniLibs")
     workingDir = rustDir
-    onlyIf { rustDir.exists() && isOnPath("cargo-ndk") }
+    onlyIf { engineSourcePresent && isOnPath("cargo-ndk") }
 
     val cargoArgs = listOf(
         "ndk", "-t", "arm64-v8a", "-t", "armeabi-v7a", "-t", "x86_64",
@@ -102,7 +109,76 @@ val buildRustEngine by tasks.registering(Exec::class) {
     }
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(buildRustEngine) }
+// --- Prebuilt engine, for a checkout without the engine's source ---
+// Every release carries aegis-engine-android.zip: the three libaegis_core.so
+// of that release's APK. Without the source they are fetched into jniLibs, so
+// a clone of this repository alone builds an app that filters DNS. The release
+// of this checkout's own version is tried first and the latest one after it,
+// because develop runs ahead of the last release.
+//
+//   -Paegis.prebuilt=false     build without an engine (fallback mode)
+//   -Paegis.engineUrl=<url>    take the two files from another place
+val engineAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+
+val fetchPrebuiltEngine by tasks.registering {
+    val jniLibs = file("src/main/jniLibs")
+    val pubspec = file("../../pubspec.yaml")
+    val wanted = (findProperty("aegis.prebuilt") as String?) != "false"
+    val customUrl = findProperty("aegis.engineUrl") as String?
+    onlyIf {
+        !engineSourcePresent && wanted &&
+            engineAbis.any { !File(jniLibs, "$it/libaegis_core.so").exists() }
+    }
+    doLast {
+        val releases = "https://github.com/vannt-dev/aegis-net/releases"
+        val version = Regex("""^version:\s*([0-9]+(?:\.[0-9]+)*)""", RegexOption.MULTILINE)
+            .find(pubspec.readText())?.groupValues?.get(1)
+        val places = if (customUrl != null) {
+            listOf(customUrl.trimEnd('/'))
+        } else {
+            listOfNotNull(version?.let { "$releases/download/v$it" }, "$releases/latest/download")
+        }
+        fun bytesOf(address: String): ByteArray =
+            URI(address).toURL().openStream().use { it.readBytes() }
+
+        for (place in places) {
+            try {
+                val zip = bytesOf("$place/aegis-engine-android.zip")
+                val expected = String(bytesOf("$place/aegis-engine-android.zip.sha256"))
+                    .trim().split(Regex("""\s+""")).first().lowercase()
+                val actual = MessageDigest.getInstance("SHA-256").digest(zip)
+                    .joinToString("") { "%02x".format(it) }
+                check(actual == expected) { "checksum is $actual, expected $expected" }
+                var written = 0
+                ZipInputStream(zip.inputStream()).use { entries ->
+                    while (true) {
+                        val entry = entries.nextEntry ?: break
+                        // Only what an engine archive holds; nothing may land
+                        // outside jniLibs.
+                        val abi = entry.name.substringBefore('/')
+                        if (entry.name != "$abi/libaegis_core.so" || abi !in engineAbis) continue
+                        File(jniLibs, entry.name).apply { parentFile.mkdirs() }.writeBytes(entries.readBytes())
+                        written++
+                    }
+                }
+                check(written == engineAbis.size) { "the archive holds $written of ${engineAbis.size} libraries" }
+                println("[aegis] Prebuilt DNS engine from $place -> $jniLibs")
+                return@doLast
+            } catch (error: Exception) {
+                println("[aegis] No prebuilt engine at $place: ${error.message}")
+            }
+        }
+        println(
+            "[aegis] WARNING: building without the DNS engine. The app installs and runs, " +
+                "but in fallback mode it filters nothing.",
+        )
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(buildRustEngine)
+    dependsOn(fetchPrebuiltEngine)
+}
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
