@@ -6,6 +6,16 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+- **The app builds from this repository alone.** The engine's source is a
+  private submodule, and a checkout without it built an app that filtered
+  nothing. Every release now carries the engine already built
+  (`aegis-engine-android.zip`, `AegisCore.xcframework.zip`, each with its
+  SHA-256): the Android build fetches the libraries when the source is
+  missing, and `ios/fetch_prebuilt_engine.sh` fetches the framework. The
+  1.6.0 release has the Android archive; the iOS one comes with the next run
+  of the engine workflow. See "Building without the engine's source" in the
+  README.
+
 ## [1.6.0] — 2026-10-10
 
 Adds DNS-over-QUIC as a third encrypted way to reach a custom resolver, next to

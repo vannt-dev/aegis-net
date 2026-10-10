@@ -87,7 +87,7 @@ approach, such as an alternative client (ReVanced, NewPipe) or YouTube Premium.
 
 | Platform | Native DNS filtering | Notes |
 |----------|:--------------------:|-------|
-| **Android** | ✅ **Working (verified on emulator)** | TUN → Rust → device pipeline, DNS-only routing, DoH upstream. `libaegis_core.so` is built by a Gradle `cargo-ndk` task. |
+| **Android** | ✅ **Working (verified on emulator)** | TUN → Rust → device pipeline, DNS-only routing, DoH upstream. `libaegis_core.so` is built by a Gradle `cargo-ndk` task, or fetched already built when the engine's source is absent. |
 | **iOS** | 🚧 **App shell builds in CI; filtering not wired up** | The Flutter shell compiles on a macOS runner on every PR. Extension provider, `NETunnelProviderManager` channel, entitlements, App Group state sharing and the Rust framework script are all in the repo, and the Rust core cross-compiles for iOS. Still missing: the `PacketTunnel` target does not exist in the Xcode project, so none of the extension Swift has ever been compiled. Final assembly needs macOS/Xcode + a paid Apple Developer account — see [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md). |
 | **Desktop** | ✅ **Scaffolding Ready (Windows/macOS/Linux)** | Full native desktop project scaffolding with `DesktopDnsProxy` integration for local DNS resolution. |
 | **Web** | ➖ **Fallback Engine / WASM Ready** | Runs the pure-Dart fallback engine (simulation) with WASM target scaffolding for browser testing. |
@@ -183,7 +183,7 @@ flutter pub get
 #### Step 2: Build Rust Core Engine (Optional for Web)
 > **Note**: If the native engine is not compiled, AegisNet automatically falls back to its built-in **Pure Dart Engine**, allowing UI testing without native compilation.
 
-> **The engine's source is not in this repository.** `rust/aegis_core` is a git submodule of the private repository `vannt-dev/aegis-core`. With read access to it, fetch it with `git submodule update --init rust/aegis_core` (or clone with `--recurse-submodules`). Without access the directory stays empty: the Flutter app still runs on the Pure Dart Engine, but the native filter cannot be built.
+> **The engine's source is not in this repository.** `rust/aegis_core` is a git submodule of the private repository `vannt-dev/aegis-core`. With read access to it, fetch it with `git submodule update --init rust/aegis_core` (or clone with `--recurse-submodules`). Without access the directory stays empty, and the build uses the engine **already built**: see [Building without the engine's source](#building-without-the-engines-source) below. You can then skip the rest of this step.
 
 ```bash
 cd rust/aegis_core
@@ -206,6 +206,30 @@ pure-Dart fallback (no crash).
 
 > 💡 **Windows Troubleshooting (`os error 4551`)**:
 > If Windows Smart App Control blocks `cargo.exe`, add an exclusion for `~/.cargo` and `~/.rustup` in **Windows Security > App & browser control**, or switch toolchain to GNU (`rustup default stable-x86_64-pc-windows-gnu`).
+
+#### Building without the engine's source
+
+A clone of this repository alone builds a working app. Every release from 1.6.0
+on carries the engine as binaries, and the build fetches them when
+`rust/aegis_core` is empty. No Rust toolchain is needed.
+
+- **Android**: nothing to do. `flutter build apk` / `flutter run` fetches
+  `aegis-engine-android.zip` (the three `libaegis_core.so` of that release's
+  APK) into `android/app/src/main/jniLibs` and checks it against the published
+  SHA-256. The release of this checkout's version is tried first, then the
+  latest one. `-Paegis.prebuilt=false` builds without an engine instead;
+  `-Paegis.engineUrl=<url>` takes the two files from another place.
+- **iOS** (on a Mac): `./ios/fetch_prebuilt_engine.sh` puts
+  `AegisCore.xcframework` into `ios/Frameworks`, where
+  `./ios/build_rust_ios.sh` would have written it. The app shell builds
+  without it too; see the platform table above for what iOS does today.
+- **Desktop and Web** run the pure-Dart fallback engine, as they do with the
+  source.
+
+The binaries are the ones the release itself shipped, and they are what the
+build falls back to whenever the source is missing. Without a network the build
+still succeeds, in fallback mode: the app installs and runs but filters
+nothing, and the build log says so.
 
 #### Step 3: Run Locally
 
