@@ -6,6 +6,10 @@
 
 ---
 
+Official builds are listed at [vannt-dev.github.io/official.html](https://vannt-dev.github.io/official.html);
+anything else is not published by vannt-dev.
+The APK signing certificate fingerprints are listed there too.
+
 ## 📐 Architecture Overview
 
 ```text
