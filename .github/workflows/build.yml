@@ -102,3 +102,45 @@ jobs:
       # artifact giao cho tester.
       - name: Build Android APK
         run: flutter build apk --debug --target-platform android-arm64
+
+  # What someone outside sees: this repository and nothing else. The engine's
+  # source is a private submodule they cannot fetch, so no deploy key here and
+  # no Rust toolchain; the build has to take the engine a release already built
+  # (fetchPrebuiltEngine in android/app/build.gradle.kts) and still produce an
+  # APK that carries it. A pull request from a fork runs this job the same way.
+  build-public-clone:
+    name: 🌍 Android build from the public repository alone
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Gradle Cache
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:-android'
+          pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-:hash:-android'
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: flutter build apk --debug --target-platform android-arm64
+
+      - name: The APK carries the prebuilt engine
+        run: |
+          test ! -f rust/aegis_core/Cargo.toml
+          unzip -l build/app/outputs/flutter-apk/app-debug.apk | grep 'lib/arm64-v8a/libaegis_core.so'

@@ -35,6 +35,7 @@ target, linking the Rust `xcframework`, provisioning, and device testing.
 | `ios/PacketTunnel/Info.plist` | Declares the `NEPacketTunnelProvider` principal class |
 | `ios/PacketTunnel/PacketTunnel.entitlements` | Extension: NetworkExtension + App Group |
 | `ios/build_rust_ios.sh` | Builds `AegisCore.xcframework` from the Rust crate |
+| `ios/fetch_prebuilt_engine.sh` | Fetches the same framework from a release, for a checkout without the crate |
 | `ios/add_packet_tunnel_target.rb` | Adds the PacketTunnel target to the Xcode project (step 3 below) |
 
 ## Steps (on the Mac)
@@ -42,6 +43,13 @@ target, linking the Rust `xcframework`, provisioning, and device testing.
 ### 1. Build the Rust engine framework
 ```bash
 ./ios/build_rust_ios.sh          # → ios/Frameworks/AegisCore.xcframework
+```
+
+That needs the engine's source, which is a private submodule. Without it, take
+the framework a release already built:
+
+```bash
+./ios/fetch_prebuilt_engine.sh   # → ios/Frameworks/AegisCore.xcframework
 ```
 
 ### 2. Select your signing team

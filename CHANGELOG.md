@@ -6,6 +6,27 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.6.1] — 2026-10-15
+
+Nothing changes in the app itself: this release is about building it and
+checking where it came from.
+
+Verified on an Android 14 emulator with an APK built as the release workflow
+builds it (obfuscated, signed): protection starts, ad domains are blocked and
+others resolve.
+
+- **The app builds from this repository alone.** The engine's source is a
+  private submodule, and a checkout without it built an app that filtered
+  nothing. Every release now carries the engine already built
+  (`aegis-engine-android.zip`, `AegisCore.xcframework.zip`, each with its
+  SHA-256): the Android build fetches the libraries when the source is
+  missing, and `ios/fetch_prebuilt_engine.sh` fetches the framework. The
+  release workflow attaches both archives itself from 1.6.1 on; 1.6.0 got
+  them by hand. See "Building without the engine's source" in the README.
+- **The README links the official channels page**
+  (https://vannt-dev.github.io/official.html), which lists the SHA-256 of the
+  certificate that signs the APK, so a download can be checked.
+
 ## [1.6.0] — 2026-10-10
 
 Adds DNS-over-QUIC as a third encrypted way to reach a custom resolver, next to

@@ -1,0 +1,91 @@
+name: Prebuilt engine
+
+# The engine's source is a private submodule, so a clone of this repository
+# alone cannot compile it. Each release therefore carries the engine already
+# built: Gradle fetches the Android libraries when the source is missing (see
+# fetchPrebuiltEngine in android/app/build.gradle.kts) and
+# ios/fetch_prebuilt_engine.sh fetches the XCFramework.
+#
+#   - called by release.yml once a release exists;
+#   - run by hand for a release that has no engine files yet.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to attach the engine to, such as v1.6.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the engine to, such as v1.6.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Android libraries
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      # Taken out of the release's own APK rather than compiled again: these
+      # are the libraries that were tested and shipped under this tag.
+      - name: Take the engine out of the released APK
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern app-release.apk
+          unzip -q app-release.apk 'lib/*/libaegis_core.so' -d apk
+          count=$(find apk/lib -name libaegis_core.so | wc -l)
+          if [ "$count" -ne 3 ]; then
+            echo "::error::Expected the engine for 3 ABIs in the APK of $TAG, found $count."
+            exit 1
+          fi
+          (cd apk/lib && zip -q -r ../../aegis-engine-android.zip .)
+          sha256sum aegis-engine-android.zip > aegis-engine-android.zip.sha256
+          unzip -l aegis-engine-android.zip
+          cat aegis-engine-android.zip.sha256
+
+      - name: Attach it to the release
+        run: |
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            aegis-engine-android.zip aegis-engine-android.zip.sha256
+
+  ios:
+    name: iOS XCFramework
+    runs-on: macos-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      # The tag's own tree: its submodule pointer names the engine commit the
+      # release was built from.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: ./.github/actions/fetch-core
+        with:
+          deploy-key: ${{ secrets.CORE_DEPLOY_KEY }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust/aegis_core
+
+      - name: Build AegisCore.xcframework
+        run: ./ios/build_rust_ios.sh
+
+      - name: Attach it to the release
+        run: |
+          cd ios/Frameworks
+          ditto -c -k --keepParent AegisCore.xcframework AegisCore.xcframework.zip
+          shasum -a 256 AegisCore.xcframework.zip > AegisCore.xcframework.zip.sha256
+          cat AegisCore.xcframework.zip.sha256
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            AegisCore.xcframework.zip AegisCore.xcframework.zip.sha256

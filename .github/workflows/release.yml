@@ -23,6 +23,9 @@ jobs:
   release:
     name: Build, ký và phát hành APK
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      publish: ${{ steps.ver.outputs.publish }}
 
     # Khai ở cấp job: `env` của một step KHÔNG dùng được trong `if` của chính
     # step đó, nên bước Firebase phải đọc biến này từ đây.
@@ -148,14 +151,25 @@ jobs:
         with:
           workspaces: rust/aegis_core
 
+      # cargo-ndk được build từ mã nguồn mất hơn nửa phút; giữ lại binary giữa các lần chạy.
+      - name: Lấy cargo-ndk từ cache
+        id: cargo-ndk
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/cargo-ndk
+          key: cargo-ndk-${{ runner.os }}-v1
+
       - name: Cài cargo-ndk
+        if: steps.cargo-ndk.outputs.cache-hit != 'true'
         run: cargo install cargo-ndk --locked
 
       # ------------------------------------------------------------------ gate
       - name: Cài dependency
         run: flutter pub get
 
+      # Trên PR, build.yml đã analyze, test và cargo test đúng commit này; chỉ chạy lại khi phát hành thật.
       - name: Kiểm tra trước khi phát hành
+        if: steps.ver.outputs.publish == 'true'
         run: |
           flutter analyze
           flutter test
@@ -267,3 +281,16 @@ jobs:
           file: build/app/outputs/flutter-apk/app-release.apk
           # Dòng tiêu đề đã được ghép sẵn vào đầu file ở bước trích ghi chú.
           releaseNotesFile: FIREBASE_NOTES.md
+
+  # Mã nguồn engine nằm ở repo riêng, nên người clone repo này không tự build
+  # được nó. Mỗi bản phát hành kèm engine đã build sẵn (Android lấy từ chính APK
+  # vừa phát hành, iOS build trên macOS) để Gradle và ios/fetch_prebuilt_engine.sh
+  # tải về khi thiếu mã nguồn. Xem engine-prebuilt.yml.
+  engine:
+    name: Engine dựng sẵn cho người build từ mã nguồn công khai
+    needs: release
+    if: needs.release.outputs.publish == 'true'
+    uses: ./.github/workflows/engine-prebuilt.yml
+    with:
+      tag: v${{ needs.release.outputs.version }}
+    secrets: inherit
