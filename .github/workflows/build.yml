@@ -4,6 +4,10 @@ on:
   push:
     branches: [main, develop]
   pull_request:
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - LICENSE
   # Cache Actions bị xoá sau 7 ngày không dùng, và gradle/actions/setup-gradle
   # chỉ GHI cache khi chạy trên default branch (trên PR nó là read-only). Không
   # có nhịp chạy trên main thì cache Gradle hết hạn và mọi PR build lạnh lại từ
