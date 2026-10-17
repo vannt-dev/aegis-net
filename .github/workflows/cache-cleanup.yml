@@ -1,0 +1,58 @@
+name: Cache cleanup
+
+# Actions caches share a 10 GB limit per repository, and over it GitHub evicts on its
+# own, caches still in use among them. Two kinds are dead weight:
+# - a pull request's caches, which only that pull request can read: deleted when it
+#   closes, and by the weekly sweep for any closed before this workflow existed;
+# - on a branch, older copies of a cache a newer run saved again under a new key
+#   (a changed lockfile, a new Gradle state): the sweep deletes a copy left unused for a
+#   day longer than the newest one of its kind. GitHub would only drop it after 7 days.
+on:
+  pull_request_target:
+    types: [closed]
+  schedule:
+    - cron: '23 3 * * 0'
+  workflow_dispatch:
+
+# Nothing is checked out: the workflow reads only the pull request number.
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete caches nothing will read again
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GH_REPO/actions/caches?per_page=100" --jq '.actions_caches[]' > caches.json
+          if [ -n "$PR_NUMBER" ]; then
+            open='[]'
+            filter='map(select(.ref == "refs/pull/'"$PR_NUMBER"'/merge"))'
+          else
+            open=$(gh pr list --state open --limit 500 --json number --jq '[.[] | "refs/pull/\(.number)/merge"]')
+            filter='
+              def t: .last_accessed_at[0:19] + "Z" | fromdateiso8601;
+              def kind: .key | sub("[-_|][0-9a-f]{12,}.*$"; "");
+              map(select(.ref | startswith("refs/pull/")) | select(.ref as $r | $open | index($r) | not))
+              + (map(select(.ref | startswith("refs/pull/") | not))
+                 | group_by([.ref, kind])
+                 | map((map(t) | max) as $newest | map(select(t < $newest - 86400)))
+                 | add // [])'
+          fi
+          jq -rs --argjson open "$open" "$filter | .[] | [.id, .size_in_bytes, .ref, .key] | @tsv" caches.json > delete.tsv
+          deleted=0; bytes=0
+          while IFS=$'\t' read -r id size ref key; do
+            if gh api -X DELETE "repos/$GH_REPO/actions/caches/$id" > /dev/null; then
+              echo "deleted $ref $key"
+              deleted=$((deleted + 1)); bytes=$((bytes + size))
+            fi
+          done < delete.tsv
+          echo "### Deleted $deleted caches, $((bytes / 1048576)) MB" >> "$GITHUB_STEP_SUMMARY"
