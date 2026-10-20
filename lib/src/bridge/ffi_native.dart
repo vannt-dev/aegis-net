@@ -61,6 +61,11 @@ typedef AegisLoadRulesFromListDart = int Function(
 typedef AegisExplainC = Pointer<Utf8> Function(Pointer<Utf8> domain);
 typedef AegisExplainDart = Pointer<Utf8> Function(Pointer<Utf8> domain);
 
+typedef AegisHistoryOpenC = Int32 Function(Pointer<Utf8> path, Int32 offset);
+typedef AegisHistoryOpenDart = int Function(Pointer<Utf8> path, int offset);
+typedef AegisHistoryFlushC = Int32 Function(Int32 offset);
+typedef AegisHistoryFlushDart = int Function(int offset);
+
 typedef AegisLoadRulesFileC = Uint32 Function(
     Pointer<Utf8> path, Int32 categoryId);
 typedef AegisLoadRulesFileDart = int Function(
@@ -108,6 +113,9 @@ class AegisNativeBindings {
   static AegisLoadRulesFromListDart? _loadRulesFromList;
   static AegisExplainDart? _explainDomain;
   static AegisSetFlagDart? _setCnameUncloaking;
+  static AegisHistoryOpenDart? _historyOpen;
+  static AegisHistoryFlushDart? _historyFlush;
+  static AegisGetStatsDart? _getHistoryJson;
 
   /// [lookup] or null when the loaded engine does not have that call.
   static T? _optional<T>(T Function() lookup) {
@@ -206,6 +214,15 @@ class AegisNativeBindings {
         _setCnameUncloaking = _optional(() => _lib!
             .lookupFunction<AegisSetFlagC, AegisSetFlagDart>(
                 'aegis_set_cname_uncloaking'));
+        _historyOpen = _optional(() => _lib!
+            .lookupFunction<AegisHistoryOpenC, AegisHistoryOpenDart>(
+                'aegis_history_open'));
+        _historyFlush = _optional(() => _lib!
+            .lookupFunction<AegisHistoryFlushC, AegisHistoryFlushDart>(
+                'aegis_history_flush'));
+        _getHistoryJson = _optional(() => _lib!
+            .lookupFunction<AegisGetStatsC, AegisGetStatsDart>(
+                'aegis_get_history_json'));
 
         _init?.call();
         _isLoaded = true;
@@ -404,6 +421,35 @@ class AegisNativeBindings {
       malloc.free(inPtr);
       malloc.free(outPtr);
     }
+  }
+
+  /// Keeps the per-day history in [path]; see `aegis_history_open`. -1 when
+  /// the engine predates the history.
+  static int historyOpen(String path, int utcOffsetSeconds) {
+    if (!_isLoaded || _historyOpen == null) return -1;
+    final ptr = path.toNativeUtf8();
+    try {
+      return _historyOpen!(ptr, utcOffsetSeconds);
+    } finally {
+      malloc.free(ptr);
+    }
+  }
+
+  static int historyFlush(int utcOffsetSeconds) {
+    if (!_isLoaded || _historyFlush == null) return -1;
+    return _historyFlush!(utcOffsetSeconds);
+  }
+
+  /// The per-day history as JSON, or null when the engine predates it.
+  static String? getHistoryJson() {
+    if (!_isLoaded || _getHistoryJson == null || _freeString == null) {
+      return null;
+    }
+    final ptr = _getHistoryJson!();
+    if (ptr == nullptr) return null;
+    final str = ptr.toDartString();
+    _freeString!(ptr);
+    return str;
   }
 
   static String? getStatsJson() {

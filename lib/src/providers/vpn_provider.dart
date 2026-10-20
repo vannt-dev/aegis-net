@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
 import 'app_info.dart';
 import 'block_reason.dart';
+import 'daily_history.dart';
 import '../services/rule_downloader_service.dart';
 
 class DnsLogItem {
@@ -370,7 +371,29 @@ class VpnProvider extends ChangeNotifier {
     // toggle back instead of leaving it forced on.
     await _evaluateSchedule();
     await _adoptRunningTunnel();
+    await AegisBridge.openHistory();
+    refreshHistory();
   }
+
+  List<DayStat> _dailyHistory = const [];
+
+  /// Per-day totals kept across restarts, newest first.
+  List<DayStat> get dailyHistory => _dailyHistory;
+
+  /// Set by [dispose]; the start-up load can finish after it.
+  bool _disposed = false;
+
+  /// Re-read the per-day history from the engine.
+  void refreshHistory() {
+    if (_disposed) return;
+    _dailyHistory = AegisBridge.getDailyHistory();
+    notifyListeners();
+  }
+
+  /// Ticks of the stats poll between history reads; the history moves
+  /// slowly and the analytics screen re-reads it when opened.
+  static const int _historyEveryTicks = 15;
+  int _ticksSinceHistory = 0;
 
   /// The tunnel can outlive the screen: leaving with Back ends the activity
   /// while the VPN service keeps running, and the provider built on return
@@ -1029,6 +1052,10 @@ class VpnProvider extends ChangeNotifier {
       }
 
       _stats = AegisBridge.getStats();
+      if (++_ticksSinceHistory >= _historyEveryTicks) {
+        _ticksSinceHistory = 0;
+        _dailyHistory = AegisBridge.getDailyHistory();
+      }
       unawaited(_resolveNewApps());
       _updateQpsHistory();
       notifyListeners();
@@ -1054,6 +1081,7 @@ class VpnProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _simulationTimer?.cancel();
     _pauseTimer?.cancel();
     _autoSyncTimer?.cancel();

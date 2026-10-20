@@ -135,6 +135,11 @@ class MainActivity: FlutterActivity() {
                 // cannot fix, so at minimum it can report them.
                 "getVpnDiagnostics" -> result.success(collectDiagnostics())
                 "openPrivateDnsSettings" -> result.success(openPrivateDnsSettings())
+                // The engine keeps the per-day history there; the screen opens
+                // it too, so the history shows while the tunnel is off.
+                "getHistoryPath" -> result.success(
+                    AegisVpnService.historyFile(this).absolutePath,
+                )
                 // Names for the UIDs in the per-app statistics. Never fails as a
                 // whole: a UID that cannot be named comes back with nulls.
                 "resolveApps" -> {

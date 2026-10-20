@@ -24,6 +24,17 @@ verified native pipeline on Android.
   "Blocked: alias of" the tracker. A domain you allow is never blocked this
   way. On by default; Settings has a switch to turn it off if a site breaks,
   and backups carry the setting.
+- **Daily history.** Analytics now shows the last 30 days: how many queries
+  each day had, how many were blocked, and the most-blocked domains. It is
+  kept on the phone and survives closing the app, restarting protection and
+  rebooting (Android).
+
+### Changed
+
+- **The README describes the project as it is.** The iOS extension target is
+  added by a script rather than missing, the desktop builds are marked as
+  needing an engine built by hand, and the private engine's internals are no
+  longer listed.
 
 ## [1.6.1] — 2026-10-15
 
