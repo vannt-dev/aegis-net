@@ -8,6 +8,9 @@ class AegisNativeBindings {
   /// than dropping it — see DnsMessage.buildServfail.
   static Uint8List? handleDnsPacket(Uint8List query) => null;
   static int loadRules(String rulesText, int categoryId) => 0;
+  static int? loadRulesFromList(String rulesText, int categoryId, String key) =>
+      null;
+  static String? explainDomainJson(String domain) => null;
   static void addWhitelist(String domain) {}
   static void addBlacklist(String domain) {}
   static void removeWhitelist(String domain) {}

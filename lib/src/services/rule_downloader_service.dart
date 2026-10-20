@@ -278,6 +278,7 @@ class RuleDownloaderService {
           final count = AegisBridge.loadRulesText(
             content,
             categoryId: source.categoryId,
+            listId: source.id,
           );
           totalLoaded += count;
           (byCategory[source.categoryId] ??= StringBuffer())

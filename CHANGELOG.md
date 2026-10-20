@@ -6,6 +6,19 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+### Added
+
+- **The log says why a domain was blocked.** Tap an entry to see what
+  stopped it: the Ads, Trackers, Malware or Adult filter and the filter list
+  behind it, your own block list, a blocked app, or the protection that stops
+  apps getting around the filter. Allow it from the same sheet with one tap.
+  Entries let through by your allow list, by an exception in a filter list,
+  by a custom host or by SafeSearch say so too. Filter lists name themselves
+  from the next sync on.
+- **Test a domain.** The search icon on the log screen tells you whether a
+  domain would be blocked right now and why, using the rules on the device and
+  without looking the domain up. A blocked domain can be allowed from there.
+
 ## [1.6.1] — 2026-10-15
 
 Nothing changes in the app itself: this release is about building it and
