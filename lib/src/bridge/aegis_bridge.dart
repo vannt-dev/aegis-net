@@ -485,6 +485,22 @@ class AegisBridge {
   }
 
   @visibleForTesting
+  static void Function(bool enabled)? debugSetAliasBlockingOverride;
+
+  /// Block a domain whose address is an alias of a blocked tracker.
+  static void setAliasBlocking(bool enabled) {
+    final override = debugSetAliasBlockingOverride;
+    if (override != null) {
+      override(enabled);
+      return;
+    }
+    if (_useNativeFfi) {
+      AegisNativeBindings.setCnameUncloaking(enabled);
+    }
+    publishSettings();
+  }
+
+  @visibleForTesting
   static void Function(int categoryId, bool enabled)? debugSetCategoryOverride;
 
   @visibleForTesting

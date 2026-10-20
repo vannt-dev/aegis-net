@@ -107,6 +107,7 @@ class AegisNativeBindings {
   // have them yet, and one missing call must not cost the whole engine.
   static AegisLoadRulesFromListDart? _loadRulesFromList;
   static AegisExplainDart? _explainDomain;
+  static AegisSetFlagDart? _setCnameUncloaking;
 
   /// [lookup] or null when the loaded engine does not have that call.
   static T? _optional<T>(T Function() lookup) {
@@ -202,6 +203,9 @@ class AegisNativeBindings {
         _explainDomain = _optional(() => _lib!
             .lookupFunction<AegisExplainC, AegisExplainDart>(
                 'aegis_explain_domain_json'));
+        _setCnameUncloaking = _optional(() => _lib!
+            .lookupFunction<AegisSetFlagC, AegisSetFlagDart>(
+                'aegis_set_cname_uncloaking'));
 
         _init?.call();
         _isLoaded = true;
@@ -296,6 +300,13 @@ class AegisNativeBindings {
     final ptrDomain = domain.toNativeUtf8();
     _removeCustomHost!(ptrDomain);
     malloc.free(ptrDomain);
+  }
+
+  /// Whether names that are aliases of a blocked domain are blocked too. A
+  /// no-op on an engine that predates the setting.
+  static void setCnameUncloaking(bool enabled) {
+    if (!_isLoaded || _setCnameUncloaking == null) return;
+    _setCnameUncloaking!(enabled ? 1 : 0);
   }
 
   static void setBlockDohHosts(bool enabled) {

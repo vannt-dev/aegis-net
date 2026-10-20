@@ -23,6 +23,9 @@ class DnsLogItem {
   /// the user's own lists.
   final String? list;
 
+  /// For a domain blocked as an alias: the blocked domain it pointed to.
+  final String? aliasOf;
+
   DnsLogItem({
     required this.id,
     required this.domain,
@@ -31,6 +34,7 @@ class DnsLogItem {
     this.uid = AppInfo.unknownUid,
     this.reason,
     this.list,
+    this.aliasOf,
   });
 
   /// One entry of the engine's log JSON. Fields an older engine does not
@@ -47,12 +51,13 @@ class DnsLogItem {
       uid: (item['uid'] as num?)?.toInt() ?? AppInfo.unknownUid,
       reason: item['reason'] as String?,
       list: item['list'] as String?,
+      aliasOf: item['alias_of'] as String?,
     );
   }
 
   /// The sentence saying why this query was answered as it was.
-  String get reasonText =>
-      describeReason(blocked: isBlocked, reason: reason, list: list);
+  String get reasonText => describeReason(
+      blocked: isBlocked, reason: reason, list: list, aliasOf: aliasOf);
 }
 
 class VpnProvider extends ChangeNotifier {
@@ -391,6 +396,7 @@ class VpnProvider extends ChangeNotifier {
     // After initEngine: a native call made before it never reaches the engine,
     // which would then run on its defaults whatever the user had saved.
     AegisBridge.setBlockDohHosts(_interceptHardcodedDns);
+    AegisBridge.setAliasBlocking(_blockAliasTrackers);
     await _applyBlockedApps();
     AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
     AegisBridge.setCategory(0, _blockAds);
@@ -429,6 +435,7 @@ class VpnProvider extends ChangeNotifier {
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
       _interceptHardcodedDns = prefs.getBool('intercept_hardcoded_dns') ?? true;
+      _blockAliasTrackers = prefs.getBool(_prefBlockAliasTrackers) ?? true;
 
       _scheduleEnabled = prefs.getBool(_prefScheduleEnabled) ?? false;
       // The bounds were whole hours before; migrate them once so an existing
@@ -745,6 +752,26 @@ class VpnProvider extends ChangeNotifier {
     final rebuild = _tunnelRebuild.then((_) => _rebuildTunnel());
     _tunnelRebuild = rebuild;
     await rebuild;
+  }
+
+  static const String _prefBlockAliasTrackers = 'block_cname_trackers';
+
+  bool _blockAliasTrackers = true;
+
+  /// Block a domain whose address is an alias of a blocked tracker, which is
+  /// how some sites serve trackers under their own name. On by default.
+  bool get blockAliasTrackers => _blockAliasTrackers;
+
+  Future<void> setBlockAliasTrackers(bool enabled) async {
+    await _ready;
+    if (enabled == _blockAliasTrackers) return;
+    _blockAliasTrackers = enabled;
+    AegisBridge.setAliasBlocking(enabled);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefBlockAliasTrackers, enabled);
+    } catch (_) {}
   }
 
   Future<void> _tunnelRebuild = Future.value();

@@ -19,6 +19,7 @@ class AegisNativeBindings {
   static void removeCustomHost(String domain) {}
   static void setCategory(int categoryId, bool enabled) {}
   static void setBlockDohHosts(bool enabled) {}
+  static void setCnameUncloaking(bool enabled) {}
   static void setBlockedUids(List<int> uids) {}
   static void clearDownloadedRules() {}
   static void setUpstreamDns(String upstream) {}
