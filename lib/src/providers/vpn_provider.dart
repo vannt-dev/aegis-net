@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
 import 'app_info.dart';
+import 'block_reason.dart';
 import '../services/rule_downloader_service.dart';
 
 class DnsLogItem {
@@ -14,13 +15,44 @@ class DnsLogItem {
   /// The app that made the query, or [AppInfo.unknownUid].
   final int uid;
 
+  /// Why it was blocked, rewritten or let through, as the engine names it;
+  /// null when nothing in particular decided it. See [describeReason].
+  final String? reason;
+
+  /// The filter list behind [reason], by id; null for the built-in rules and
+  /// the user's own lists.
+  final String? list;
+
   DnsLogItem({
     required this.id,
     required this.domain,
     required this.isBlocked,
     required this.timestamp,
     this.uid = AppInfo.unknownUid,
+    this.reason,
+    this.list,
   });
+
+  /// One entry of the engine's log JSON. Fields an older engine does not
+  /// send are left at their defaults.
+  factory DnsLogItem.fromEngine(Map<String, dynamic> item) {
+    final tsSec = (item['timestamp'] as num?)?.toInt() ?? 0;
+    return DnsLogItem(
+      id: (item['id'] ?? DateTime.now().millisecondsSinceEpoch).toString(),
+      domain: (item['domain'] ?? '').toString(),
+      isBlocked: item['blocked'] == true,
+      timestamp: tsSec > 0
+          ? DateTime.fromMillisecondsSinceEpoch(tsSec * 1000)
+          : DateTime.now(),
+      uid: (item['uid'] as num?)?.toInt() ?? AppInfo.unknownUid,
+      reason: item['reason'] as String?,
+      list: item['list'] as String?,
+    );
+  }
+
+  /// The sentence saying why this query was answered as it was.
+  String get reasonText =>
+      describeReason(blocked: isBlocked, reason: reason, list: list);
 }
 
 class VpnProvider extends ChangeNotifier {
@@ -668,6 +700,10 @@ class VpnProvider extends ChangeNotifier {
     addWhitelistDomain(clean);
   }
 
+  /// Whether a lookup of [domain] would be blocked right now, and why. Uses
+  /// the current rules only; no lookup is made.
+  DomainVerdict testDomain(String domain) => AegisBridge.explainDomain(domain);
+
   /// Always block [domain]: the mirror image of [allowDomain].
   void blockDomain(String domain) {
     final clean = domain.trim().toLowerCase();
@@ -960,22 +996,9 @@ class VpnProvider extends ChangeNotifier {
       // Read real DNS query logs from Rust native FFI
       final realLogs = AegisBridge.getRecentLogs(limit: 50);
       if (realLogs.isNotEmpty) {
-        _logs.clear();
-        for (final item in realLogs) {
-          final tsSec = (item['timestamp'] as num?)?.toInt() ?? 0;
-          _logs.add(
-            DnsLogItem(
-              id: (item['id'] ?? DateTime.now().millisecondsSinceEpoch)
-                  .toString(),
-              domain: (item['domain'] ?? '').toString(),
-              isBlocked: item['blocked'] == true,
-              timestamp: tsSec > 0
-                  ? DateTime.fromMillisecondsSinceEpoch(tsSec * 1000)
-                  : DateTime.now(),
-              uid: (item['uid'] as num?)?.toInt() ?? AppInfo.unknownUid,
-            ),
-          );
-        }
+        _logs
+          ..clear()
+          ..addAll(realLogs.map(DnsLogItem.fromEngine));
       }
 
       _stats = AegisBridge.getStats();

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../providers/app_info.dart';
+import '../providers/block_reason.dart';
 import '../services/desktop_dns_proxy.dart';
 import 'ffi_bindings.dart';
 
@@ -288,9 +289,16 @@ class AegisBridge {
 
   /// Load raw rules text into engine. [categoryId] follows the same mapping
   /// as [setCategory] (0: Ads, 1: Trackers, 2: Malware, 3: Adult); defaults to
-  /// Ads since that's what every current caller loads.
-  static int loadRulesText(String content, {int categoryId = 0}) {
+  /// Ads since that's what every current caller loads. [listId] is the filter
+  /// list's id, so the log can say which list blocked a domain.
+  static int loadRulesText(String content,
+      {int categoryId = 0, String? listId}) {
     if (_useNativeFfi) {
+      if (listId != null) {
+        final count =
+            AegisNativeBindings.loadRulesFromList(content, categoryId, listId);
+        if (count != null) return count;
+      }
       return AegisNativeBindings.loadRules(content, categoryId);
     } else {
       int added = 0;
@@ -332,6 +340,43 @@ class AegisBridge {
       if (_matchesRuleSet(_blacklistedDomains, clean)) return true;
       return _matchesRuleSet(_loadedRules, clean);
     }
+  }
+
+  /// Replaces the engine in widget tests.
+  @visibleForTesting
+  static DomainVerdict Function(String domain)? debugExplainDomainOverride;
+
+  /// Whether a lookup of [domain] would be blocked right now, and why. Checks
+  /// the current rules only; nothing is sent to the network.
+  static DomainVerdict explainDomain(String domain) {
+    final clean = domain.trim().toLowerCase();
+    final override = debugExplainDomainOverride;
+    if (override != null) return override(clean);
+
+    if (_useNativeFfi) {
+      final json = AegisNativeBindings.explainDomainJson(clean);
+      if (json != null) {
+        try {
+          return DomainVerdict.fromJson(jsonDecode(json));
+        } catch (_) {}
+      }
+      // An engine from before this call can still say yes or no.
+      return DomainVerdict(
+        domain: clean,
+        blocked: AegisNativeBindings.isDomainBlocked(clean),
+      );
+    }
+
+    if (_matchesRuleSet(_whitelistedDomains, clean)) {
+      return DomainVerdict(domain: clean, blocked: false, reason: 'allowlist');
+    }
+    if (_matchesRuleSet(_blacklistedDomains, clean)) {
+      return DomainVerdict(domain: clean, blocked: true, reason: 'custom_rule');
+    }
+    if (_matchesRuleSet(_loadedRules, clean)) {
+      return DomainVerdict(domain: clean, blocked: true, reason: 'ads');
+    }
+    return DomainVerdict(domain: clean, blocked: false);
   }
 
   /// Returns true when [domain] equals a rule in [rules] or is a subdomain of

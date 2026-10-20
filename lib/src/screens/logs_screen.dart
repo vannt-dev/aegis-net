@@ -6,6 +6,7 @@ import '../providers/app_info.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 import '../i18n/app_strings.dart';
+import 'test_domain_dialog.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
 const Color emeraldDarkColor = Color(0xFF065F46);
@@ -83,6 +84,12 @@ class _LogsScreenState extends State<LogsScreen> {
               fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         actions: [
+          IconButton(
+            key: const Key('logs_test_domain'),
+            icon: Icon(Icons.manage_search, color: accent),
+            tooltip: AppStrings.get('test_domain_title'),
+            onPressed: () => TestDomainDialog.show(context),
+          ),
           IconButton(
             icon: Icon(Icons.file_download_outlined, color: accent),
             tooltip: AppStrings.get('export_logs'),
@@ -315,6 +322,31 @@ class _LogsScreenState extends State<LogsScreen> {
                 ),
               ),
             ),
+            // Why it was blocked (or rewritten, or let through by a rule).
+            if (item.isBlocked || item.reason != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      item.isBlocked ? Icons.block : Icons.info_outline,
+                      size: 14,
+                      color: item.isBlocked ? Colors.redAccent : emeraldColor,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        item.reasonText,
+                        key: const ValueKey('log-actions-reason'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Colors.grey.shade300, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const Divider(color: Colors.white10, height: 1),
             ListTile(
               key: const ValueKey('log-action-allow'),
