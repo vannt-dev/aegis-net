@@ -6,6 +6,13 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-10-21
+
+Verified on an Android 14 emulator with an APK built as the release workflow
+builds it (obfuscated, signed): a blocked domain shows why and can be allowed,
+Test a domain answers, the Settings switch is there, and the daily history
+survives closing the app.
+
 ### Added
 
 - **The log says why a domain was blocked.** Tap an entry to see what
