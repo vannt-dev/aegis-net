@@ -28,7 +28,7 @@ permissions:
 jobs:
   android:
     name: Android libraries
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ inputs.tag }}

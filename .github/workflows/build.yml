@@ -22,7 +22,7 @@ concurrency:
 jobs:
   test-rust:
     name: 🦀 Rust Core Engine Check & Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/fetch-core
@@ -45,7 +45,7 @@ jobs:
 
   test-flutter-web:
     name: 🌐 Flutter Web Test & Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
 
@@ -70,7 +70,7 @@ jobs:
 
   build-flutter-android:
     name: 📱 Flutter Android APK Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/fetch-core
@@ -114,7 +114,7 @@ jobs:
   # APK that carries it. A pull request from a fork runs this job the same way.
   build-public-clone:
     name: 🌍 Android build from the public repository alone
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
 
