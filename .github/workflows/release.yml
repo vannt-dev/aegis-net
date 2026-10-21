@@ -22,7 +22,7 @@ permissions:
 jobs:
   release:
     name: Build, ký và phát hành APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.ver.outputs.version }}
       publish: ${{ steps.ver.outputs.publish }}
