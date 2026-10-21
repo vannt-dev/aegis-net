@@ -25,6 +25,9 @@ class AegisNativeBindings {
   static void setUpstreamDns(String upstream) {}
   static bool isDomainBlocked(String domain) => false;
   static String? getStatsJson() => null;
+  static int historyOpen(String path, int utcOffsetSeconds) => -1;
+  static int historyFlush(int utcOffsetSeconds) => -1;
+  static String? getHistoryJson() => null;
   static String? getRecentLogsJson(int limit) => null;
 
   // Cross-process snapshots. -1 mirrors the native "no engine" status.

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../providers/app_info.dart';
 import '../providers/block_reason.dart';
+import '../providers/daily_history.dart';
 import '../services/desktop_dns_proxy.dart';
 import 'ffi_bindings.dart';
 
@@ -552,6 +553,44 @@ class AegisBridge {
       'block_rate_percentage': rate,
       'estimated_data_saved_bytes': savedBytes,
     };
+  }
+
+  /// Replaces the engine's history in tests.
+  @visibleForTesting
+  static List<DayStat> Function()? debugDailyHistoryOverride;
+
+  static int get _utcOffsetSeconds => DateTime.now().timeZoneOffset.inSeconds;
+
+  /// Point the engine at the file the per-day history lives in, so it shows
+  /// even before the tunnel has run in this process. Android only: the VPN
+  /// service writes that file, and the screen reads the same one. Elsewhere
+  /// the history covers this session only.
+  static Future<void> openHistory() async {
+    if (!_useNativeFfi ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    try {
+      final path = await _vpnChannel.invokeMethod<String>('getHistoryPath');
+      if (path != null) {
+        AegisNativeBindings.historyOpen(path, _utcOffsetSeconds);
+      }
+    } catch (_) {}
+  }
+
+  /// Per-day totals, newest first. Empty without an engine that keeps them.
+  static List<DayStat> getDailyHistory() {
+    final override = debugDailyHistoryOverride;
+    if (override != null) return override();
+    if (!_useNativeFfi) return const [];
+    final json = AegisNativeBindings.getHistoryJson();
+    if (json == null || json.isEmpty) return const [];
+    try {
+      return DayStat.listFromEngine(jsonDecode(json));
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Get recent DNS query log items from native engine
