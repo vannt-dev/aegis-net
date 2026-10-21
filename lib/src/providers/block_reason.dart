@@ -45,6 +45,7 @@ const Set<String> _knownReasons = {
   'custom_host',
   'allowlist',
   'exception',
+  'alias',
 };
 
 /// The name to show for a filter list id: its translated name for a preset,
@@ -62,9 +63,13 @@ String describeReason({
   required bool blocked,
   String? reason,
   String? list,
+  String? aliasOf,
 }) {
   if (reason == null || !_knownReasons.contains(reason)) {
     return AppStrings.get(blocked ? 'reason_blocked' : 'reason_none');
+  }
+  if (reason == 'alias') {
+    return AppStrings.get('reason_alias').replaceAll('%s', aliasOf ?? '?');
   }
 
   final sentence = AppStrings.get('reason_$reason');

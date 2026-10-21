@@ -126,6 +126,11 @@ class AppStrings {
       'reason_builtin': 'built-in list',
       'reason_blocked': 'Blocked by your filters',
       'reason_none': 'Not on any block list',
+      'reason_alias': 'Blocked: alias of %s',
+      'settings_cname_title':
+          'Block trackers hidden behind a site\'s own address',
+      'settings_cname_desc':
+          'Some sites run trackers under their own domain name, pointed at a tracking company. AegisNet blocks those too. A domain you allow is never blocked this way; turn this off if a site stops working.',
       'test_domain_title': 'Test a domain',
       'test_domain_hint': 'e.g. ads.example.com',
       'test_domain_run': 'TEST',
@@ -343,6 +348,11 @@ class AppStrings {
       'reason_builtin': 'danh sách có sẵn',
       'reason_blocked': 'Bị chặn bởi bộ lọc của bạn',
       'reason_none': 'Không nằm trong danh sách chặn nào',
+      'reason_alias': 'Bị chặn: bí danh của %s',
+      'settings_cname_title':
+          'Chặn trình theo dõi núp dưới địa chỉ của chính trang web',
+      'settings_cname_desc':
+          'Một số trang chạy trình theo dõi dưới tên miền của chính họ, trỏ tới một công ty theo dõi. AegisNet chặn cả những trình theo dõi này. Tên miền bạn đã cho phép sẽ không bao giờ bị chặn theo cách này; hãy tắt nếu một trang web ngừng hoạt động.',
       'test_domain_title': 'Kiểm tra tên miền',
       'test_domain_hint': 'vd. ads.example.com',
       'test_domain_run': 'KIỂM TRA',
@@ -555,6 +565,10 @@ class AppStrings {
       'reason_builtin': '기본 제공 목록',
       'reason_blocked': '필터로 차단됨',
       'reason_none': '어떤 차단 목록에도 없음',
+      'reason_alias': '차단됨: %s의 별칭',
+      'settings_cname_title': '사이트 자체 주소 뒤에 숨은 추적기 차단',
+      'settings_cname_desc':
+          '일부 사이트는 자체 도메인 이름 아래에서 추적 회사를 가리키는 추적기를 운영합니다. AegisNet은 이것도 차단합니다. 허용한 도메인은 이 방식으로 절대 차단되지 않습니다. 사이트가 작동하지 않으면 끄세요.',
       'test_domain_title': '도메인 테스트',
       'test_domain_hint': '예: ads.example.com',
       'test_domain_run': '테스트',
@@ -757,6 +771,10 @@ class AppStrings {
       'reason_builtin': '組み込みリスト',
       'reason_blocked': 'フィルターでブロック',
       'reason_none': 'どのブロックリストにも含まれていません',
+      'reason_alias': 'ブロック: %s のエイリアス',
+      'settings_cname_title': 'サイト自身のアドレスに隠れたトラッカーをブロック',
+      'settings_cname_desc':
+          '一部のサイトは自社ドメイン名の下でトラッキング企業を指すトラッカーを運用しています。AegisNetはそれもブロックします。許可したドメインがこの方法でブロックされることはありません。サイトが動かなくなったらオフにしてください。',
       'test_domain_title': 'ドメインをテスト',
       'test_domain_hint': '例: ads.example.com',
       'test_domain_run': 'テスト',

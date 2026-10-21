@@ -18,6 +18,12 @@ verified native pipeline on Android.
 - **Test a domain.** The search icon on the log screen tells you whether a
   domain would be blocked right now and why, using the rules on the device and
   without looking the domain up. A blocked domain can be allowed from there.
+- **Blocks trackers that hide behind a site's own subdomain.** Some sites
+  serve a tracker from a name under their own domain that points to a
+  tracking company. AegisNet now blocks those too, and the log shows
+  "Blocked: alias of" the tracker. A domain you allow is never blocked this
+  way. On by default; Settings has a switch to turn it off if a site breaks,
+  and backups carry the setting.
 
 ## [1.6.1] — 2026-10-15
 
