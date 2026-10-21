@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
 import 'app_info.dart';
+import 'block_reason.dart';
+import 'daily_history.dart';
 import '../services/rule_downloader_service.dart';
 
 class DnsLogItem {
@@ -14,13 +16,49 @@ class DnsLogItem {
   /// The app that made the query, or [AppInfo.unknownUid].
   final int uid;
 
+  /// Why it was blocked, rewritten or let through, as the engine names it;
+  /// null when nothing in particular decided it. See [describeReason].
+  final String? reason;
+
+  /// The filter list behind [reason], by id; null for the built-in rules and
+  /// the user's own lists.
+  final String? list;
+
+  /// For a domain blocked as an alias: the blocked domain it pointed to.
+  final String? aliasOf;
+
   DnsLogItem({
     required this.id,
     required this.domain,
     required this.isBlocked,
     required this.timestamp,
     this.uid = AppInfo.unknownUid,
+    this.reason,
+    this.list,
+    this.aliasOf,
   });
+
+  /// One entry of the engine's log JSON. Fields an older engine does not
+  /// send are left at their defaults.
+  factory DnsLogItem.fromEngine(Map<String, dynamic> item) {
+    final tsSec = (item['timestamp'] as num?)?.toInt() ?? 0;
+    return DnsLogItem(
+      id: (item['id'] ?? DateTime.now().millisecondsSinceEpoch).toString(),
+      domain: (item['domain'] ?? '').toString(),
+      isBlocked: item['blocked'] == true,
+      timestamp: tsSec > 0
+          ? DateTime.fromMillisecondsSinceEpoch(tsSec * 1000)
+          : DateTime.now(),
+      uid: (item['uid'] as num?)?.toInt() ?? AppInfo.unknownUid,
+      reason: item['reason'] as String?,
+      list: item['list'] as String?,
+      aliasOf: item['alias_of'] as String?,
+    );
+  }
+
+  /// The sentence saying why this query was answered as it was.
+  String get reasonText => describeReason(
+      blocked: isBlocked, reason: reason, list: list, aliasOf: aliasOf);
 }
 
 class VpnProvider extends ChangeNotifier {
@@ -333,7 +371,29 @@ class VpnProvider extends ChangeNotifier {
     // toggle back instead of leaving it forced on.
     await _evaluateSchedule();
     await _adoptRunningTunnel();
+    await AegisBridge.openHistory();
+    refreshHistory();
   }
+
+  List<DayStat> _dailyHistory = const [];
+
+  /// Per-day totals kept across restarts, newest first.
+  List<DayStat> get dailyHistory => _dailyHistory;
+
+  /// Set by [dispose]; the start-up load can finish after it.
+  bool _disposed = false;
+
+  /// Re-read the per-day history from the engine.
+  void refreshHistory() {
+    if (_disposed) return;
+    _dailyHistory = AegisBridge.getDailyHistory();
+    notifyListeners();
+  }
+
+  /// Ticks of the stats poll between history reads; the history moves
+  /// slowly and the analytics screen re-reads it when opened.
+  static const int _historyEveryTicks = 15;
+  int _ticksSinceHistory = 0;
 
   /// The tunnel can outlive the screen: leaving with Back ends the activity
   /// while the VPN service keeps running, and the provider built on return
@@ -359,6 +419,7 @@ class VpnProvider extends ChangeNotifier {
     // After initEngine: a native call made before it never reaches the engine,
     // which would then run on its defaults whatever the user had saved.
     AegisBridge.setBlockDohHosts(_interceptHardcodedDns);
+    AegisBridge.setAliasBlocking(_blockAliasTrackers);
     await _applyBlockedApps();
     AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
     AegisBridge.setCategory(0, _blockAds);
@@ -397,6 +458,7 @@ class VpnProvider extends ChangeNotifier {
       _blockMalware = prefs.getBool('block_malware') ?? true;
       _blockAdult = prefs.getBool('block_adult') ?? false;
       _interceptHardcodedDns = prefs.getBool('intercept_hardcoded_dns') ?? true;
+      _blockAliasTrackers = prefs.getBool(_prefBlockAliasTrackers) ?? true;
 
       _scheduleEnabled = prefs.getBool(_prefScheduleEnabled) ?? false;
       // The bounds were whole hours before; migrate them once so an existing
@@ -668,6 +730,10 @@ class VpnProvider extends ChangeNotifier {
     addWhitelistDomain(clean);
   }
 
+  /// Whether a lookup of [domain] would be blocked right now, and why. Uses
+  /// the current rules only; no lookup is made.
+  DomainVerdict testDomain(String domain) => AegisBridge.explainDomain(domain);
+
   /// Always block [domain]: the mirror image of [allowDomain].
   void blockDomain(String domain) {
     final clean = domain.trim().toLowerCase();
@@ -709,6 +775,26 @@ class VpnProvider extends ChangeNotifier {
     final rebuild = _tunnelRebuild.then((_) => _rebuildTunnel());
     _tunnelRebuild = rebuild;
     await rebuild;
+  }
+
+  static const String _prefBlockAliasTrackers = 'block_cname_trackers';
+
+  bool _blockAliasTrackers = true;
+
+  /// Block a domain whose address is an alias of a blocked tracker, which is
+  /// how some sites serve trackers under their own name. On by default.
+  bool get blockAliasTrackers => _blockAliasTrackers;
+
+  Future<void> setBlockAliasTrackers(bool enabled) async {
+    await _ready;
+    if (enabled == _blockAliasTrackers) return;
+    _blockAliasTrackers = enabled;
+    AegisBridge.setAliasBlocking(enabled);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefBlockAliasTrackers, enabled);
+    } catch (_) {}
   }
 
   Future<void> _tunnelRebuild = Future.value();
@@ -960,25 +1046,16 @@ class VpnProvider extends ChangeNotifier {
       // Read real DNS query logs from Rust native FFI
       final realLogs = AegisBridge.getRecentLogs(limit: 50);
       if (realLogs.isNotEmpty) {
-        _logs.clear();
-        for (final item in realLogs) {
-          final tsSec = (item['timestamp'] as num?)?.toInt() ?? 0;
-          _logs.add(
-            DnsLogItem(
-              id: (item['id'] ?? DateTime.now().millisecondsSinceEpoch)
-                  .toString(),
-              domain: (item['domain'] ?? '').toString(),
-              isBlocked: item['blocked'] == true,
-              timestamp: tsSec > 0
-                  ? DateTime.fromMillisecondsSinceEpoch(tsSec * 1000)
-                  : DateTime.now(),
-              uid: (item['uid'] as num?)?.toInt() ?? AppInfo.unknownUid,
-            ),
-          );
-        }
+        _logs
+          ..clear()
+          ..addAll(realLogs.map(DnsLogItem.fromEngine));
       }
 
       _stats = AegisBridge.getStats();
+      if (++_ticksSinceHistory >= _historyEveryTicks) {
+        _ticksSinceHistory = 0;
+        _dailyHistory = AegisBridge.getDailyHistory();
+      }
       unawaited(_resolveNewApps());
       _updateQpsHistory();
       notifyListeners();
@@ -1004,6 +1081,7 @@ class VpnProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _simulationTimer?.cancel();
     _pauseTimer?.cancel();
     _autoSyncTimer?.cancel();

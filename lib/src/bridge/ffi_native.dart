@@ -53,6 +53,19 @@ typedef AegisFreeStringDart = void Function(Pointer<Utf8> str);
 typedef AegisSnapshotC = Int32 Function(Pointer<Utf8> path);
 typedef AegisSnapshotDart = int Function(Pointer<Utf8> path);
 
+typedef AegisLoadRulesFromListC = Uint32 Function(
+    Pointer<Utf8> rulesText, Int32 categoryId, Pointer<Utf8> listKey);
+typedef AegisLoadRulesFromListDart = int Function(
+    Pointer<Utf8> rulesText, int categoryId, Pointer<Utf8> listKey);
+
+typedef AegisExplainC = Pointer<Utf8> Function(Pointer<Utf8> domain);
+typedef AegisExplainDart = Pointer<Utf8> Function(Pointer<Utf8> domain);
+
+typedef AegisHistoryOpenC = Int32 Function(Pointer<Utf8> path, Int32 offset);
+typedef AegisHistoryOpenDart = int Function(Pointer<Utf8> path, int offset);
+typedef AegisHistoryFlushC = Int32 Function(Int32 offset);
+typedef AegisHistoryFlushDart = int Function(int offset);
+
 typedef AegisLoadRulesFileC = Uint32 Function(
     Pointer<Utf8> path, Int32 categoryId);
 typedef AegisLoadRulesFileDart = int Function(
@@ -93,6 +106,25 @@ class AegisNativeBindings {
   static AegisSnapshotDart? _importStats;
   static AegisLoadRulesFileDart? _loadRulesFile;
   static AegisHandleDnsDart? _handleDnsPacket;
+
+  // Newer calls. Looked up one by one and allowed to be missing: a build from
+  // the public repository uses the engine of the last release, which may not
+  // have them yet, and one missing call must not cost the whole engine.
+  static AegisLoadRulesFromListDart? _loadRulesFromList;
+  static AegisExplainDart? _explainDomain;
+  static AegisSetFlagDart? _setCnameUncloaking;
+  static AegisHistoryOpenDart? _historyOpen;
+  static AegisHistoryFlushDart? _historyFlush;
+  static AegisGetStatsDart? _getHistoryJson;
+
+  /// [lookup] or null when the loaded engine does not have that call.
+  static T? _optional<T>(T Function() lookup) {
+    try {
+      return lookup();
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Load native Aegis Core shared library
   static bool initNativeLibrary() {
@@ -173,6 +205,25 @@ class AegisNativeBindings {
             .lookupFunction<AegisHandleDnsC, AegisHandleDnsDart>(
                 'aegis_handle_dns_packet');
 
+        _loadRulesFromList = _optional(() => _lib!.lookupFunction<
+            AegisLoadRulesFromListC,
+            AegisLoadRulesFromListDart>('aegis_load_rules_from_list'));
+        _explainDomain = _optional(() => _lib!
+            .lookupFunction<AegisExplainC, AegisExplainDart>(
+                'aegis_explain_domain_json'));
+        _setCnameUncloaking = _optional(() => _lib!
+            .lookupFunction<AegisSetFlagC, AegisSetFlagDart>(
+                'aegis_set_cname_uncloaking'));
+        _historyOpen = _optional(() => _lib!
+            .lookupFunction<AegisHistoryOpenC, AegisHistoryOpenDart>(
+                'aegis_history_open'));
+        _historyFlush = _optional(() => _lib!
+            .lookupFunction<AegisHistoryFlushC, AegisHistoryFlushDart>(
+                'aegis_history_flush'));
+        _getHistoryJson = _optional(() => _lib!
+            .lookupFunction<AegisGetStatsC, AegisGetStatsDart>(
+                'aegis_get_history_json'));
+
         _init?.call();
         _isLoaded = true;
         return true;
@@ -189,6 +240,39 @@ class AegisNativeBindings {
     final count = _loadRules!(ptr, categoryId);
     malloc.free(ptr);
     return count;
+  }
+
+  /// Loads rules under a filter list's id so a block can name the list.
+  /// Null when the engine predates that call; the caller falls back to
+  /// [loadRules].
+  static int? loadRulesFromList(String rulesText, int categoryId, String key) {
+    if (!_isLoaded || _loadRulesFromList == null) return null;
+    final text = rulesText.toNativeUtf8();
+    final keyPtr = key.toNativeUtf8();
+    try {
+      return _loadRulesFromList!(text, categoryId, keyPtr);
+    } finally {
+      malloc.free(text);
+      malloc.free(keyPtr);
+    }
+  }
+
+  /// JSON saying whether a lookup of [domain] would be blocked and why, or
+  /// null when the engine predates that call.
+  static String? explainDomainJson(String domain) {
+    if (!_isLoaded || _explainDomain == null || _freeString == null) {
+      return null;
+    }
+    final ptr = domain.toNativeUtf8();
+    try {
+      final result = _explainDomain!(ptr);
+      if (result == nullptr) return null;
+      final str = result.toDartString();
+      _freeString!(result);
+      return str;
+    } finally {
+      malloc.free(ptr);
+    }
   }
 
   static void addWhitelist(String domain) {
@@ -233,6 +317,13 @@ class AegisNativeBindings {
     final ptrDomain = domain.toNativeUtf8();
     _removeCustomHost!(ptrDomain);
     malloc.free(ptrDomain);
+  }
+
+  /// Whether names that are aliases of a blocked domain are blocked too. A
+  /// no-op on an engine that predates the setting.
+  static void setCnameUncloaking(bool enabled) {
+    if (!_isLoaded || _setCnameUncloaking == null) return;
+    _setCnameUncloaking!(enabled ? 1 : 0);
   }
 
   static void setBlockDohHosts(bool enabled) {
@@ -330,6 +421,35 @@ class AegisNativeBindings {
       malloc.free(inPtr);
       malloc.free(outPtr);
     }
+  }
+
+  /// Keeps the per-day history in [path]; see `aegis_history_open`. -1 when
+  /// the engine predates the history.
+  static int historyOpen(String path, int utcOffsetSeconds) {
+    if (!_isLoaded || _historyOpen == null) return -1;
+    final ptr = path.toNativeUtf8();
+    try {
+      return _historyOpen!(ptr, utcOffsetSeconds);
+    } finally {
+      malloc.free(ptr);
+    }
+  }
+
+  static int historyFlush(int utcOffsetSeconds) {
+    if (!_isLoaded || _historyFlush == null) return -1;
+    return _historyFlush!(utcOffsetSeconds);
+  }
+
+  /// The per-day history as JSON, or null when the engine predates it.
+  static String? getHistoryJson() {
+    if (!_isLoaded || _getHistoryJson == null || _freeString == null) {
+      return null;
+    }
+    final ptr = _getHistoryJson!();
+    if (ptr == nullptr) return null;
+    final str = ptr.toDartString();
+    _freeString!(ptr);
+    return str;
   }
 
   static String? getStatsJson() {

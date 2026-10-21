@@ -5,6 +5,7 @@ import '../i18n/app_strings.dart';
 import '../providers/app_info.dart';
 import '../providers/theme_provider.dart';
 import '../providers/vpn_provider.dart';
+import 'daily_history_card.dart';
 
 class AnalyticsScreen extends StatelessWidget {
   const AnalyticsScreen({super.key, this.onShowAppLogs});
@@ -210,6 +211,9 @@ class AnalyticsScreen extends StatelessWidget {
                     ),
                   ),
           ),
+
+          const SizedBox(height: 24),
+          DailyHistoryCard(accent: accent),
         ],
       ),
     );

@@ -23,6 +23,7 @@ class ConfigSyncService {
           prefs.getStringList('custom_filter_sources') ?? <String>[],
       'custom_hosts': prefs.getStringList('custom_hosts') ?? <String>[],
       'schedule_enabled': prefs.getBool('schedule_enabled') ?? false,
+      'block_cname_trackers': prefs.getBool('block_cname_trackers') ?? true,
       // Minutes since midnight, matching what VpnProvider stores. Whole hours
       // could not express a schedule that starts at 22:30.
       'quiet_hours_start_minutes':
@@ -58,6 +59,10 @@ class ConfigSyncService {
       await _restoreList(prefs, data, 'custom_filter_sources');
       await _restoreList(prefs, data, 'custom_hosts');
 
+      if (data['block_cname_trackers'] is bool) {
+        await prefs.setBool(
+            'block_cname_trackers', data['block_cname_trackers'] as bool);
+      }
       if (data['schedule_enabled'] is bool) {
         await prefs.setBool(
             'schedule_enabled', data['schedule_enabled'] as bool);

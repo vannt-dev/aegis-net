@@ -17,9 +17,11 @@ import android.os.Process
 import android.provider.Settings
 import android.system.OsConstants
 import android.util.Log
+import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.InetSocketAddress
+import java.util.TimeZone
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
@@ -107,6 +109,18 @@ class AegisVpnService : VpnService(), Runnable {
             listener?.invoke(started, error)
         }
 
+        /// Where the per-day history is kept. The screen asks for the same
+        /// path so it can show the history while the tunnel is off.
+        fun historyFile(context: Context): File = File(context.filesDir, "daily_history.json")
+
+        /// Local offset from UTC right now, which decides where a day starts.
+        fun utcOffsetSeconds(): Int =
+            TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000
+
+        /// How often the running tunnel writes the history out. A process
+        /// killed without warning loses at most this much.
+        private const val HISTORY_FLUSH_MS = 60_000L
+
         fun markTunnelDown(error: String? = null) {
             isTunnelUp = false
             if (error != null) lastError = error
@@ -128,6 +142,42 @@ class AegisVpnService : VpnService(), Runnable {
     /// inject. `uid` is the app that sent the query, or -1 when unknown; it
     /// only feeds the per-app statistics.
     private external fun nativeProcessPacket(packet: ByteArray, uid: Int): ByteArray
+
+    /// Per-day history, kept by the engine in [historyFile]. Absent from an
+    /// engine older than this app (a build from the public repository uses
+    /// the last release's), so every call is guarded.
+    private external fun nativeHistoryOpen(path: String, utcOffsetSeconds: Int): Int
+    private external fun nativeHistoryFlush(utcOffsetSeconds: Int): Int
+
+    private val historyHandler = Handler(Looper.getMainLooper())
+    private val historyFlusher = object : Runnable {
+        override fun run() {
+            flushHistory()
+            if (isRunning) historyHandler.postDelayed(this, HISTORY_FLUSH_MS)
+        }
+    }
+
+    private fun openHistory() {
+        if (!nativeAvailable) return
+        try {
+            val status = nativeHistoryOpen(historyFile(this).absolutePath, utcOffsetSeconds())
+            if (status != 0) Log.w(TAG, "History file could not be read ($status)")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.w(TAG, "Engine has no daily history", e)
+        }
+        historyHandler.removeCallbacks(historyFlusher)
+        historyHandler.postDelayed(historyFlusher, HISTORY_FLUSH_MS)
+    }
+
+    private fun flushHistory() {
+        if (!nativeAvailable) return
+        try {
+            val status = nativeHistoryFlush(utcOffsetSeconds())
+            if (status != 0) Log.w(TAG, "History could not be written ($status)")
+        } catch (e: UnsatisfiedLinkError) {
+            // Engine without daily history; nothing to write.
+        }
+    }
 
     private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
 
@@ -411,6 +461,8 @@ class AegisVpnService : VpnService(), Runnable {
                 TimeUnit.MILLISECONDS,
                 ArrayBlockingQueue(WORKER_QUEUE_DEPTH),
             )
+            // Before the first packet, so its day is counted in local time.
+            openHistory()
             vpnThread = Thread(this, "AegisVpnThread").also { it.start() }
             publishStartResult(true, null)
             AegisTileService.requestTileRefresh(this)
@@ -450,6 +502,8 @@ class AegisVpnService : VpnService(), Runnable {
 
     private fun stopVpn() {
         isRunning = false
+        historyHandler.removeCallbacks(historyFlusher)
+        flushHistory()
         markTunnelDown()
         AegisTileService.requestTileRefresh(this)
         try {

@@ -6,6 +6,43 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-10-21
+
+Verified on an Android 14 emulator with an APK built as the release workflow
+builds it (obfuscated, signed): a blocked domain shows why and can be allowed,
+Test a domain answers, the Settings switch is there, and the daily history
+survives closing the app.
+
+### Added
+
+- **The log says why a domain was blocked.** Tap an entry to see what
+  stopped it: the Ads, Trackers, Malware or Adult filter and the filter list
+  behind it, your own block list, a blocked app, or the protection that stops
+  apps getting around the filter. Allow it from the same sheet with one tap.
+  Entries let through by your allow list, by an exception in a filter list,
+  by a custom host or by SafeSearch say so too. Filter lists name themselves
+  from the next sync on.
+- **Test a domain.** The search icon on the log screen tells you whether a
+  domain would be blocked right now and why, using the rules on the device and
+  without looking the domain up. A blocked domain can be allowed from there.
+- **Blocks trackers that hide behind a site's own subdomain.** Some sites
+  serve a tracker from a name under their own domain that points to a
+  tracking company. AegisNet now blocks those too, and the log shows
+  "Blocked: alias of" the tracker. A domain you allow is never blocked this
+  way. On by default; Settings has a switch to turn it off if a site breaks,
+  and backups carry the setting.
+- **Daily history.** Analytics now shows the last 30 days: how many queries
+  each day had, how many were blocked, and the most-blocked domains. It is
+  kept on the phone and survives closing the app, restarting protection and
+  rebooting (Android).
+
+### Changed
+
+- **The README describes the project as it is.** The iOS extension target is
+  added by a script rather than missing, the desktop builds are marked as
+  needing an engine built by hand, and the private engine's internals are no
+  longer listed.
+
 ## [1.6.1] — 2026-10-15
 
 Nothing changes in the app itself: this release is about building it and

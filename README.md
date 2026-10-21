@@ -1,6 +1,7 @@
 # AegisNet 🛡️
 
 [![Downloads](https://img.shields.io/github/downloads/vannt-dev/aegis-net/total)](https://github.com/vannt-dev/aegis-net/releases)
+[![Official vannt-dev build](https://vannt-dev.github.io/badges/official.svg)](https://vannt-dev.github.io/official.html)
 
 **AegisNet** is a high-performance, cross-platform system-wide DNS Privacy Guard & Ad-Blocking Mobile Application for **Android & iOS**, built with **Flutter** and powered by a high-speed **Rust Core Engine**.
 
@@ -20,13 +21,12 @@ The APK signing certificate fingerprints are listed there too.
                                            │  Dart FFI (dart:ffi)
                                            ▼
  ┌───────────────────────────────────────────────────────────────────────────────────┐
- │                                Rust Core Engine                                   │
- │  ├── Rule Engine (HashSet domain + subdomain matching; Hosts, EasyList, AdGuard)  │
- │  ├── DNS Interceptor & DoH Resolver (Sinkhole 0.0.0.0 for Ads, DNS-over-HTTPS)    │
- │  ├── DNS In-Memory Cache (per (domain, qtype) TTL cache for low latency)          │
- │  ├── SafeSearch Rewriter (exact-host enforcement for Google & DuckDuckGo)         │
- │  ├── Packet Parsing (minimal IPv4/UDP parser + checksum, `packet.rs`)             │
- │  └── Statistics Engine (Real-time counters & ring-buffer query logs)              │
+ │                     Rust Core Engine (private submodule)                          │
+ │  ├── Rule Engine (Hosts, EasyList and AdGuard domain rules)                       │
+ │  ├── DNS Interceptor & encrypted upstream (DoH, DoT, DoQ)                         │
+ │  ├── DNS Cache                                                                    │
+ │  ├── SafeSearch (Google & DuckDuckGo)                                             │
+ │  └── Statistics (live counters, query log, daily history)                         │
  └─────────────────────────────────────────▲─────────────────────────────────────────┘
                                            │  File Descriptor / IP Packets
                                            ▼
@@ -41,20 +41,20 @@ The APK signing certificate fingerprints are listed there too.
 
 ## ⚡ Key Features
 
-- **🚀 Sub-Millisecond DNS Filtering**: Powered by Rust `rule_engine` with a memory-optimized **`DomainTrie` (Prefix Tree)** supporting Hosts format, EasyList DNS, and AdGuard domain rules. Matching is exact-domain **and** subdomain-aware with 50-70% lower memory footprint.
-- **⚡ DNS In-Memory Cache**: Rust TTL cache keyed by `(domain, qtype)`, stamping each cached reply with the caller's transaction id for correct resolution.
+- **🚀 Sub-Millisecond DNS Filtering**: A Rust engine that reads Hosts files, EasyList DNS and AdGuard domain rules. A rule for a domain covers its subdomains too.
+- **⚡ DNS Cache**: Answers already seen are served from memory until they expire, for low latency.
 - **🗺️ Local DNS Mapping & Custom Hosts**: Define custom internal DNS host overrides (`domain` -> `IP`, e.g. `myrouter.local` -> `192.168.1.1`) with real-time UI control.
 - **⏰ Scheduled Quiet Hours (Parental Controls)**: Automatic category filter activation during configured quiet hours (e.g. 22:00 - 06:00).
 - **🔒 Enforced SafeSearch**: Exact-host SafeSearch rewriting for Google & DuckDuckGo (unrelated subdomains such as `mail.google.com` are never touched).
 - **🌐 DNS-over-HTTPS, DNS-over-TLS & DNS-over-QUIC**: Encrypted upstream over DoH (RFC 8484, `application/dns-message`), DoT (RFC 7858, port 853) or DoQ (RFC 9250, UDP port 853). The built-in providers (Cloudflare, Google, AdGuard, Quad9) use DoH with IP-literal endpoints to avoid resolver bootstrap loops; a custom resolver can be an `https://` URL, a `tls://host[:port][#name]` target or a `quic://host[:port][#name]` target, where `#name` is the certificate name to verify when the host is an address.
-- **💻 Multi-Platform Desktop Support**: Desktop scaffolding for Windows, macOS, and Linux powered by `DesktopDnsProxy`.
+- **💻 Desktop (experimental)**: Windows, macOS and Linux builds include a local DNS resolver (`DesktopDnsProxy`) to point the operating system at. It needs an engine library built by hand; see the platform table.
 - **⏱️ DNS Latency Benchmark**: Interactive built-in benchmark tool to test and automatically select the fastest upstream DNS provider.
-- **📱 System-Wide Protection**: Intercepts OS-level DNS traffic via local split-tunnel VPN (`VpnService` on Android, `NEPacketTunnelProvider` on iOS) without routing web traffic to remote servers.
-- **📊 Real-time Dashboard & Analytics**: Interactive traffic graphs, query counters, ad-block stats, bandwidth savings, and detailed category analytics.
+- **📱 System-Wide Protection**: Intercepts OS-level DNS traffic via local split-tunnel VPN (`VpnService` on Android; the iOS `NEPacketTunnelProvider` is not finished) without routing web traffic to remote servers.
+- **📊 Real-time Dashboard & Analytics**: Interactive traffic graphs, query counters, ad-block stats, bandwidth savings, and detailed category analytics, plus a 30-day history of queries, blocks and the most-blocked domains that survives restarts (Android).
 - **🚫 Block an app (Android 10+)**: Refuse every DNS lookup a chosen app makes, from the Top apps list in Analytics. It stops name lookups, not connections to fixed IP addresses.
 - **📱 Per-app statistics (Android 10+)**: See which apps make the most DNS queries and how many were blocked, and filter the live query log by app.
 - **🛡️ Bypass protection**: DNS sent straight to public resolvers is filtered too, and their encrypted DNS is refused so apps fall back to the filter.
-- **📜 Live Query Log & CSV Export**: Real-time query monitoring with status filter chips (`ALL LOGS`, `BLOCKED`, `ALLOWED`), instant domain search and CSV export. Tap an entry to allow or block that domain on the spot.
+- **📜 Live Query Log & CSV Export**: Real-time query monitoring with status filter chips (`ALL LOGS`, `BLOCKED`, `ALLOWED`), instant domain search and CSV export. Tap an entry to see why it was blocked and to allow or block that domain on the spot. **Test a domain** tells whether a domain would be blocked, and why, before anything asks for it.
 - **⚡ Custom Whitelist & Blacklist**: Flexible custom rule management with instant hot-reloading.
 - **🔄 Background Auto-Sync**: Automatic blocklist updates and background rule synchronization.
 - **🌍 4-Language i18n Support**: Full internationalization for English (EN), Vietnamese (VI), Korean (KO), and Japanese (JA).
@@ -92,8 +92,8 @@ approach, such as an alternative client (ReVanced, NewPipe) or YouTube Premium.
 | Platform | Native DNS filtering | Notes |
 |----------|:--------------------:|-------|
 | **Android** | ✅ **Working (verified on emulator)** | TUN → Rust → device pipeline, DNS-only routing, DoH upstream. `libaegis_core.so` is built by a Gradle `cargo-ndk` task, or fetched already built when the engine's source is absent. |
-| **iOS** | 🚧 **App shell builds in CI; filtering not wired up** | The Flutter shell compiles on a macOS runner on every PR. Extension provider, `NETunnelProviderManager` channel, entitlements, App Group state sharing and the Rust framework script are all in the repo, and the Rust core cross-compiles for iOS. Still missing: the `PacketTunnel` target does not exist in the Xcode project, so none of the extension Swift has ever been compiled. Final assembly needs macOS/Xcode + a paid Apple Developer account — see [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md). |
-| **Desktop** | ✅ **Scaffolding Ready (Windows/macOS/Linux)** | Full native desktop project scaffolding with `DesktopDnsProxy` integration for local DNS resolution. |
+| **iOS** | 🚧 **App shell builds in CI; filtering not wired up** | The Flutter shell compiles on a macOS runner on every PR. Extension provider, `NETunnelProviderManager` channel, entitlements, App Group state sharing and the Rust framework script are all in the repo, and the Rust core cross-compiles for iOS. Still missing: the `PacketTunnel` extension target is not checked into the Xcode project. `ios/add_packet_tunnel_target.rb` adds it on a Mac (and links the engine framework), but the extension has not yet been compiled in CI or run on a device. Final assembly needs macOS/Xcode + a paid Apple Developer account — see [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md). |
+| **Desktop** | 🚧 **Local DNS proxy; engine not bundled (Windows/macOS/Linux)** | `DesktopDnsProxy` answers DNS on loopback (port 53, or 5300 without the rights for 53) through the engine, and the operating system has to be pointed at it by hand. The desktop builds do not build or bundle the engine library: put a hand-built `aegis_core.dll` / `libaegis_core.so` beside the app (on macOS, link it into the app). Without it the proxy cannot answer and the app runs the pure-Dart fallback. |
 | **Web** | ➖ **Fallback Engine / WASM Ready** | Runs the pure-Dart fallback engine (simulation) with WASM target scaffolding for browser testing. |
 
 > When the native engine is unavailable, the app **gracefully falls back** to a
@@ -115,25 +115,14 @@ aegis-net/
 │               ├── AegisVpnService.kt
 │               └── MainActivity.kt
 ├── ios/                       # Native iOS NEPacketTunnelProvider (WIP)
-│   ├── PacketTunnel/           # Extension sources — target NOT created yet, never compiled
+│   ├── PacketTunnel/           # Extension sources — not built or run on a device yet
 │   │   └── PacketTunnelProvider.swift
+│   ├── add_packet_tunnel_target.rb # Adds the PacketTunnel target to the Xcode project
 │   └── Runner/
 │       ├── AppDelegate.swift   # registers the channel from didInitializeImplicitFlutterEngine
 │       ├── SceneDelegate.swift # UIScene lifecycle (Flutter 3.35+)
 │       └── VpnManager.swift    # com.aegisnet/vpn MethodChannel <-> NETunnelProviderManager
-├── rust/                      # Rust Core Engine Crate
-│   └── aegis_core/
-│       ├── Cargo.toml
-│       └── src/
-│           ├── api.rs         # FFI exported functions & bridge interface
-│           ├── cache.rs       # DNS In-Memory (domain, qtype) TTL cache
-│           ├── dns_filter.rs  # DNS parser, sinkhole, SafeSearch & DoH upstream
-│           ├── rule_engine.rs # Domain + subdomain HashSet matcher
-│           ├── packet.rs      # IPv4/UDP parse, reply reassembly & checksum
-│           ├── jni_bridge.rs  # JNI entry point for the Android VpnService
-│           ├── shared_state.rs # Snapshots crossing the iOS app <-> extension boundary
-│           ├── statistics.rs  # Ring buffer logs & real-time counter statistics
-│           └── lib.rs
+├── rust/aegis_core/           # Rust engine — private submodule (vannt-dev/aegis-core)
 ├── lib/                       # Flutter Application (Dart)
 │   ├── main.dart
 │   └── src/
@@ -262,8 +251,9 @@ nothing, and the build log says so.
   the generated package and it reports *Missing package product
   'FlutterGeneratedPluginSwiftPackage'*.
 
-  DNS filtering does **not** work on iOS yet — the `PacketTunnel` target still
-  has to be created in Xcode. See [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md).
+  DNS filtering does **not** work on iOS yet — the `PacketTunnel` target has to
+  be added with `ruby ios/add_packet_tunnel_target.rb`, and the extension has
+  not been built or run on a device yet. See [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md).
 
 ---
 

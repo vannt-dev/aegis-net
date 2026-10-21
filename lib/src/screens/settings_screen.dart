@@ -490,6 +490,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 24),
 
+          // Trackers served under a site's own domain
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.visibility_off_rounded,
+                        color: Colors.cyanAccent, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        AppStrings.get('settings_cname_title'),
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white),
+                      ),
+                    ),
+                    Switch(
+                      key: const Key('cname_switch'),
+                      value: vpn.blockAliasTrackers,
+                      activeThumbColor: Colors.cyanAccent,
+                      onChanged: vpn.setBlockAliasTrackers,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  AppStrings.get('settings_cname_desc'),
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
           // Scheduled Parental Controls Section
           Container(
             padding: const EdgeInsets.all(16),

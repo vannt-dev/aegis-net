@@ -3,7 +3,16 @@ name: AegisNet iOS Build Verification
 on:
   push:
     branches: [main, develop]
+  # macOS runners are few and shared by every repository: a pull request builds iOS
+  # only when the iOS project, the Rust core, the plugins or CI change. Pushes to
+  # main and develop always build it.
   pull_request:
+    paths:
+      - 'ios/**'
+      - 'rust/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/**'
 
 concurrency:
   group: ios-${{ github.ref_name || github.ref }}

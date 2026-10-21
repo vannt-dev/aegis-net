@@ -8,6 +8,9 @@ class AegisNativeBindings {
   /// than dropping it — see DnsMessage.buildServfail.
   static Uint8List? handleDnsPacket(Uint8List query) => null;
   static int loadRules(String rulesText, int categoryId) => 0;
+  static int? loadRulesFromList(String rulesText, int categoryId, String key) =>
+      null;
+  static String? explainDomainJson(String domain) => null;
   static void addWhitelist(String domain) {}
   static void addBlacklist(String domain) {}
   static void removeWhitelist(String domain) {}
@@ -16,11 +19,15 @@ class AegisNativeBindings {
   static void removeCustomHost(String domain) {}
   static void setCategory(int categoryId, bool enabled) {}
   static void setBlockDohHosts(bool enabled) {}
+  static void setCnameUncloaking(bool enabled) {}
   static void setBlockedUids(List<int> uids) {}
   static void clearDownloadedRules() {}
   static void setUpstreamDns(String upstream) {}
   static bool isDomainBlocked(String domain) => false;
   static String? getStatsJson() => null;
+  static int historyOpen(String path, int utcOffsetSeconds) => -1;
+  static int historyFlush(int utcOffsetSeconds) => -1;
+  static String? getHistoryJson() => null;
   static String? getRecentLogsJson(int limit) => null;
 
   // Cross-process snapshots. -1 mirrors the native "no engine" status.
