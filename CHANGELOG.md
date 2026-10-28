@@ -6,6 +6,8 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-10-28
+
 ### Added
 
 - **Allow a domain for a while.** Tap a logged domain and pick 15 min, 1 hour
