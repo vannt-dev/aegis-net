@@ -280,6 +280,16 @@ class _LogsScreenState extends State<LogsScreen> {
     );
   }
 
+  /// `14:05`, or `14:05 29/10` when [at] is not today.
+  static String _clock(DateTime at) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final now = DateTime.now();
+    final time = '${two(at.hour)}:${two(at.minute)}';
+    final today =
+        at.year == now.year && at.month == now.month && at.day == now.day;
+    return today ? time : '$time ${two(at.day)}/${two(at.month)}';
+  }
+
   /// Lets a logged domain be allowed or blocked from where it was noticed,
   /// instead of retyping it on the Rules screen.
   void _showDomainActions(VpnProvider vpn, DnsLogItem item) {
@@ -287,14 +297,16 @@ class _LogsScreenState extends State<LogsScreen> {
     if (domain.isEmpty) return;
     final allowed = vpn.whitelist.contains(domain);
     final blocked = vpn.blacklist.contains(domain);
+    final allowedUntil = vpn.temporaryAllowUntil(domain);
 
-    void done(String messageKey) {
+    void done(String messageKey, {DateTime? until}) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-          content:
-              Text(AppStrings.get(messageKey).replaceAll('{domain}', domain)),
+          content: Text(AppStrings.get(messageKey)
+              .replaceAll('{domain}', domain)
+              .replaceAll('{time}', until == null ? '' : _clock(until))),
           backgroundColor: Colors.cyan.shade900,
         ));
     }
@@ -305,100 +317,152 @@ class _LogsScreenState extends State<LogsScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
-              child: Text(
-                domain,
-                key: const ValueKey('log-actions-domain'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            // Why it was blocked (or rewritten, or let through by a rule).
-            if (item.isBlocked || item.reason != null)
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      item.isBlocked ? Icons.block : Icons.info_outline,
-                      size: 14,
-                      color: item.isBlocked ? Colors.redAccent : emeraldColor,
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        item.reasonText,
-                        key: const ValueKey('log-actions-reason'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            color: Colors.grey.shade300, fontSize: 12),
-                      ),
-                    ),
-                  ],
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+                child: Text(
+                  domain,
+                  key: const ValueKey('log-actions-domain'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            const Divider(color: Colors.white10, height: 1),
-            ListTile(
-              key: const ValueKey('log-action-allow'),
-              leading:
-                  const Icon(Icons.check_circle_outline, color: emeraldColor),
-              title: Text(
-                AppStrings.get(
-                    allowed ? 'logs_action_unallow' : 'logs_action_allow'),
-                style: const TextStyle(color: Colors.white),
+              // Why it was blocked (or rewritten, or let through by a rule).
+              if (item.isBlocked || item.reason != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        item.isBlocked ? Icons.block : Icons.info_outline,
+                        size: 14,
+                        color: item.isBlocked ? Colors.redAccent : emeraldColor,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          // The engine reports a timed allow as the allow
+                          // list; it never lands there, so say what it is.
+                          item.reason == 'allowlist' &&
+                                  !allowed &&
+                                  allowedUntil != null
+                              ? AppStrings.get('reason_temporary_allow')
+                              : item.reasonText,
+                          key: const ValueKey('log-actions-reason'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: Colors.grey.shade300, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const Divider(color: Colors.white10, height: 1),
+              ListTile(
+                key: const ValueKey('log-action-allow'),
+                leading:
+                    const Icon(Icons.check_circle_outline, color: emeraldColor),
+                title: Text(
+                  AppStrings.get(
+                      allowed ? 'logs_action_unallow' : 'logs_action_allow'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  if (allowed) {
+                    vpn.removeWhitelistDomain(domain);
+                    done('logs_rule_removed');
+                  } else {
+                    vpn.allowDomain(domain);
+                    done('logs_allow_added');
+                  }
+                },
               ),
-              onTap: () {
-                if (allowed) {
-                  vpn.removeWhitelistDomain(domain);
-                  done('logs_rule_removed');
-                } else {
-                  vpn.allowDomain(domain);
-                  done('logs_allow_added');
-                }
-              },
-            ),
-            ListTile(
-              key: const ValueKey('log-action-block'),
-              leading: const Icon(Icons.block, color: Colors.redAccent),
-              title: Text(
-                AppStrings.get(
-                    blocked ? 'logs_action_unblock' : 'logs_action_block'),
-                style: const TextStyle(color: Colors.white),
+              if (!allowed && allowedUntil != null)
+                ListTile(
+                  key: const ValueKey('log-action-stop-timed'),
+                  leading:
+                      const Icon(Icons.timer_off_outlined, color: emeraldColor),
+                  title: Text(
+                    AppStrings.get('logs_allowed_until')
+                        .replaceAll('{time}', _clock(allowedUntil)),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    vpn.stopTemporaryAllow(domain);
+                    done('logs_timed_allow_stopped');
+                  },
+                )
+              else if (!allowed)
+                ListTile(
+                  leading:
+                      const Icon(Icons.timer_outlined, color: emeraldColor),
+                  title: Text(
+                    AppStrings.get('logs_action_allow_for'),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  subtitle: Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final (key, label, duration) in const [
+                        ('15m', 'logs_allow_15m', Duration(minutes: 15)),
+                        ('1h', 'logs_allow_1h', Duration(hours: 1)),
+                        ('1d', 'logs_allow_1d', Duration(days: 1)),
+                      ])
+                        ActionChip(
+                          key: ValueKey('log-action-allow-$key'),
+                          label: Text(AppStrings.get(label)),
+                          onPressed: () {
+                            vpn.allowDomainFor(domain, duration);
+                            done('logs_timed_allow_added',
+                                until: vpn.temporaryAllowUntil(domain));
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ListTile(
+                key: const ValueKey('log-action-block'),
+                leading: const Icon(Icons.block, color: Colors.redAccent),
+                title: Text(
+                  AppStrings.get(
+                      blocked ? 'logs_action_unblock' : 'logs_action_block'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  if (blocked) {
+                    vpn.removeBlacklistDomain(domain);
+                    done('logs_rule_removed');
+                  } else {
+                    vpn.blockDomain(domain);
+                    done('logs_block_added');
+                  }
+                },
               ),
-              onTap: () {
-                if (blocked) {
-                  vpn.removeBlacklistDomain(domain);
-                  done('logs_rule_removed');
-                } else {
-                  vpn.blockDomain(domain);
-                  done('logs_block_added');
-                }
-              },
-            ),
-            ListTile(
-              key: const ValueKey('log-action-copy'),
-              leading: const Icon(Icons.copy, color: Colors.grey),
-              title: Text(
-                AppStrings.get('logs_action_copy'),
-                style: const TextStyle(color: Colors.white),
+              ListTile(
+                key: const ValueKey('log-action-copy'),
+                leading: const Icon(Icons.copy, color: Colors.grey),
+                title: Text(
+                  AppStrings.get('logs_action_copy'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: domain));
+                  done('logs_copied');
+                },
               ),
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: domain));
-                done('logs_copied');
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

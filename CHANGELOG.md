@@ -6,6 +6,15 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-10-28
+
+### Added
+
+- **Allow a domain for a while.** Tap a logged domain and pick 15 min, 1 hour
+  or 1 day. It is blocked again on time, even if the app is closed, and the
+  sheet shows until when, with a tap to block it again now. A timed allow
+  never lands on your allow list.
+
 ## [1.7.0] — 2026-10-21
 
 Verified on an Android 14 emulator with an APK built as the release workflow
