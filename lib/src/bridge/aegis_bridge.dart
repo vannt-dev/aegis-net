@@ -41,6 +41,8 @@ class AegisBridge {
   // Memory fallback state
   static final Set<String> _whitelistedDomains = {};
   static final Set<String> _blacklistedDomains = {};
+  // Timed allows for when the native engine is not loaded: domain -> expiry.
+  static final Map<String, DateTime> _temporaryAllows = {};
   static final Set<String> _loadedRules = {
     'doubleclick.net',
     'googleadservices.com',
@@ -338,6 +340,7 @@ class AegisBridge {
       return AegisNativeBindings.isDomainBlocked(clean);
     } else {
       if (_matchesRuleSet(_whitelistedDomains, clean)) return false;
+      if (_temporarilyAllowed(clean)) return false;
       if (_matchesRuleSet(_blacklistedDomains, clean)) return true;
       return _matchesRuleSet(_loadedRules, clean);
     }
@@ -371,6 +374,9 @@ class AegisBridge {
     if (_matchesRuleSet(_whitelistedDomains, clean)) {
       return DomainVerdict(domain: clean, blocked: false, reason: 'allowlist');
     }
+    if (_temporarilyAllowed(clean)) {
+      return DomainVerdict(domain: clean, blocked: false, reason: 'allowlist');
+    }
     if (_matchesRuleSet(_blacklistedDomains, clean)) {
       return DomainVerdict(domain: clean, blocked: true, reason: 'custom_rule');
     }
@@ -399,6 +405,24 @@ class AegisBridge {
     publishSettings();
   }
 
+  static bool _temporarilyAllowed(String domain) {
+    final now = DateTime.now();
+    _temporaryAllows.removeWhere((_, until) => !until.isAfter(now));
+    return _matchesRuleSet(_temporaryAllows.keys.toSet(), domain);
+  }
+
+  /// Allow [domain] and its subdomains until [until]. The engine forgets it
+  /// on its own once the time is up; [removeWhitelist] ends it early.
+  static void addWhitelistUntil(String domain, DateTime until) {
+    final clean = domain.trim().toLowerCase();
+    if (_useNativeFfi) {
+      AegisNativeBindings.addWhitelistUntil(
+          clean, until.millisecondsSinceEpoch ~/ 1000);
+    }
+    _temporaryAllows[clean] = until;
+    publishSettings();
+  }
+
   /// Add domain to Blacklist
   static void addBlacklist(String domain) {
     final clean = domain.trim().toLowerCase();
@@ -417,6 +441,7 @@ class AegisBridge {
       AegisNativeBindings.removeWhitelist(clean);
     }
     _whitelistedDomains.remove(clean);
+    _temporaryAllows.remove(clean);
     publishSettings();
   }
 

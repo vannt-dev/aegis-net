@@ -61,6 +61,11 @@ typedef AegisLoadRulesFromListDart = int Function(
 typedef AegisExplainC = Pointer<Utf8> Function(Pointer<Utf8> domain);
 typedef AegisExplainDart = Pointer<Utf8> Function(Pointer<Utf8> domain);
 
+typedef AegisAddDomainUntilC = Void Function(
+    Pointer<Utf8> domain, Uint64 expiresEpochSecs);
+typedef AegisAddDomainUntilDart = void Function(
+    Pointer<Utf8> domain, int expiresEpochSecs);
+
 typedef AegisHistoryOpenC = Int32 Function(Pointer<Utf8> path, Int32 offset);
 typedef AegisHistoryOpenDart = int Function(Pointer<Utf8> path, int offset);
 typedef AegisHistoryFlushC = Int32 Function(Int32 offset);
@@ -113,6 +118,7 @@ class AegisNativeBindings {
   static AegisLoadRulesFromListDart? _loadRulesFromList;
   static AegisExplainDart? _explainDomain;
   static AegisSetFlagDart? _setCnameUncloaking;
+  static AegisAddDomainUntilDart? _addWhitelistUntil;
   static AegisHistoryOpenDart? _historyOpen;
   static AegisHistoryFlushDart? _historyFlush;
   static AegisGetStatsDart? _getHistoryJson;
@@ -214,6 +220,9 @@ class AegisNativeBindings {
         _setCnameUncloaking = _optional(() => _lib!
             .lookupFunction<AegisSetFlagC, AegisSetFlagDart>(
                 'aegis_set_cname_uncloaking'));
+        _addWhitelistUntil = _optional(() => _lib!
+            .lookupFunction<AegisAddDomainUntilC, AegisAddDomainUntilDart>(
+                'aegis_add_whitelist_until'));
         _historyOpen = _optional(() => _lib!
             .lookupFunction<AegisHistoryOpenC, AegisHistoryOpenDart>(
                 'aegis_history_open'));
@@ -280,6 +289,16 @@ class AegisNativeBindings {
     final ptr = domain.toNativeUtf8();
     _addWhitelist!(ptr);
     malloc.free(ptr);
+  }
+
+  /// Allow [domain] until [expiresEpochSecs]. Returns false on an engine
+  /// that predates timed allows.
+  static bool addWhitelistUntil(String domain, int expiresEpochSecs) {
+    if (!_isLoaded || _addWhitelistUntil == null) return false;
+    final ptr = domain.toNativeUtf8();
+    _addWhitelistUntil!(ptr, expiresEpochSecs);
+    malloc.free(ptr);
+    return true;
   }
 
   static void addBlacklist(String domain) {

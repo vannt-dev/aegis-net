@@ -106,6 +106,71 @@ void main() {
     vpn.dispose();
   });
 
+  testWidgets('a blocked domain can be allowed for an hour, then stopped',
+      (tester) async {
+    final vpn = await pumpLogs(tester);
+
+    await openActions(tester, 'ads.Example.com');
+    await choose(tester, 'log-action-allow-1h');
+
+    final until = vpn.temporaryAllowUntil('ads.example.com');
+    expect(until, isNotNull);
+    expect(
+        until!.difference(DateTime.now()).inMinutes, inInclusiveRange(58, 60));
+    expect(vpn.whitelist, isEmpty, reason: 'never on the permanent list');
+    expect(find.textContaining('ads.example.com is allowed until'),
+        findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList('temporary_allows'),
+        ['ads.example.com=${until.millisecondsSinceEpoch ~/ 1000}']);
+    expect(prefs.getStringList('whitelist'), isNull);
+
+    await openActions(tester, 'ads.Example.com');
+    expect(find.byKey(const ValueKey('log-action-allow-1h')), findsNothing);
+    await choose(tester, 'log-action-stop-timed');
+
+    expect(vpn.temporaryAllowUntil('ads.example.com'), isNull);
+    expect(find.text('ads.example.com is blocked again.'), findsOneWidget);
+    expect(prefs.getStringList('temporary_allows'), isEmpty);
+    vpn.dispose();
+  });
+
+  testWidgets('a permanently allowed domain offers no timed allow',
+      (tester) async {
+    final vpn = await pumpLogs(tester);
+    vpn.allowDomain('cdn.example.org');
+
+    await openActions(tester, 'cdn.example.org');
+    expect(find.byKey(const ValueKey('log-action-allow-15m')), findsNothing);
+    vpn.dispose();
+  });
+
+  test('saved timed allows come back unless they ran out', () async {
+    final soon = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 600;
+    SharedPreferences.setMockInitialValues({
+      'temporary_allows': ['live.example=$soon', 'old.example=1', 'junk'],
+    });
+    final vpn = VpnProvider(enableSimulation: false);
+    await vpn.reloadFromPreferences();
+
+    expect(vpn.temporaryAllowUntil('live.example'),
+        DateTime.fromMillisecondsSinceEpoch(soon * 1000));
+    expect(vpn.temporaryAllowUntil('old.example'), isNull);
+    vpn.dispose();
+  });
+
+  test('blocking a domain ends its timed allow', () async {
+    SharedPreferences.setMockInitialValues({});
+    final vpn = VpnProvider(enableSimulation: false);
+    vpn.allowDomainFor('tracker.example', const Duration(minutes: 15));
+    expect(vpn.temporaryAllowUntil('tracker.example'), isNotNull);
+
+    vpn.blockDomain('tracker.example');
+    expect(vpn.temporaryAllowUntil('tracker.example'), isNull);
+    expect(vpn.blacklist, ['tracker.example']);
+    vpn.dispose();
+  });
+
   testWidgets('the domain can be copied', (tester) async {
     final vpn = await pumpLogs(tester);
     String? copied;
@@ -188,6 +253,13 @@ void main() {
       'logs_block_added',
       'logs_rule_removed',
       'logs_copied',
+      'logs_action_allow_for',
+      'logs_allow_15m',
+      'logs_allow_1h',
+      'logs_allow_1d',
+      'logs_allowed_until',
+      'logs_timed_allow_added',
+      'logs_timed_allow_stopped',
     ];
     for (final lang in AppStrings.languages) {
       for (final key in keys) {
