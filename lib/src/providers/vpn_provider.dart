@@ -131,6 +131,12 @@ class VpnProvider extends ChangeNotifier {
   final List<String> _whitelist = [];
   final List<String> _blacklist = [];
 
+  /// Allows that run out on their own: domain -> when. Saved under their own
+  /// key, never in the allow list, so a lapsed one cannot outlive its time.
+  final Map<String, DateTime> _temporaryAllows = {};
+  Timer? _temporaryAllowTimer;
+  static const _prefTemporaryAllows = 'temporary_allows';
+
   Timer? _simulationTimer;
   final bool enableSimulation;
 
@@ -432,6 +438,11 @@ class VpnProvider extends ChangeNotifier {
     for (final domain in _blacklist) {
       AegisBridge.addBlacklist(domain);
     }
+    _dropLapsedAllows();
+    for (final entry in _temporaryAllows.entries) {
+      AegisBridge.addWhitelistUntil(entry.key, entry.value);
+    }
+    _scheduleAllowExpiry();
     for (final entry in _customHosts.entries) {
       AegisBridge.addCustomHost(entry.key, entry.value);
     }
@@ -473,6 +484,15 @@ class VpnProvider extends ChangeNotifier {
       if (savedWhitelist != null) {
         _whitelist.clear();
         _whitelist.addAll(savedWhitelist);
+      }
+
+      _temporaryAllows.clear();
+      for (final item in prefs.getStringList(_prefTemporaryAllows) ?? []) {
+        final at = item.lastIndexOf('=');
+        final secs = at > 0 ? int.tryParse(item.substring(at + 1)) : null;
+        if (secs == null) continue;
+        _temporaryAllows[item.substring(0, at)] =
+            DateTime.fromMillisecondsSinceEpoch(secs * 1000);
       }
 
       final savedBlacklist = prefs.getStringList('blacklist');
@@ -700,8 +720,76 @@ class VpnProvider extends ChangeNotifier {
     _whitelist.remove(domain);
     AegisBridge.removeWhitelist(domain);
     _saveListPref('whitelist', _whitelist);
+    // The engine ends a timed allow along with the permanent one.
+    if (_temporaryAllows.remove(domain) != null) _saveTemporaryAllows();
     notifyListeners();
   }
+
+  /// When the timed allow on [domain] ends, or null when there is none.
+  DateTime? temporaryAllowUntil(String domain) {
+    final until = _temporaryAllows[domain.trim().toLowerCase()];
+    return until != null && until.isAfter(DateTime.now()) ? until : null;
+  }
+
+  /// Let [domain] resolve for [duration], then block it again as before. The
+  /// engine ends it on its own, even if the app is closed by then.
+  void allowDomainFor(String domain, Duration duration) {
+    final clean = domain.trim().toLowerCase();
+    if (clean.isEmpty || duration <= Duration.zero) return;
+    // Whole seconds: the engine counts in seconds, and the saved value must
+    // match what the engine was told.
+    final until = DateTime.fromMillisecondsSinceEpoch(
+        (DateTime.now().add(duration).millisecondsSinceEpoch ~/ 1000) * 1000);
+    _temporaryAllows[clean] = until;
+    AegisBridge.addWhitelistUntil(clean, until);
+    _saveTemporaryAllows();
+    _scheduleAllowExpiry();
+    notifyListeners();
+  }
+
+  /// End the timed allow on [domain] now. A permanent allow stays.
+  void stopTemporaryAllow(String domain) {
+    final clean = domain.trim().toLowerCase();
+    if (_temporaryAllows.remove(clean) == null) return;
+    // The engine has one call that ends both kinds; put back the permanent one.
+    AegisBridge.removeWhitelist(clean);
+    if (_whitelist.contains(clean)) AegisBridge.addWhitelist(clean);
+    _saveTemporaryAllows();
+    _scheduleAllowExpiry();
+    notifyListeners();
+  }
+
+  void _dropLapsedAllows() {
+    final now = DateTime.now();
+    _temporaryAllows.removeWhere((_, until) => !until.isAfter(now));
+  }
+
+  /// Refresh the screens when the next timed allow ends. The engine needs no
+  /// help: it stops allowing at that moment by itself.
+  void _scheduleAllowExpiry() {
+    _temporaryAllowTimer?.cancel();
+    _temporaryAllowTimer = null;
+    if (_temporaryAllows.isEmpty) return;
+    final next =
+        _temporaryAllows.values.reduce((a, b) => a.isBefore(b) ? a : b);
+    var wait = next.difference(DateTime.now());
+    if (wait.isNegative) wait = Duration.zero;
+    _temporaryAllowTimer = Timer(wait + const Duration(seconds: 1), () {
+      if (_disposed) return;
+      _dropLapsedAllows();
+      _saveTemporaryAllows();
+      _scheduleAllowExpiry();
+      notifyListeners();
+    });
+  }
+
+  Future<void> _saveTemporaryAllows() => _saveListPref(
+        _prefTemporaryAllows,
+        [
+          for (final e in _temporaryAllows.entries)
+            '${e.key}=${e.value.millisecondsSinceEpoch ~/ 1000}',
+        ],
+      );
 
   void addBlacklistDomain(String domain) {
     if (domain.trim().isEmpty) return;
@@ -739,6 +827,7 @@ class VpnProvider extends ChangeNotifier {
     final clean = domain.trim().toLowerCase();
     if (clean.isEmpty) return;
     if (_whitelist.contains(clean)) removeWhitelistDomain(clean);
+    stopTemporaryAllow(clean);
     addBlacklistDomain(clean);
   }
 
@@ -1086,6 +1175,7 @@ class VpnProvider extends ChangeNotifier {
     _pauseTimer?.cancel();
     _autoSyncTimer?.cancel();
     _scheduleTimer?.cancel();
+    _temporaryAllowTimer?.cancel();
     super.dispose();
   }
 }

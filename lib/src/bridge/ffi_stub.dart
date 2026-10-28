@@ -12,6 +12,7 @@ class AegisNativeBindings {
       null;
   static String? explainDomainJson(String domain) => null;
   static void addWhitelist(String domain) {}
+  static bool addWhitelistUntil(String domain, int expiresEpochSecs) => false;
   static void addBlacklist(String domain) {}
   static void removeWhitelist(String domain) {}
   static void removeBlacklist(String domain) {}
