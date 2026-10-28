@@ -202,6 +202,27 @@ void main() {
       expect(find.text('Allowed by your allow list'), findsOneWidget);
       vpn.dispose();
     });
+
+    testWidgets('an entry allowed for a while says so, not the allow list',
+        (tester) async {
+      final vpn = await pumpLogs(tester, [
+        entry('ads.example.net', blocked: false, reason: 'allowlist'),
+      ]);
+      vpn.allowDomainFor('ads.example.net', const Duration(minutes: 15));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('ads.example.net'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('log-actions-reason')))
+            .data,
+        'Allowed for a while',
+      );
+      expect(vpn.whitelist, isEmpty);
+      vpn.dispose();
+    });
   });
 
   group('test a domain', () {

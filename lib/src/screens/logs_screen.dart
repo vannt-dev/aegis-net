@@ -351,7 +351,13 @@ class _LogsScreenState extends State<LogsScreen> {
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(
-                          item.reasonText,
+                          // The engine reports a timed allow as the allow
+                          // list; it never lands there, so say what it is.
+                          item.reason == 'allowlist' &&
+                                  !allowed &&
+                                  allowedUntil != null
+                              ? AppStrings.get('reason_temporary_allow')
+                              : item.reasonText,
                           key: const ValueKey('log-actions-reason'),
                           textAlign: TextAlign.center,
                           style: TextStyle(
