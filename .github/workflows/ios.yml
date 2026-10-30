@@ -18,23 +18,28 @@ concurrency:
   group: ios-${{ github.ref_name || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   rust-ios-core:
     name: 🦀 Rust Core — iOS cross-compile
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/fetch-core
         with:
           deploy-key: ${{ secrets.CORE_DEPLOY_KEY }}
 
       - name: Install Rust Toolchain + iOS targets
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
       - name: Cache Cargo Dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "rust/aegis_core"
 
@@ -46,7 +51,7 @@ jobs:
           cargo build --release --target x86_64-apple-ios
 
       - name: Upload iOS static libraries
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: libaegis_core-ios
           path: |
@@ -63,13 +68,15 @@ jobs:
     name: 📱 Flutter iOS shell build
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/fetch-core
         with:
           deploy-key: ${{ secrets.CORE_DEPLOY_KEY }}
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: 'stable'
           cache: true

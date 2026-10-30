@@ -38,6 +38,7 @@ jobs:
             filter='map(select(.ref == "refs/pull/'"$PR_NUMBER"'/merge"))'
           else
             open=$(gh pr list --state open --limit 500 --json number --jq '[.[] | "refs/pull/\(.number)/merge"]')
+            # shellcheck disable=SC2016 # $open, $r and $newest are jq variables, not shell ones
             filter='
               def t: .last_accessed_at[0:19] + "Z" | fromdateiso8601;
               def kind: .key | sub("[-_|][0-9a-f]{12,}.*$"; "");
