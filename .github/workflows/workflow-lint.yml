@@ -1,0 +1,28 @@
+# Checks the workflows with actionlint and zizmor; the same file repokeeper's workflow_lint module writes.
+
+name: workflow lint
+on:
+  pull_request:
+    paths:
+      - .github/**
+      - "**/action.yml"
+      - "**/action.yaml"
+  push:
+    branches:
+      - develop
+    paths:
+      - .github/**
+      - "**/action.yml"
+      - "**/action.yaml"
+  schedule:
+    - cron: 17 5 * * 1
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  lint:
+    uses: vannt-dev/repokeeper/.github/workflows/workflow-lint.yml@v0
+    permissions:
+      contents: read
