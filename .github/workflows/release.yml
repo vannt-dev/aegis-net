@@ -238,7 +238,7 @@ jobs:
       # ------------------------------------------------- MR: chỉ đưa APK ra xem
       - name: Đính APK vào MR để tải thử
         if: steps.ver.outputs.publish != 'true'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aegisnet-${{ steps.ver.outputs.version }}-pr${{ github.event.pull_request.number }}
           path: build/app/outputs/flutter-apk/app-release.apk
