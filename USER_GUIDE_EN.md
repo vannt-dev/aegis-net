@@ -55,6 +55,7 @@ Switch to the **Logs** tab:
 * **`BLOCKED` (Red)**: Ad networks, trackers, or malicious domains blocked by AegisNet.
 * **`ALLOWED` (Green)**: Safe domains passed through to upstream DNS.
 * **Allow or block from the log**: Tap any entry to always allow or always block that domain, take it off a list it is already on, or copy the name. The change applies to the next query; a domain is only ever on one of the two lists.
+* **Allow for a while**: Tap an entry and pick 15 min, 1 hour or 1 day. The domain is blocked again on time, even if the app is closed; tap the entry again to see until when, or to block it again now. A timed allow never lands on your allow list.
 * Use the search bar at the top to filter specific domains.
 
 ---
