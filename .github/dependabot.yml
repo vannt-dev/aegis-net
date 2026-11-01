@@ -5,3 +5,14 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # Keeps the Flutter packages in pubspec.yaml current; minor and patch bumps
+  # arrive as one pull request, majors one by one.
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
