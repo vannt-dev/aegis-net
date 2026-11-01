@@ -6,6 +6,13 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.8.1] — 2026-11-01
+
+### Changed
+
+- Updated the libraries the app is built on, including the ones that draw
+  the charts and the fonts. Nothing changes in how you use the app.
+
 ## [1.8.0] — 2026-10-28
 
 ### Added
