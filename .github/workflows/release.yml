@@ -17,12 +17,14 @@ on:
         required: false
 
 permissions:
-  contents: write # cần để tạo GitHub Release
+  contents: read
 
 jobs:
   release:
     name: Build, ký và phát hành APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # cần để tạo GitHub Release
     outputs:
       version: ${{ steps.ver.outputs.version }}
       publish: ${{ steps.ver.outputs.publish }}
@@ -33,7 +35,9 @@ jobs:
       FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/fetch-core
         with:
           deploy-key: ${{ secrets.CORE_DEPLOY_KEY }}
@@ -41,8 +45,10 @@ jobs:
       # ---------------------------------------------------------------- version
       - name: Xác định phiên bản
         id: ver
+        env:
+          VERSION_INPUT: ${{ github.event.inputs.version }}
         run: |
-          INPUT="${{ github.event.inputs.version }}"
+          INPUT="$VERSION_INPUT"
           if [ -n "$INPUT" ]; then
             VERSION="$INPUT"
           else
@@ -128,14 +134,14 @@ jobs:
           echo "Ghi chú: $(wc -c < RELEASE_NOTES.md) ký tự cho GitHub, $(wc -c < FIREBASE_NOTES.md) cho Firebase."
 
       # ------------------------------------------------------------- toolchains
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
           cache: true
@@ -143,24 +149,13 @@ jobs:
       # QUAN TRỌNG: thiếu cargo-ndk thì task Gradle buildRustEngine bị bỏ qua
       # trong im lặng (onlyIf + isIgnoreExitValue) và APK sẽ RA ĐỜI MÀ KHÔNG CÓ
       # engine DNS — app cài được nhưng không chặn gì cả.
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rust/aegis_core
-
-      # cargo-ndk được build từ mã nguồn mất hơn nửa phút; giữ lại binary giữa các lần chạy.
-      - name: Lấy cargo-ndk từ cache
-        id: cargo-ndk
-        uses: actions/cache@v5
-        with:
-          path: ~/.cargo/bin/cargo-ndk
-          key: cargo-ndk-${{ runner.os }}-v1
-
+      # Job này phát hành, nên không lấy gì từ cache (Cargo, cargo-ndk): một cache
+      # bị đầu độc sẽ đi thẳng vào APK. Đổi lại build chậm hơn vài phút.
       - name: Cài cargo-ndk
-        if: steps.cargo-ndk.outputs.cache-hit != 'true'
         run: cargo install cargo-ndk --locked
 
       # ------------------------------------------------------------------ gate
@@ -226,7 +221,7 @@ jobs:
           APK=build/app/outputs/flutter-apk/app-release.apk
           # Có thể cài nhiều bản build-tools; lấy bản mới nhất thay vì để glob
           # nở ra nhiều đường dẫn rồi biến phần thừa thành tham số.
-          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          APKSIGNER=$(printf '%s\n' "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           echo "Dùng $APKSIGNER"
           DN=$("$APKSIGNER" verify --print-certs "$APK" \
                | grep -i 'certificate DN' || true)
@@ -243,7 +238,7 @@ jobs:
       # ------------------------------------------------- MR: chỉ đưa APK ra xem
       - name: Đính APK vào MR để tải thử
         if: steps.ver.outputs.publish != 'true'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: aegisnet-${{ steps.ver.outputs.version }}-pr${{ github.event.pull_request.number }}
           path: build/app/outputs/flutter-apk/app-release.apk
@@ -260,7 +255,7 @@ jobs:
       # một hotfix đi thẳng vào main là tag trỏ sang cây khác hẳn bản đã build.
       - name: Tạo GitHub Release
         if: steps.ver.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: v${{ steps.ver.outputs.version }}
           target_commitish: ${{ github.sha }}
@@ -273,7 +268,7 @@ jobs:
 
       - name: Gửi cho tester qua Firebase App Distribution
         if: steps.ver.outputs.publish == 'true' && env.FIREBASE_APP_ID != ''
-        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        uses: wzieba/Firebase-Distribution-Github-Action@bd494989dd4bec0343f78adee87fe66e48279ad6 # v1.7.1
         with:
           appId: ${{ secrets.FIREBASE_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -290,7 +285,10 @@ jobs:
     name: Engine dựng sẵn cho người build từ mã nguồn công khai
     needs: release
     if: needs.release.outputs.publish == 'true'
+    permissions:
+      contents: write # engine-prebuilt.yml đính file vào Release
     uses: ./.github/workflows/engine-prebuilt.yml
     with:
       tag: v${{ needs.release.outputs.version }}
-    secrets: inherit
+    secrets:
+      CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}

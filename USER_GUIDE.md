@@ -54,6 +54,7 @@ Chuyển sang tab **Logs**:
 * Nhãn **`BLOCKED` (Đỏ)**: Các truy vấn quảng cáo/theo dõi đã bị ngăn chặn thành công.
 * Nhãn **`ALLOWED` (Xanh)**: Các truy vấn an toàn được đi qua.
 * **Cho phép hoặc chặn ngay từ nhật ký**: Chạm vào một dòng để luôn cho phép hoặc luôn chặn tên miền đó, gỡ nó khỏi danh sách đang chứa nó, hoặc sao chép tên. Thay đổi có hiệu lực từ truy vấn kế tiếp; một tên miền chỉ nằm trong một trong hai danh sách.
+* **Cho phép trong một lúc**: Chạm vào một dòng rồi chọn 15 phút, 1 giờ hoặc 1 ngày. Hết thời gian, tên miền bị chặn lại, kể cả khi ứng dụng đã đóng; chạm lại vào dòng đó để xem đang cho phép đến lúc nào hoặc chặn lại ngay. Cho phép tạm thời không bao giờ thêm tên miền vào danh sách cho phép.
 * Sử dụng ô **Filter domain logs...** ở trên cùng để tìm kiếm tên miền cụ thể.
 
 ---

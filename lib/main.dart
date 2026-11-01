@@ -32,10 +32,33 @@ class AegisApp extends StatelessWidget {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0D1117),
         primaryColor: theme.primaryAccent,
-        textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme),
+        textTheme: _outfitTextTheme(ThemeData.dark().textTheme),
         useMaterial3: true,
       ),
       home: const MainNavigationScreen(),
     );
   }
+}
+
+// google_fonts 9 builds its text themes on the material_ui package, whose
+// TextTheme is not the type package:flutter/material.dart uses, so each
+// style gets the font here.
+TextTheme _outfitTextTheme(TextTheme base) {
+  return base.copyWith(
+    displayLarge: GoogleFonts.outfit(textStyle: base.displayLarge),
+    displayMedium: GoogleFonts.outfit(textStyle: base.displayMedium),
+    displaySmall: GoogleFonts.outfit(textStyle: base.displaySmall),
+    headlineLarge: GoogleFonts.outfit(textStyle: base.headlineLarge),
+    headlineMedium: GoogleFonts.outfit(textStyle: base.headlineMedium),
+    headlineSmall: GoogleFonts.outfit(textStyle: base.headlineSmall),
+    titleLarge: GoogleFonts.outfit(textStyle: base.titleLarge),
+    titleMedium: GoogleFonts.outfit(textStyle: base.titleMedium),
+    titleSmall: GoogleFonts.outfit(textStyle: base.titleSmall),
+    bodyLarge: GoogleFonts.outfit(textStyle: base.bodyLarge),
+    bodyMedium: GoogleFonts.outfit(textStyle: base.bodyMedium),
+    bodySmall: GoogleFonts.outfit(textStyle: base.bodySmall),
+    labelLarge: GoogleFonts.outfit(textStyle: base.labelLarge),
+    labelMedium: GoogleFonts.outfit(textStyle: base.labelMedium),
+    labelSmall: GoogleFonts.outfit(textStyle: base.labelSmall),
+  );
 }

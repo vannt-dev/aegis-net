@@ -1,0 +1,20 @@
+rules:
+  # cache-cleanup.yml runs on pull_request_target but checks nothing out: it reads only the
+  # pull request number, from env, to delete that pull request's caches.
+  dangerous-triggers:
+    ignore:
+      - cache-cleanup.yml
+  # A cooldown would hold back every version update, which is the owner's choice.
+  # Security updates are not held back either way.
+  dependabot-cooldown:
+    ignore:
+      - dependabot.yml
+  # The "$/..." form this audit asks for is not understood by actionlint 1.7.12, which checks
+  # the same workflows; "./..." stays until it is.
+  self-repository:
+    disable: true
+  # The workflow-lint caller follows the v0 tag of repokeeper, which a release moves on purpose.
+  unpinned-uses:
+    config:
+      policies:
+        vannt-dev/repokeeper/*: ref-pin
