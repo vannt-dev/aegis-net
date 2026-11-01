@@ -13,28 +13,25 @@ The APK signing certificate fingerprints are listed there too.
 
 ## 📐 Architecture Overview
 
-```text
-               ┌──────────────────────────────────────────────────────────┐
-               │                      Flutter UI                          │
-               │ (Dashboard, Stats, Rules, Live Logs, Analytics, Settings)│
-               └───────────────────────────┬──────────────────────────────┘
-                                           │  Dart FFI (dart:ffi)
-                                           ▼
- ┌───────────────────────────────────────────────────────────────────────────────────┐
- │                     Rust Core Engine (private submodule)                          │
- │  ├── Rule Engine (Hosts, EasyList and AdGuard domain rules)                       │
- │  ├── DNS Interceptor & encrypted upstream (DoH, DoT, DoQ)                         │
- │  ├── DNS Cache                                                                    │
- │  ├── SafeSearch (Google & DuckDuckGo)                                             │
- │  └── Statistics (live counters, query log, daily history)                         │
- └─────────────────────────────────────────▲─────────────────────────────────────────┘
-                                           │  File Descriptor / IP Packets
-                                           ▼
- ┌───────────────────────────────────────────────────────────────────────────────────┐
- │                            Native OS Layer (Local VPN)                            │
- │  Android: VpnService (TUN interface & MethodChannel)                              │
- │  iOS:     NEPacketTunnelProvider (NetworkExtension framework)                     │
- └───────────────────────────────────────────────────────────────────────────────────┘
+How a DNS query is handled on Android; see [Platform Status](#-platform-status) for iOS, desktop and web.
+
+```mermaid
+flowchart LR
+  lists["Blocklists<br/>Hosts, EasyList,<br/>AdGuard"]
+  yours["Your rules<br/>allow, block,<br/>custom hosts,<br/>quiet hours,<br/>SafeSearch"]
+  apps["Apps on<br/>the device"]
+  ui["Flutter app<br/>Dashboard, Rules,<br/>Logs, Analytics,<br/>Settings"]
+  vpn["Local VPN<br/>on Android<br/>DNS traffic only"]
+  upstream["Your DNS provider<br/>DoH, DoT or DoQ"]
+  core["Rust Core Engine<br/>aegis-core<br/>(private)"]
+
+  lists -->|"downloaded,<br/>kept in sync"| ui
+  yours --> ui
+  apps <-->|"DNS queries<br/>and answers"| vpn
+  ui -->|"rules,<br/>settings"| core
+  core -.->|"stats,<br/>query log"| ui
+  vpn <-->|"answered<br/>or blocked"| core
+  upstream <-->|"allowed<br/>queries"| core
 ```
 
 ---
