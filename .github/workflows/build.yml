@@ -1,13 +1,17 @@
 name: AegisNet Fast CI/CD Pipeline
 
 on:
+  # Not main: the release PR already ran all of this on the same files (merging
+  # develop into main changes nothing), and release.yml tests again before it
+  # builds. develop stays: it is the default branch, the only one whose runs
+  # write the Gradle cache, and it catches two merges that pass alone but not
+  # together.
   push:
-    branches: [main, develop]
+    branches: [develop]
+  # No paths filter here: "CI result" is a required check, and a workflow that
+  # does not start never reports it. Docs-only changes skip the jobs instead
+  # (see `changes`).
   pull_request:
-    paths-ignore:
-      - '*.md'
-      - 'docs/**'
-      - LICENSE
   # Cache Actions bị xoá sau 7 ngày không dùng, và gradle/actions/setup-gradle
   # chỉ GHI cache khi chạy trên default branch (trên PR nó là read-only). Không
   # có nhịp chạy trên main thì cache Gradle hết hạn và mọi PR build lạnh lại từ
@@ -23,8 +27,57 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+      ios: ${{ steps.diff.outputs.ios }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: diff
+        name: Files this change touches
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            # Only here to keep the Gradle cache warm; macOS has nothing to warm.
+            { echo "code=true"; echo "ios=false"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "no base to compare with ($EVENT_NAME): full run"
+            { echo "code=true"; echo "ios=true"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "$changed"
+          # Only these leave the app as it was.
+          if echo "$changed" | grep -Evq '^(docs/|[^/]+\.md$|LICENSE$)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+          # macOS runners are few and shared: iOS builds when the iOS project, the
+          # engine, the plugins or CI change, and on every release PR into main.
+          if [ "$BASE_REF" = "main" ] ||
+             echo "$changed" | grep -Eq '^(ios/|rust/|pubspec\.(yaml|lock)$|\.github/)'; then
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ios=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test-rust:
     name: 🦀 Rust Core Engine Check & Test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,6 +103,8 @@ jobs:
 
   test-flutter-web:
     name: 🌐 Flutter Web Test & Build
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -77,6 +132,8 @@ jobs:
 
   build-flutter-android:
     name: 📱 Flutter Android APK Build
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -108,6 +165,8 @@ jobs:
           cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:-android'
           pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-:hash:-android'
 
+      - uses: ./.github/actions/install-ndk
+
       - name: Install Dependencies
         run: flutter pub get
 
@@ -125,6 +184,8 @@ jobs:
   # APK that carries it. A pull request from a fork runs this job the same way.
   build-public-clone:
     name: 🌍 Android build from the public repository alone
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -153,6 +214,8 @@ jobs:
           cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:-android'
           pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-:hash:-android'
 
+      - uses: ./.github/actions/install-ndk
+
       - name: Install Dependencies
         run: flutter pub get
 
@@ -163,3 +226,31 @@ jobs:
         run: |
           test ! -f rust/aegis_core/Cargo.toml
           unzip -l build/app/outputs/flutter-apk/app-debug.apk | grep 'lib/arm64-v8a/libaegis_core.so'
+
+  ios:
+    name: iOS
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    uses: ./.github/workflows/ios.yml
+    secrets:
+      CORE_DEPLOY_KEY: ${{ secrets.CORE_DEPLOY_KEY }}
+
+  # The one check the rulesets require. Passes when every job above passed or was
+  # skipped as not needed; fails on a failure or a cancellation, including a
+  # macOS job that never got a runner (re-run it rather than merge around it).
+  ci-result:
+    name: CI result
+    if: always()
+    needs:
+      [changes, test-rust, test-flutter-web, build-flutter-android, build-public-clone, ios]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every needed job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) exit 1 ;;
+          esac

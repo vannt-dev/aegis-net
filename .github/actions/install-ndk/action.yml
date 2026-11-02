@@ -1,0 +1,40 @@
+name: Install the NDK Flutter asks for
+description: >
+  Installs the NDK version the Flutter Gradle plugin declares, retrying a broken
+  download. Without this step Gradle fetches the NDK on its own and gives up on the
+  first corrupt archive ("Error on ZipFile unknown archive"), which failed a develop
+  run on 02/11. Run it after android-actions/setup-android and subosito/flutter-action.
+runs:
+  using: composite
+  steps:
+    - name: Install NDK (with retry)
+      shell: bash
+      run: |
+        src="$FLUTTER_ROOT/packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt"
+        v=$(sed -n 's/.*val ndkVersion: String = "\([0-9.]*\)".*/\1/p' "$src" 2>/dev/null | head -1)
+        if [ -z "$v" ]; then
+          echo "::warning::NDK version not found in $src; Gradle will download it itself"
+          exit 0
+        fi
+        dir="$ANDROID_HOME/ndk/$v"
+        if [ -f "$dir/source.properties" ]; then
+          echo "NDK $v already installed"
+          exit 0
+        fi
+        log="$RUNNER_TEMP/sdkmanager-ndk.log"
+        for attempt in 1 2 3; do
+          # `yes` dies of SIGPIPE once sdkmanager stops reading; under pipefail that
+          # alone would count as a failure, so only sdkmanager's own status and
+          # the installed files decide.
+          if { yes 2>/dev/null || true; } | sdkmanager --install "ndk;$v" > "$log" 2>&1 &&
+             [ -f "$dir/source.properties" ]; then
+            echo "NDK $v installed (attempt $attempt)"
+            exit 0
+          fi
+          echo "::warning::NDK $v install failed (attempt $attempt), retrying"
+          tail -n 20 "$log"
+          rm -rf "$dir"
+          sleep 15
+        done
+        echo "::error::NDK $v could not be installed"
+        exit 1
