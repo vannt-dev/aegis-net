@@ -6,6 +6,11 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-11-02
+
+Filter lists now survive a restart of the app, the Malware filter works again,
+and HaGeZi's list is available as an option.
+
 ### Added
 
 - **HaGeZi Multi NORMAL filter list.** A large all-round list from
