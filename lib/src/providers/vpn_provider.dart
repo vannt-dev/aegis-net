@@ -373,6 +373,7 @@ class VpnProvider extends ChangeNotifier {
   Future<void> _initialize() async {
     await _initPreferences();
     await _bootstrapEngine();
+    await _restoreFilterLists();
     // Last, so a window that ended while the app was closed hands the Adult
     // toggle back instead of leaving it forced on.
     await _evaluateSchedule();
@@ -563,6 +564,32 @@ class VpnProvider extends ChangeNotifier {
   String _dohTargetFrom(String provider) {
     final match = RegExp(r'\(([^)]+)\)').firstMatch(provider);
     return match?.group(1) ?? provider;
+  }
+
+  /// The engine keeps downloaded lists in memory only, so a fresh process
+  /// starts with the built-in seed rules. Put back the copies saved by the
+  /// last sync at once, without the network, then download again in the
+  /// background when a list is missing or a day old. Protection never waits
+  /// for the download.
+  Future<void> _restoreFilterLists() async {
+    try {
+      await RuleDownloaderService.initCache();
+      if (!RuleDownloaderService.keepsLists) return;
+      await RuleDownloaderService.loadCachedFilters();
+      if (await RuleDownloaderService.needsSync()) {
+        unawaited(_syncFiltersInBackground());
+      }
+    } catch (e) {
+      debugPrint('[AegisVPN] could not restore filter lists: $e');
+    }
+  }
+
+  Future<void> _syncFiltersInBackground() async {
+    try {
+      await RuleDownloaderService.syncAllFilters();
+    } catch (e) {
+      debugPrint('[AegisVPN] background list sync failed: $e');
+    }
   }
 
   void _startAutoSyncScheduler() {
