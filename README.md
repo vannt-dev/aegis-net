@@ -72,11 +72,14 @@ switch any of them off, or add your own list by URL, on the Rules screen.
 | [Peter Lowe's Ad and Tracking Server List](https://pgl.yoyo.org/adservers/) | Trackers | Yes |
 | [OISD Small](https://oisd.nl/) | Ads | Yes |
 | [HaGeZi Multi NORMAL](https://github.com/hagezi/dns-blocklists) | Ads | No, adds about 6 MB of memory |
-| [URLhaus](https://urlhaus.abuse.ch/) by abuse.ch | Malware | Yes |
+| [URLhaus](https://urlhaus.abuse.ch/) by abuse.ch, via [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter) | Malware | Yes |
 | [StevenBlack Adult Hosts](https://github.com/StevenBlack/hosts) | Adult | No |
 
 The HaGeZi lists are made by [HaGeZi](https://github.com/hagezi) and licensed
 under [GPL-3.0](https://github.com/hagezi/dns-blocklists/blob/main/LICENSE).
+The malware list is URLhaus data ([CC0](https://creativecommons.org/publicdomain/zero/1.0/))
+as published by [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter)
+(CC0 and MIT).
 
 ---
 
@@ -95,13 +98,16 @@ browsing.
 
 | App | Why |
 |-----|-----|
-| **YouTube** | Ads and video both come from `googlevideo.com`. Blocking it blocks the video too. Most YouTube ads are also stitched into the video stream server-side, so there is no separate request to refuse. |
+| **YouTube** | Ads and video both come from `googlevideo.com`. Blocking it blocks the video too. The ad-only domains it also asks for (`googleads.g.doubleclick.net` and similar) are blocked, but they are not what plays the video ads. |
 | **Facebook / Instagram** | In-feed ads arrive over the same hosts as the feed. |
 | **Spotify, TikTok** | Same pattern: ad content shares the delivery infrastructure. |
 
 This is a property of DNS filtering itself, not a gap in the rule list — no
 blocklist can fix it. Removing YouTube ads specifically requires a different
-approach, such as an alternative client (ReVanced, NewPipe) or YouTube Premium.
+approach: YouTube Premium (or Premium Lite), watching in a browser with a content
+blocker such as Firefox with uBlock Origin, or an alternative client such as
+NewPipe. Get any of these from their official site, F-Droid or GitHub only, and
+note that YouTube's terms forbid blocking its ads.
 
 ---
 
