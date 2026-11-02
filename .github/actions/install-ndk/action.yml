@@ -21,12 +21,18 @@ runs:
           echo "NDK $v already installed"
           exit 0
         fi
+        log="$RUNNER_TEMP/sdkmanager-ndk.log"
         for attempt in 1 2 3; do
-          if yes | sdkmanager --install "ndk;$v" > /dev/null && [ -f "$dir/source.properties" ]; then
+          # `yes` dies of SIGPIPE once sdkmanager stops reading; under pipefail that
+          # alone would count as a failure, so only sdkmanager's own status and
+          # the installed files decide.
+          if { yes 2>/dev/null || true; } | sdkmanager --install "ndk;$v" > "$log" 2>&1 &&
+             [ -f "$dir/source.properties" ]; then
             echo "NDK $v installed (attempt $attempt)"
             exit 0
           fi
           echo "::warning::NDK $v install failed (attempt $attempt), retrying"
+          tail -n 20 "$log"
           rm -rf "$dir"
           sleep 15
         done
