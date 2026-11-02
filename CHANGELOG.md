@@ -6,6 +6,43 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-11-02
+
+Filter lists now survive a restart of the app, the Malware filter works again,
+and HaGeZi's list is available as an option.
+
+### Added
+
+- **HaGeZi Multi NORMAL filter list.** A large all-round list from
+  [HaGeZi](https://github.com/hagezi/dns-blocklists) (GPL-3.0) that blocks
+  many ad, tracking and other unwanted domains the other lists miss. It is off
+  by default because it uses about 6 MB more memory; switch it on under
+  Rules and sync.
+
+### Fixed
+
+- **Filter lists are kept after the app restarts.** The downloaded lists
+  (AdGuard, StevenBlack, OISD and the others) were held in memory only, so
+  every update, reboot or time Android closed the app left AegisNet blocking
+  with a dozen built-in rules until you tapped Sync on the Rules screen. A
+  fresh install did not download them on its own either. The lists are now
+  saved on the phone and loaded again as soon as the app starts, without the
+  network, and downloaded again in the background when they are a day old.
+  A list whose server is down keeps the copy from the last sync instead of
+  dropping out. Android only; iOS already reloaded its lists.
+- **The Malware filter blocked nothing.** The URLhaus list it was built on
+  was retired by abuse.ch, so every sync downloaded nothing for it and the
+  filter stayed empty without saying so. It now takes the same URLhaus data
+  from the [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter)
+  project (about 1,900 hosts, updated twice a day). If you switched the list
+  off, it stays off.
+- **Apps no longer ask about a blocked domain over and over.** Android and
+  apps can now remember a "blocked" answer for a few seconds, so an app that
+  keeps pinging a blocked address — YouTube does this with its viewing
+  statistics — no longer floods the log with hundreds of identical entries a
+  second or inflates the blocked count. Allowing a domain from the log still
+  takes effect within seconds.
+
 ## [1.8.1] — 2026-11-01
 
 ### Changed

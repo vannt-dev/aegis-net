@@ -243,7 +243,11 @@ class AppStrings {
       'src_oisd_small_desc':
           'Curated aggregate of ad and tracking domains, tuned to avoid breaking sites.',
       'src_urlhaus_name': 'URLhaus Malware Hosts',
-      'src_urlhaus_desc': 'abuse.ch feed of hosts actively serving malware.',
+      'src_urlhaus_desc':
+          'abuse.ch URLhaus hosts serving malware, as listed by the malware-filter project.',
+      'src_hagezi_multi_name': 'HaGeZi Multi NORMAL',
+      'src_hagezi_multi_desc':
+          'Large all-round list of ad, tracking and other unwanted domains. Blocks more; adds about 6 MB of memory.',
       'src_stevenblack_porn_name': 'StevenBlack Adult Hosts',
       'src_stevenblack_porn_desc':
           'Adult sites only. Enable to make the Adult filter do anything; adds about 4 MB of memory.',
@@ -481,7 +485,11 @@ class AppStrings {
       'src_oisd_small_desc':
           'Tổng hợp có chọn lọc các tên miền quảng cáo và theo dõi, hạn chế làm hỏng trang web.',
       'src_urlhaus_name': 'URLhaus — Máy chủ phát tán mã độc',
-      'src_urlhaus_desc': 'Nguồn abuse.ch, các máy chủ đang phát tán mã độc.',
+      'src_urlhaus_desc':
+          'Máy chủ phát tán mã độc từ URLhaus của abuse.ch, qua danh sách của dự án malware-filter.',
+      'src_hagezi_multi_name': 'HaGeZi Multi NORMAL',
+      'src_hagezi_multi_desc':
+          'Danh sách lớn, đa dụng: quảng cáo, theo dõi và các tên miền không mong muốn khác. Chặn được nhiều hơn; tốn thêm khoảng 6 MB bộ nhớ.',
       'src_stevenblack_porn_name': 'StevenBlack — Nội dung người lớn',
       'src_stevenblack_porn_desc':
           'Chỉ gồm trang người lớn. Bật thì bộ lọc Người lớn mới có tác dụng; tốn thêm khoảng 4 MB bộ nhớ.',
@@ -704,7 +712,11 @@ class AppStrings {
       'src_oisd_small_name': 'OISD Small',
       'src_oisd_small_desc': '사이트를 망가뜨리지 않도록 선별한 광고·추적 도메인 모음입니다.',
       'src_urlhaus_name': 'URLhaus 악성코드 호스트',
-      'src_urlhaus_desc': '악성코드를 실제로 배포 중인 호스트의 abuse.ch 피드입니다.',
+      'src_urlhaus_desc':
+          '악성코드를 배포 중인 abuse.ch URLhaus 호스트로, malware-filter 프로젝트의 목록을 사용합니다.',
+      'src_hagezi_multi_name': 'HaGeZi Multi NORMAL',
+      'src_hagezi_multi_desc':
+          '광고·추적 및 기타 원치 않는 도메인을 폭넓게 막는 대형 목록입니다. 더 많이 차단하지만 메모리를 약 6 MB 더 사용합니다.',
       'src_stevenblack_porn_name': 'StevenBlack 성인 사이트 호스트',
       'src_stevenblack_porn_desc':
           '성인 사이트 전용. 켜야 성인 필터가 동작하며 약 4 MB의 메모리를 더 사용합니다.',
@@ -927,7 +939,11 @@ class AppStrings {
       'src_oisd_small_name': 'OISD Small',
       'src_oisd_small_desc': 'サイトを壊さないよう調整された広告・追跡ドメインの厳選リストです。',
       'src_urlhaus_name': 'URLhaus マルウェアホスト',
-      'src_urlhaus_desc': 'マルウェアを実際に配布しているホストのabuse.chフィードです。',
+      'src_urlhaus_desc':
+          'マルウェアを配布しているabuse.ch URLhausのホストです。malware-filterプロジェクトのリストを使います。',
+      'src_hagezi_multi_name': 'HaGeZi Multi NORMAL',
+      'src_hagezi_multi_desc':
+          '広告・追跡などの不要なドメインを幅広く集めた大型リストです。より多くブロックしますが、メモリを約6 MB多く使います。',
       'src_stevenblack_porn_name': 'StevenBlack アダルトホスト',
       'src_stevenblack_porn_desc':
           'アダルトサイトのみ。有効にするとアダルトフィルターが機能し、約4 MBのメモリを追加で使います。',

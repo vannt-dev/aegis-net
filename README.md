@@ -13,28 +13,25 @@ The APK signing certificate fingerprints are listed there too.
 
 ## 📐 Architecture Overview
 
-```text
-               ┌──────────────────────────────────────────────────────────┐
-               │                      Flutter UI                          │
-               │ (Dashboard, Stats, Rules, Live Logs, Analytics, Settings)│
-               └───────────────────────────┬──────────────────────────────┘
-                                           │  Dart FFI (dart:ffi)
-                                           ▼
- ┌───────────────────────────────────────────────────────────────────────────────────┐
- │                     Rust Core Engine (private submodule)                          │
- │  ├── Rule Engine (Hosts, EasyList and AdGuard domain rules)                       │
- │  ├── DNS Interceptor & encrypted upstream (DoH, DoT, DoQ)                         │
- │  ├── DNS Cache                                                                    │
- │  ├── SafeSearch (Google & DuckDuckGo)                                             │
- │  └── Statistics (live counters, query log, daily history)                         │
- └─────────────────────────────────────────▲─────────────────────────────────────────┘
-                                           │  File Descriptor / IP Packets
-                                           ▼
- ┌───────────────────────────────────────────────────────────────────────────────────┐
- │                            Native OS Layer (Local VPN)                            │
- │  Android: VpnService (TUN interface & MethodChannel)                              │
- │  iOS:     NEPacketTunnelProvider (NetworkExtension framework)                     │
- └───────────────────────────────────────────────────────────────────────────────────┘
+How a DNS query is handled on Android; see [Platform Status](#-platform-status) for iOS, desktop and web.
+
+```mermaid
+flowchart LR
+  lists["Blocklists<br/>Hosts, EasyList,<br/>AdGuard"]
+  yours["Your rules<br/>allow, block,<br/>custom hosts,<br/>quiet hours,<br/>SafeSearch"]
+  apps["Apps on<br/>the device"]
+  ui["Flutter app<br/>Dashboard, Rules,<br/>Logs, Analytics,<br/>Settings"]
+  vpn["Local VPN<br/>on Android<br/>DNS traffic only"]
+  upstream["Your DNS provider<br/>DoH, DoT or DoQ"]
+  core["Rust Core Engine<br/>aegis-core<br/>(private)"]
+
+  lists -->|"downloaded,<br/>kept in sync"| ui
+  yours --> ui
+  apps <-->|"DNS queries<br/>and answers"| vpn
+  ui -->|"rules,<br/>settings"| core
+  core -.->|"stats,<br/>query log"| ui
+  vpn <-->|"answered<br/>or blocked"| core
+  upstream <-->|"allowed<br/>queries"| core
 ```
 
 ---
@@ -62,6 +59,30 @@ The APK signing certificate fingerprints are listed there too.
 
 ---
 
+## 📋 Filter List Sources
+
+The app downloads these lists when it syncs. None of them is bundled with the
+app; each stays under its own licence and belongs to its maintainers. You can
+switch any of them off, or add your own list by URL, on the Rules screen.
+
+| List | Filter | On by default |
+| --- | --- | --- |
+| [AdGuard DNS filter](https://github.com/AdguardTeam/AdGuardSDNSFilter) | Ads | Yes |
+| [StevenBlack Unified Hosts](https://github.com/StevenBlack/hosts) | Ads | Yes |
+| [Peter Lowe's Ad and Tracking Server List](https://pgl.yoyo.org/adservers/) | Trackers | Yes |
+| [OISD Small](https://oisd.nl/) | Ads | Yes |
+| [HaGeZi Multi NORMAL](https://github.com/hagezi/dns-blocklists) | Ads | No, adds about 6 MB of memory |
+| [URLhaus](https://urlhaus.abuse.ch/) by abuse.ch, via [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter) | Malware | Yes |
+| [StevenBlack Adult Hosts](https://github.com/StevenBlack/hosts) | Adult | No |
+
+The HaGeZi lists are made by [HaGeZi](https://github.com/hagezi) and licensed
+under [GPL-3.0](https://github.com/hagezi/dns-blocklists/blob/main/LICENSE).
+The malware list is URLhaus data ([CC0](https://creativecommons.org/publicdomain/zero/1.0/))
+as published by [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter)
+(CC0 and MIT).
+
+---
+
 ## 🎯 What DNS Filtering Can and Cannot Block
 
 AegisNet blocks by **domain name**. It sees which host a device asks for and
@@ -77,13 +98,16 @@ browsing.
 
 | App | Why |
 |-----|-----|
-| **YouTube** | Ads and video both come from `googlevideo.com`. Blocking it blocks the video too. Most YouTube ads are also stitched into the video stream server-side, so there is no separate request to refuse. |
+| **YouTube** | Ads and video both come from `googlevideo.com`. Blocking it blocks the video too. The ad-only domains it also asks for (`googleads.g.doubleclick.net` and similar) are blocked, but they are not what plays the video ads. |
 | **Facebook / Instagram** | In-feed ads arrive over the same hosts as the feed. |
 | **Spotify, TikTok** | Same pattern: ad content shares the delivery infrastructure. |
 
 This is a property of DNS filtering itself, not a gap in the rule list — no
 blocklist can fix it. Removing YouTube ads specifically requires a different
-approach, such as an alternative client (ReVanced, NewPipe) or YouTube Premium.
+approach: YouTube Premium (or Premium Lite), watching in a browser with a content
+blocker such as Firefox with uBlock Origin, or an alternative client such as
+NewPipe. Get any of these from their official site, F-Droid or GitHub only, and
+note that YouTube's terms forbid blocking its ads.
 
 ---
 

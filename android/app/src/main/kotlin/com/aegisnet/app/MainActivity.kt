@@ -137,6 +137,8 @@ class MainActivity: FlutterActivity() {
                 "openPrivateDnsSettings" -> result.success(openPrivateDnsSettings())
                 // The engine keeps the per-day history there; the screen opens
                 // it too, so the history shows while the tunnel is off.
+                // Downloaded filter lists are kept under it between runs.
+                "getFilesDir" -> result.success(filesDir.absolutePath)
                 "getHistoryPath" -> result.success(
                     AegisVpnService.historyFile(this).absolutePath,
                 )

@@ -96,14 +96,33 @@ class RuleDownloaderService {
           'Curated aggregate of ad and tracking domains, tuned to avoid '
           'breaking sites.',
     ),
-    // Malware. 370 hostnames and 0.0 MB in the trie, so the category costs
-    // nothing to make real. It used to hold three invented domains
-    // (crypto-miner.org and friends) and protected against nothing.
+    // HaGeZi Multi NORMAL, off by default. 176,107 domains, 90,107 of them not
+    // in the lists above, for +6.2 MB in the Ads trie (20.7 -> 26.9 MB). That
+    // is more than the adult list (4.3 MB), which is off for the same reason,
+    // so it stays opt-in. PRO adds 8.2 MB and the Threat Intelligence Feeds
+    // mini list 9.2 MB, too close to the 11.1 MB that kept full OISD out.
+    // The list data is GPL-3.0 and is only ever downloaded, never bundled.
+    FilterSource(
+      id: 'hagezi_multi',
+      name: 'HaGeZi Multi NORMAL',
+      url:
+          'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/multi.txt',
+      description: 'Large all-round list of ad, tracking and other unwanted '
+          'domains. Blocks more; adds about 6 MB of memory.',
+      isEnabled: false,
+    ),
+    // Malware. About 1,900 hostnames, so the category costs next to nothing
+    // to make real. It used to hold three invented domains (crypto-miner.org
+    // and friends) and protected against nothing. abuse.ch retired its own
+    // hosts file (410 Gone), so the URLhaus data now comes as the hosts list
+    // the malware-filter project builds from it twice a day. The id stays
+    // `urlhaus` so a saved on/off choice still applies.
     FilterSource(
       id: 'urlhaus',
       name: 'URLhaus Malware Hosts',
-      url: 'https://urlhaus.abuse.ch/downloads/hostfile/',
-      description: 'abuse.ch feed of hosts actively serving malware.',
+      url: 'https://curbengh.github.io/malware-filter/urlhaus-filter-hosts.txt',
+      description: 'abuse.ch URLhaus hosts serving malware, as listed by the '
+          'malware-filter project.',
       categoryId: 2,
     ),
     // Adult. Off by default, and deliberately not downloaded until it is
@@ -123,6 +142,143 @@ class RuleDownloaderService {
   ];
 
   static List<FilterSource> _customSources = [];
+
+  /// Where each downloaded list is kept between runs, one file per source.
+  /// Null (web, iOS, desktop, or before [initCache]) means nothing is kept.
+  ///
+  /// The engine holds rules in memory only, so without this every restart of
+  /// the app (an update, a reboot, the system killing it) left the phone
+  /// filtering with the built-in seed rules alone until someone tapped Sync.
+  static Directory? _cacheDir;
+
+  @visibleForTesting
+  static set cacheDirForTest(Directory? dir) => _cacheDir = dir;
+
+  /// Whether lists are kept on this platform (see [initCache]).
+  static bool get keepsLists => _cacheDir != null;
+
+  /// When the last sync that downloaded at least one list finished, in ms
+  /// since the epoch.
+  static const String prefLastSync = 'filter_lists_last_sync_ms';
+
+  /// Lists older than this are downloaded again at start.
+  static const Duration syncEvery = Duration(hours: 24);
+
+  /// Downloads a list's text, or null when it could not be fetched.
+  @visibleForTesting
+  static Future<String?> Function(String url) fetcher = fetchFilterContent;
+
+  /// Find the directory the lists are kept in. Android only: iOS reloads the
+  /// per-category files its tunnel extension reads (see
+  /// [_publishToSharedContainer]).
+  static Future<void> initCache() async {
+    if (_cacheDir != null) return;
+    final filesDir = await AegisBridge.filesDirPath();
+    if (filesDir == null) return;
+    _cacheDir = Directory('$filesDir/filter_lists');
+  }
+
+  static File? _cacheFile(String sourceId) {
+    final dir = _cacheDir;
+    if (dir == null) return null;
+    // Custom source ids are generated, but keep the name a plain file name
+    // whatever they contain.
+    final safe = sourceId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    return File('${dir.path}/$safe.txt');
+  }
+
+  static Future<String?> _readCache(String sourceId) async {
+    final file = _cacheFile(sourceId);
+    if (file == null) return null;
+    try {
+      if (!await file.exists()) return null;
+      final content = await file.readAsString();
+      return content.isEmpty ? null : content;
+    } catch (e) {
+      debugPrint('[AegisRules] could not read saved list $sourceId: $e');
+      return null;
+    }
+  }
+
+  static Future<void> _writeCache(String sourceId, String content) async {
+    final file = _cacheFile(sourceId);
+    if (file == null) return;
+    try {
+      await file.parent.create(recursive: true);
+      // Write beside the old copy and swap, so a crash mid-write cannot
+      // leave half a list behind.
+      final partial = File('${file.path}.part');
+      await partial.writeAsString(content, flush: true);
+      await partial.rename(file.path);
+    } catch (e) {
+      debugPrint('[AegisRules] could not save list $sourceId: $e');
+    }
+  }
+
+  /// Delete saved copies of sources that no longer exist (a removed custom
+  /// list), so they do not sit on the phone forever.
+  static Future<void> _pruneCache() async {
+    final dir = _cacheDir;
+    if (dir == null || !await dir.exists()) return;
+    // Compared by file name: the listing's separators need not match the
+    // ones the paths were built with.
+    final keep =
+        allSources.map((s) => _cacheFile(s.id)!.uri.pathSegments.last).toSet();
+    try {
+      await for (final entry in dir.list()) {
+        if (entry is File && !keep.contains(entry.uri.pathSegments.last)) {
+          await entry.delete();
+        }
+      }
+    } catch (e) {
+      debugPrint('[AegisRules] could not tidy saved lists: $e');
+    }
+  }
+
+  /// Put the lists saved by the last sync back into the engine, without the
+  /// network. Returns how many rules were loaded; 0 when nothing was saved,
+  /// in which case the engine is left as it is (a tunnel that outlived the
+  /// screen may still hold the rules of an earlier sync).
+  static Future<int> loadCachedFilters() async {
+    await loadSources();
+    if (_cacheDir == null) return 0;
+
+    final saved = <FilterSource, String>{};
+    for (final source in allSources) {
+      if (!source.isEnabled) continue;
+      final content = await _readCache(source.id);
+      if (content != null) saved[source] = content;
+    }
+    if (saved.isEmpty) return 0;
+
+    AegisBridge.clearDownloadedRules();
+    var total = 0;
+    saved.forEach((source, content) {
+      total += AegisBridge.loadRulesText(
+        content,
+        categoryId: source.categoryId,
+        listId: source.id,
+      );
+    });
+    return total;
+  }
+
+  /// Whether the lists should be downloaded again: never synced, last synced
+  /// more than [syncEvery] ago, or a switched-on list has no saved copy yet.
+  static Future<bool> needsSync() async {
+    await loadSources();
+    final prefs = await SharedPreferences.getInstance();
+    final last = prefs.getInt(prefLastSync);
+    if (last == null) return true;
+    final age =
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(last));
+    if (age > syncEvery || age.isNegative) return true;
+    if (_cacheDir == null) return false;
+    for (final source in allSources) {
+      if (source.isEnabled && await _readCache(source.id) == null) return true;
+    }
+    return false;
+  }
 
   static List<FilterSource> get allSources =>
       [...defaultSources, ..._customSources];
@@ -266,9 +422,18 @@ class RuleDownloaderService {
     // can reload the same rules in its own process.
     final byCategory = <int, StringBuffer>{};
 
+    var downloaded = 0;
     for (final source in allSources) {
       if (source.isEnabled) {
-        final content = await fetchFilterContent(source.url);
+        var content = await fetcher(source.url);
+        if (content != null && content.isNotEmpty) {
+          downloaded++;
+          await _writeCache(source.id, content);
+        } else {
+          // A list host that is down today must not cost the user the list:
+          // fall back to the copy from the last sync that worked.
+          content = await _readCache(source.id);
+        }
         if (content != null && content.isNotEmpty) {
           // Without the category the engine takes the default, 0, and every
           // list lands in Ads no matter what the source says. That is what
@@ -289,6 +454,13 @@ class RuleDownloaderService {
     }
 
     await _publishToSharedContainer(byCategory);
+    // Offline, every download fails: leave the sync due so the next start
+    // tries again instead of waiting a day.
+    if (downloaded > 0) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(prefLastSync, DateTime.now().millisecondsSinceEpoch);
+    }
+    await _pruneCache();
     return totalLoaded;
   }
 
