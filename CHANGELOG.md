@@ -6,6 +6,14 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+### Added
+
+- **HaGeZi Multi NORMAL filter list.** A large all-round list from
+  [HaGeZi](https://github.com/hagezi/dns-blocklists) (GPL-3.0) that blocks
+  many ad, tracking and other unwanted domains the other lists miss. It is off
+  by default because it uses about 6 MB more memory; switch it on under
+  Rules and sync.
+
 ## [1.8.1] — 2026-11-01
 
 ### Changed
