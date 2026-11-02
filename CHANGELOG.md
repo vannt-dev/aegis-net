@@ -16,6 +16,15 @@ verified native pipeline on Android.
 
 ### Fixed
 
+- **Filter lists are kept after the app restarts.** The downloaded lists
+  (AdGuard, StevenBlack, OISD and the others) were held in memory only, so
+  every update, reboot or time Android closed the app left AegisNet blocking
+  with a dozen built-in rules until you tapped Sync on the Rules screen. A
+  fresh install did not download them on its own either. The lists are now
+  saved on the phone and loaded again as soon as the app starts, without the
+  network, and downloaded again in the background when they are a day old.
+  A list whose server is down keeps the copy from the last sync instead of
+  dropping out. Android only; iOS already reloaded its lists.
 - **The Malware filter blocked nothing.** The URLhaus list it was built on
   was retired by abuse.ch, so every sync downloaded nothing for it and the
   filter stayed empty without saying so. It now takes the same URLhaus data

@@ -590,6 +590,21 @@ class AegisBridge {
   /// even before the tunnel has run in this process. Android only: the VPN
   /// service writes that file, and the screen reads the same one. Elsewhere
   /// the history covers this session only.
+  /// The app's private files directory on Android, where downloaded filter
+  /// lists are kept between runs. Null on other platforms and in tests.
+  static Future<String?> filesDirPath() async {
+    if (!_useNativeFfi ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android) {
+      return null;
+    }
+    try {
+      return await _vpnChannel.invokeMethod<String>('getFilesDir');
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> openHistory() async {
     if (!_useNativeFfi ||
         kIsWeb ||
