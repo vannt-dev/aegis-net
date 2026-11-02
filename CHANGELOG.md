@@ -14,6 +14,21 @@ verified native pipeline on Android.
   by default because it uses about 6 MB more memory; switch it on under
   Rules and sync.
 
+### Fixed
+
+- **The Malware filter blocked nothing.** The URLhaus list it was built on
+  was retired by abuse.ch, so every sync downloaded nothing for it and the
+  filter stayed empty without saying so. It now takes the same URLhaus data
+  from the [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter)
+  project (about 1,900 hosts, updated twice a day). If you switched the list
+  off, it stays off.
+- **Apps no longer ask about a blocked domain over and over.** Android and
+  apps can now remember a "blocked" answer for a few seconds, so an app that
+  keeps pinging a blocked address — YouTube does this with its viewing
+  statistics — no longer floods the log with hundreds of identical entries a
+  second or inflates the blocked count. Allowing a domain from the log still
+  takes effect within seconds.
+
 ## [1.8.1] — 2026-11-01
 
 ### Changed

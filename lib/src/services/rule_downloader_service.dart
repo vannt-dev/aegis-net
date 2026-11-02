@@ -111,14 +111,18 @@ class RuleDownloaderService {
           'domains. Blocks more; adds about 6 MB of memory.',
       isEnabled: false,
     ),
-    // Malware. 370 hostnames and 0.0 MB in the trie, so the category costs
-    // nothing to make real. It used to hold three invented domains
-    // (crypto-miner.org and friends) and protected against nothing.
+    // Malware. About 1,900 hostnames, so the category costs next to nothing
+    // to make real. It used to hold three invented domains (crypto-miner.org
+    // and friends) and protected against nothing. abuse.ch retired its own
+    // hosts file (410 Gone), so the URLhaus data now comes as the hosts list
+    // the malware-filter project builds from it twice a day. The id stays
+    // `urlhaus` so a saved on/off choice still applies.
     FilterSource(
       id: 'urlhaus',
       name: 'URLhaus Malware Hosts',
-      url: 'https://urlhaus.abuse.ch/downloads/hostfile/',
-      description: 'abuse.ch feed of hosts actively serving malware.',
+      url: 'https://curbengh.github.io/malware-filter/urlhaus-filter-hosts.txt',
+      description: 'abuse.ch URLhaus hosts serving malware, as listed by the '
+          'malware-filter project.',
       categoryId: 2,
     ),
     // Adult. Off by default, and deliberately not downloaded until it is
