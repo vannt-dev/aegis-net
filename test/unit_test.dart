@@ -511,11 +511,19 @@ void main() {
           .firstWhere((s) => s.id == 'stevenblack_porn');
       expect(adult.isEnabled, isFalse);
 
+      // HaGeZi Multi costs about 6 MB, so it is opt-in like the adult list.
+      final hagezi = RuleDownloaderService.allSources
+          .firstWhere((s) => s.id == 'hagezi_multi');
+      expect(hagezi.isEnabled, isFalse);
+      expect(
+          hagezi.url, startsWith('https://raw.githubusercontent.com/hagezi/'));
+
       // And the categories the lists feed are the ones the switches control.
       String categoryOf(String id) =>
           '${RuleDownloaderService.allSources.firstWhere((s) => s.id == id).categoryId}';
       expect(categoryOf('adguard_dns'), '0');
       expect(categoryOf('pgl_yoyo'), '1');
+      expect(categoryOf('hagezi_multi'), '0');
       expect(categoryOf('urlhaus'), '2');
       expect(categoryOf('stevenblack_porn'), '3');
     });

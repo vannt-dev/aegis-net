@@ -59,6 +59,27 @@ flowchart LR
 
 ---
 
+## 📋 Filter List Sources
+
+The app downloads these lists when it syncs. None of them is bundled with the
+app; each stays under its own licence and belongs to its maintainers. You can
+switch any of them off, or add your own list by URL, on the Rules screen.
+
+| List | Filter | On by default |
+| --- | --- | --- |
+| [AdGuard DNS filter](https://github.com/AdguardTeam/AdGuardSDNSFilter) | Ads | Yes |
+| [StevenBlack Unified Hosts](https://github.com/StevenBlack/hosts) | Ads | Yes |
+| [Peter Lowe's Ad and Tracking Server List](https://pgl.yoyo.org/adservers/) | Trackers | Yes |
+| [OISD Small](https://oisd.nl/) | Ads | Yes |
+| [HaGeZi Multi NORMAL](https://github.com/hagezi/dns-blocklists) | Ads | No, adds about 6 MB of memory |
+| [URLhaus](https://urlhaus.abuse.ch/) by abuse.ch | Malware | Yes |
+| [StevenBlack Adult Hosts](https://github.com/StevenBlack/hosts) | Adult | No |
+
+The HaGeZi lists are made by [HaGeZi](https://github.com/hagezi) and licensed
+under [GPL-3.0](https://github.com/hagezi/dns-blocklists/blob/main/LICENSE).
+
+---
+
 ## 🎯 What DNS Filtering Can and Cannot Block
 
 AegisNet blocks by **domain name**. It sees which host a device asks for and

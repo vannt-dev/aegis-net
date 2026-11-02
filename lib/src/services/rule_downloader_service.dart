@@ -96,6 +96,21 @@ class RuleDownloaderService {
           'Curated aggregate of ad and tracking domains, tuned to avoid '
           'breaking sites.',
     ),
+    // HaGeZi Multi NORMAL, off by default. 176,107 domains, 90,107 of them not
+    // in the lists above, for +6.2 MB in the Ads trie (20.7 -> 26.9 MB). That
+    // is more than the adult list (4.3 MB), which is off for the same reason,
+    // so it stays opt-in. PRO adds 8.2 MB and the Threat Intelligence Feeds
+    // mini list 9.2 MB, too close to the 11.1 MB that kept full OISD out.
+    // The list data is GPL-3.0 and is only ever downloaded, never bundled.
+    FilterSource(
+      id: 'hagezi_multi',
+      name: 'HaGeZi Multi NORMAL',
+      url:
+          'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/multi.txt',
+      description: 'Large all-round list of ad, tracking and other unwanted '
+          'domains. Blocks more; adds about 6 MB of memory.',
+      isEnabled: false,
+    ),
     // Malware. 370 hostnames and 0.0 MB in the trie, so the category costs
     // nothing to make real. It used to hold three invented domains
     // (crypto-miner.org and friends) and protected against nothing.
