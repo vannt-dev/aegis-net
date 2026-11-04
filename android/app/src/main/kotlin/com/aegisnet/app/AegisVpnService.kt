@@ -233,10 +233,22 @@ class AegisVpnService : VpnService(), Runnable {
             Log.i(TAG, "Restarted by the system; rebuilding the tunnel")
             enterForeground()
             startVpn(loadBypassApps(), loadIntercept())
+            HeadlessRestore.startIfNoUi(this)
             return START_STICKY
         }
 
         when (intent.action) {
+            // Always-on VPN (at boot, or switched on in Settings) starts the
+            // service with this action and nothing else. It used to fall into
+            // the "unknown action" branch, so Always-on built no tunnel at
+            // all, and with "Block connections without VPN" the phone had no
+            // network until the app was opened. Same settings as a restart.
+            VpnService.SERVICE_INTERFACE -> {
+                Log.i(TAG, "Started by Always-on VPN")
+                enterForeground()
+                startVpn(loadBypassApps(), loadIntercept())
+                HeadlessRestore.startIfNoUi(this)
+            }
             ACTION_START -> {
                 // Go foreground BEFORE building the tunnel. Android 12 kills a
                 // service that has not posted its notification within 5s of
@@ -244,11 +256,23 @@ class AegisVpnService : VpnService(), Runnable {
                 // services within seconds of the user leaving the app — which
                 // is why the tunnel kept dying on Xiaomi devices.
                 enterForeground()
-                val bypassApps = intent.getStringArrayListExtra("bypassApps") ?: arrayListOf()
+                // The Quick Settings tile sends neither setting; keep the ones
+                // the app saved instead of wiping the split-tunnel list.
+                val bypassApps = if (intent.hasExtra("bypassApps")) {
+                    intent.getStringArrayListExtra("bypassApps") ?: arrayListOf()
+                } else {
+                    loadBypassApps()
+                }
                 saveBypassApps(bypassApps)
-                val intercept = intent.getBooleanExtra(EXTRA_INTERCEPT, true)
+                val intercept = if (intent.hasExtra(EXTRA_INTERCEPT)) {
+                    intent.getBooleanExtra(EXTRA_INTERCEPT, true)
+                } else {
+                    loadIntercept()
+                }
                 saveIntercept(intercept)
                 startVpn(bypassApps, intercept)
+                // The Quick Settings tile starts this way with the app closed.
+                HeadlessRestore.startIfNoUi(this)
             }
             ACTION_STOP -> stopVpn()
             else -> Log.w(TAG, "Ignoring unknown action ${intent.action}")

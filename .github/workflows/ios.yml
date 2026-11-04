@@ -1,22 +1,14 @@
 name: AegisNet iOS Build Verification
 
+# Called by build.yml, which decides when iOS needs building (iOS project, engine,
+# plugins or CI changed, or a release PR into main) and folds the result into the
+# required "CI result" check. macOS runners are few and shared by every
+# repository, so this no longer runs on every push.
 on:
-  push:
-    branches: [main, develop]
-  # macOS runners are few and shared by every repository: a pull request builds iOS
-  # only when the iOS project, the Rust core, the plugins or CI change. Pushes to
-  # main and develop always build it.
-  pull_request:
-    paths:
-      - 'ios/**'
-      - 'rust/**'
-      - 'pubspec.yaml'
-      - 'pubspec.lock'
-      - '.github/**'
-
-concurrency:
-  group: ios-${{ github.ref_name || github.ref }}
-  cancel-in-progress: true
+  workflow_call:
+    secrets:
+      CORE_DEPLOY_KEY:
+        required: true
 
 permissions:
   contents: read
@@ -49,16 +41,6 @@ jobs:
           cargo build --release --target aarch64-apple-ios
           cargo build --release --target aarch64-apple-ios-sim
           cargo build --release --target x86_64-apple-ios
-
-      - name: Upload iOS static libraries
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: libaegis_core-ios
-          path: |
-            rust/aegis_core/target/aarch64-apple-ios/release/libaegis_core.a
-            rust/aegis_core/target/aarch64-apple-ios-sim/release/libaegis_core.a
-            rust/aegis_core/target/x86_64-apple-ios/release/libaegis_core.a
-          if-no-files-found: error
 
   # Gating since the first green build. The Runner target compiles on a clean
   # checkout, so any regression here is a real break — the PacketTunnel target
