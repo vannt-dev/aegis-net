@@ -6,6 +6,11 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.9.1] — 2026-11-04
+
+Always-on VPN works, and a tunnel started without opening the app now filters
+with your lists and settings.
+
 ### Fixed
 
 - **Always-on VPN works.** With AegisNet chosen as the Always-on VPN in
