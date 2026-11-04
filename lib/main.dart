@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'src/providers/vpn_provider.dart';
 import 'src/providers/theme_provider.dart';
 import 'src/screens/main_navigation_screen.dart';
+import 'src/services/headless_restore.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +18,21 @@ void main() {
       child: const AegisApp(),
     ),
   );
+}
+
+/// Started by the tunnel service, in an engine with no screen, when the tunnel
+/// comes up without the app (see [restoreEngineWithoutUi]).
+@pragma('vm:entry-point')
+Future<void> restoreWithoutUi() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  const channel = MethodChannel('com.aegisnet/headless');
+  await restoreEngineWithoutUi(done: () async {
+    try {
+      await channel.invokeMethod<void>('done');
+    } catch (_) {
+      // The service shuts the engine down on its own after a while.
+    }
+  });
 }
 
 class AegisApp extends StatelessWidget {

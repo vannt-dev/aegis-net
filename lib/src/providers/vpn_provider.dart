@@ -364,6 +364,12 @@ class VpnProvider extends ChangeNotifier {
   /// moment later.
   Future<void> get ready => _ready;
 
+  Future<void>? _pendingListSync;
+
+  /// Completes when the list download started at start-up has finished, or
+  /// at once when none was needed.
+  Future<void> get pendingListSync => _pendingListSync ?? Future.value();
+
   VpnProvider({this.enableSimulation = true}) {
     _ready = _initialize();
     _startAutoSyncScheduler();
@@ -577,7 +583,9 @@ class VpnProvider extends ChangeNotifier {
       if (!RuleDownloaderService.keepsLists) return;
       await RuleDownloaderService.loadCachedFilters();
       if (await RuleDownloaderService.needsSync()) {
-        unawaited(_syncFiltersInBackground());
+        final sync = _syncFiltersInBackground();
+        _pendingListSync = sync;
+        unawaited(sync);
       }
     } catch (e) {
       debugPrint('[AegisVPN] could not restore filter lists: $e');

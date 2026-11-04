@@ -79,6 +79,8 @@ class MainActivity: FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // From here this screen's Dart side fills the engine itself.
+        HeadlessRestore.uiEngineAlive = true
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -153,24 +155,11 @@ class MainActivity: FlutterActivity() {
                 // kept by package name and looked up again at every start.
                 "resolvePackageUids" -> {
                     val packages = call.argument<List<String>>("packages") ?: emptyList()
-                    result.success(resolvePackageUids(packages))
+                    result.success(resolvePackageUids(this, packages))
                 }
                 else -> result.notImplemented()
             }
         }
-    }
-
-    /// Packages that are not installed are left out rather than reported.
-    private fun resolvePackageUids(packages: List<String>): Map<String, Int> {
-        val uids = HashMap<String, Int>()
-        for (name in packages) {
-            try {
-                uids[name] = packageManager.getApplicationInfo(name, 0).uid
-            } catch (e: Exception) {
-                // Uninstalled, or hidden from this app by package visibility.
-            }
-        }
-        return uids
     }
 
     /// True when the ongoing tunnel notification can actually be shown.
@@ -319,6 +308,11 @@ class MainActivity: FlutterActivity() {
         } else {
             settleVpnResult(false, ERROR_CONSENT_DENIED)
         }
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        HeadlessRestore.uiEngineAlive = false
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     override fun onDestroy() {
