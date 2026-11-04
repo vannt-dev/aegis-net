@@ -6,6 +6,22 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Always-on VPN works.** With AegisNet chosen as the Always-on VPN in
+  Android's settings, the phone started the service at boot but no tunnel came
+  up, and with "Block connections without VPN" on the phone had no internet
+  until AegisNet was opened. It now starts protecting right away.
+- **Your settings apply when the tunnel starts without the app.** A start by
+  Always-on VPN, by the Quick Settings tile with the app closed, or by Android
+  bringing the service back after closing it, used to filter with a dozen
+  built-in rules only: no filter lists, and none of your own allowed or blocked
+  domains, categories, upstream DNS or blocked apps, until the app was opened.
+  These now load in the background as the tunnel starts.
+- **The Quick Settings tile keeps your app exclusions.** Starting from the tile
+  cleared the list of apps that bypass the VPN, and the setting for catching
+  apps with their own DNS went back to on.
+
 ## [1.9.0] — 2026-11-02
 
 Filter lists now survive a restart of the app, the Malware filter works again,
