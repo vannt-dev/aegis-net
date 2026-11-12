@@ -418,6 +418,12 @@ class VpnProvider extends ChangeNotifier {
       return;
     }
     _isVpnActive = true;
+    // The tunnel may be holding a pause started before the app was closed.
+    final pausedUntil = (diagnostics['pausedUntil'] as num?)?.toInt() ?? 0;
+    if (pausedUntil > DateTime.now().millisecondsSinceEpoch) {
+      _pausedUntil = DateTime.fromMillisecondsSinceEpoch(pausedUntil);
+      _startPauseTimer();
+    }
     await _refreshPrivateDnsState();
     if (enableSimulation) {
       _startSimulation();
@@ -651,10 +657,16 @@ class VpnProvider extends ChangeNotifier {
 
   Future<void> pauseProtection(Duration duration) async {
     _pauseTimer?.cancel();
+    final until = DateTime.now().add(duration);
 
-    // Stop the tunnel first and only claim "paused" if it really stopped —
-    // otherwise the UI would report paused while DNS is still being filtered.
-    if (_isVpnActive) {
+    // The tunnel stays up without filtering and turns filtering back on by
+    // itself at [until]. A pause kept only in this object was lost when
+    // Android closed the app, and protection then stayed off for good.
+    //
+    // Where the tunnel cannot do that, stop it, and only claim "paused" if it
+    // really stopped — otherwise the UI would report paused while DNS is
+    // still being filtered.
+    if (_isVpnActive && !await AegisBridge.pauseVpn(until)) {
       final stopped = await AegisBridge.stopVpn();
       if (!stopped) {
         notifyListeners();
@@ -662,7 +674,14 @@ class VpnProvider extends ChangeNotifier {
       }
     }
 
-    _pausedUntil = DateTime.now().add(duration);
+    _pausedUntil = until;
+    _startPauseTimer();
+    notifyListeners();
+  }
+
+  /// Counts the pause down on screen and ends it on time while the app runs.
+  void _startPauseTimer() {
+    _pauseTimer?.cancel();
     _pauseTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (isPaused) {
         notifyListeners();
@@ -675,14 +694,13 @@ class VpnProvider extends ChangeNotifier {
       _pausedUntil = null;
       notifyListeners();
     });
-    notifyListeners();
   }
 
   Future<void> resumeProtection() async {
     final wasPaused = isPaused;
     _pauseTimer?.cancel();
-    // Restart the tunnel that pauseProtection stopped, before dropping the
-    // paused flag — same reason as above.
+    // Turn filtering back on before dropping the paused flag — same reason
+    // as above.
     if (wasPaused) {
       await _restoreTunnelAfterPause();
     }
@@ -690,10 +708,19 @@ class VpnProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Bring the tunnel back up after a pause. If it refuses to start, drop the
-  /// active flag so the UI stops claiming protection the engine isn't giving.
+  /// Bring filtering back after a pause: tell a tunnel that is holding the
+  /// pause to filter again, or start the one the pause stopped. If it refuses
+  /// to start, drop the active flag so the UI stops claiming protection the
+  /// engine isn't giving.
   Future<void> _restoreTunnelAfterPause() async {
     if (!_isVpnActive) return;
+    // Settings changed during the pause were held back (see _rebuildTunnel),
+    // so the tunnel gets the current ones now.
+    if (await AegisBridge.resumeVpn(
+        bypassApps: _bypassApps,
+        interceptHardcodedDns: _interceptHardcodedDns)) {
+      return;
+    }
     final started = await AegisBridge.startVpn(
         bypassApps: _bypassApps, interceptHardcodedDns: _interceptHardcodedDns);
     if (!started) {

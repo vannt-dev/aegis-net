@@ -33,6 +33,9 @@ class AegisVpnService : VpnService(), Runnable {
     companion object {
         const val ACTION_START = "com.aegisnet.app.START"
         const val ACTION_STOP = "com.aegisnet.app.STOP"
+        const val ACTION_PAUSE = "com.aegisnet.app.PAUSE"
+        const val ACTION_RESUME = "com.aegisnet.app.RESUME"
+        const val EXTRA_PAUSED_UNTIL = "pausedUntil"
         private const val TAG = "AegisVpnService"
         const val UNKNOWN_UID = -1
 
@@ -42,6 +45,7 @@ class AegisVpnService : VpnService(), Runnable {
         private const val PREFS_NAME = "aegis_vpn_service"
         private const val KEY_BYPASS_APPS = "bypass_apps"
         private const val KEY_INTERCEPT = "intercept_hardcoded_dns"
+        private const val KEY_PAUSED_UNTIL = "paused_until"
         const val EXTRA_INTERCEPT = "interceptHardcodedDns"
 
         /// ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE (API 34). Spelled as
@@ -88,6 +92,11 @@ class AegisVpnService : VpnService(), Runnable {
         /// the system silently refused still showed as "protected".
         @Volatile
         var isTunnelUp: Boolean = false
+            private set
+
+        /// When the running pause of protection ends (wall-clock ms), or 0.
+        @Volatile
+        var pausedUntilMs: Long = 0L
             private set
 
         /// Why the last start attempt failed, or null after a successful one.
@@ -188,6 +197,12 @@ class AegisVpnService : VpnService(), Runnable {
     /// What the running tunnel was built for; see [privateDnsObserver].
     private var builtForStrictPrivateDns = false
 
+    /// True while the running tunnel was built to let DNS through unfiltered
+    /// for a pause; see [checkPause].
+    private var builtPaused = false
+
+    private val pauseChecker = Runnable { checkPause() }
+
     /// The tunnel is built differently under strict Private DNS, and the mode
     /// can change while it is up. Left alone, switching to a fixed provider
     /// cut DNS off for the whole device until protection was toggled, and
@@ -250,6 +265,10 @@ class AegisVpnService : VpnService(), Runnable {
                 HeadlessRestore.startIfNoUi(this)
             }
             ACTION_START -> {
+                // Turning protection on ends any pause, including one left
+                // behind by a process that was force-stopped mid-pause.
+                val wasPaused = isRunning && builtPaused
+                savePausedUntil(0L)
                 // Go foreground BEFORE building the tunnel. Android 12 kills a
                 // service that has not posted its notification within 5s of
                 // startForegroundService(), and MIUI reaps plain background
@@ -270,11 +289,34 @@ class AegisVpnService : VpnService(), Runnable {
                     loadIntercept()
                 }
                 saveIntercept(intercept)
+                if (wasPaused) {
+                    flushHistory()
+                    closeTunnel()
+                }
                 startVpn(bypassApps, intercept)
                 // The Quick Settings tile starts this way with the app closed.
                 HeadlessRestore.startIfNoUi(this)
             }
             ACTION_STOP -> stopVpn()
+            ACTION_PAUSE -> pause(intent.getLongExtra(EXTRA_PAUSED_UNTIL, 0L))
+            ACTION_RESUME -> {
+                // The app holds back settings changed during a pause and
+                // sends them here.
+                var changed = builtPaused
+                if (intent.hasExtra("bypassApps")) {
+                    val apps = intent.getStringArrayListExtra("bypassApps") ?: arrayListOf()
+                    if (apps.toSet() != loadBypassApps().toSet()) changed = true
+                    saveBypassApps(apps)
+                }
+                if (intent.hasExtra(EXTRA_INTERCEPT)) {
+                    val intercept = intent.getBooleanExtra(EXTRA_INTERCEPT, true)
+                    if (intercept != loadIntercept()) changed = true
+                    saveIntercept(intercept)
+                }
+                savePausedUntil(0L)
+                // The pause may have ended here already; no rebuild for nothing.
+                if (changed) rebuildTunnel()
+            }
             else -> Log.w(TAG, "Ignoring unknown action ${intent.action}")
         }
         return START_STICKY
@@ -311,6 +353,70 @@ class AegisVpnService : VpnService(), Runnable {
 
     private fun loadIntercept(): Boolean =
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_INTERCEPT, true)
+
+    /// The end of the pause, kept so that a service the system restarts in
+    /// the middle of a pause still ends it on time.
+    private fun savePausedUntil(untilMs: Long) {
+        pausedUntilMs = untilMs
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_PAUSED_UNTIL, untilMs)
+            .apply()
+    }
+
+    /// True while a pause is running. A pause that is over is forgotten here.
+    private fun pausedNow(): Boolean {
+        val until = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(KEY_PAUSED_UNTIL, 0L)
+        if (PauseWindow.isActive(until, System.currentTimeMillis())) {
+            pausedUntilMs = until
+            return true
+        }
+        if (until != 0L) savePausedUntil(0L)
+        pausedUntilMs = 0L
+        return false
+    }
+
+    /// Stop filtering until [untilMs] and filter again by itself then, whether
+    /// or not the app is still running. The tunnel stays up meanwhile, so the
+    /// service keeps its notification and the system keeps it alive.
+    private fun pause(untilMs: Long) {
+        if (!isRunning) {
+            Log.w(TAG, "Ignoring a pause with no tunnel up")
+            return
+        }
+        if (!PauseWindow.isActive(untilMs, System.currentTimeMillis())) {
+            Log.w(TAG, "Ignoring a pause that has already ended")
+            return
+        }
+        savePausedUntil(untilMs)
+        rebuildTunnel()
+    }
+
+    /// Build the running tunnel again for the current pause state.
+    private fun rebuildTunnel() {
+        if (!isRunning) return
+        // Counted queries are written out before the history is reopened.
+        flushHistory()
+        closeTunnel()
+        enterForeground()
+        startVpn(loadBypassApps(), loadIntercept())
+    }
+
+    /// Ends the pause once its time has passed, looking at the wall clock.
+    private fun checkPause() {
+        historyHandler.removeCallbacks(pauseChecker)
+        if (!isRunning || !builtPaused) return
+        if (pausedNow()) {
+            historyHandler.postDelayed(
+                pauseChecker,
+                PauseWindow.nextCheckMs(pausedUntilMs, System.currentTimeMillis()),
+            )
+            return
+        }
+        Log.i(TAG, "Pause over; filtering again")
+        rebuildTunnel()
+    }
 
     /// Private DNS set to a fixed provider ("hostname" mode).
     private fun strictPrivateDns(): Boolean = try {
@@ -363,9 +469,16 @@ class AegisVpnService : VpnService(), Runnable {
             builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
         }
 
+        val text = if (pausedNow()) {
+            val end = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)
+                .format(java.util.Date(pausedUntilMs))
+            "Protection paused until $end"
+        } else {
+            "DNS filtering is active"
+        }
         val notification = builder
             .setContentTitle("AegisNet Shield")
-            .setContentText("DNS filtering is active")
+            .setContentText(text)
             // Must be a white silhouette with real transparency: Android keeps
             // only the alpha channel and tints it. A colour launcher icon comes
             // out as one solid blob.
@@ -429,13 +542,21 @@ class AegisVpnService : VpnService(), Runnable {
             // as well: the provider is usually one of those addresses.
             val strictPrivateDns = strictPrivateDns()
             builtForStrictPrivateDns = strictPrivateDns
-            if (!strictPrivateDns) {
+            // A paused tunnel is built the same way, so DNS goes to the
+            // network unfiltered while the tunnel, and with it the service
+            // that ends the pause, stays up.
+            val paused = pausedNow()
+            builtPaused = paused
+            val filtering = !strictPrivateDns && !paused
+            if (filtering) {
                 builder.addDnsServer(TUN_DNS_SERVER)
                 builder.addDnsServer(TUN_DNS_SERVER_V6)
+            } else if (paused) {
+                Log.i(TAG, "Protection paused; the tunnel will not filter")
             } else {
                 Log.w(TAG, "Strict Private DNS is on; the tunnel will not filter")
             }
-            if (interceptResolvers && !strictPrivateDns) {
+            if (interceptResolvers && filtering) {
                 for (address in KnownResolvers.ADDRESSES) {
                     try {
                         builder.addRoute(address, KnownResolvers.prefixLength(address))
@@ -488,6 +609,7 @@ class AegisVpnService : VpnService(), Runnable {
             // Before the first packet, so its day is counted in local time.
             openHistory()
             vpnThread = Thread(this, "AegisVpnThread").also { it.start() }
+            if (paused) checkPause()
             publishStartResult(true, null)
             AegisTileService.requestTileRefresh(this)
             Log.i(TAG, "Aegis Local VPN Started Successfully with Split Tunneling")
@@ -527,6 +649,9 @@ class AegisVpnService : VpnService(), Runnable {
     private fun stopVpn() {
         isRunning = false
         historyHandler.removeCallbacks(historyFlusher)
+        historyHandler.removeCallbacks(pauseChecker)
+        // Turning protection off ends a pause; the next start filters.
+        savePausedUntil(0L)
         flushHistory()
         markTunnelDown()
         AegisTileService.requestTileRefresh(this)
