@@ -265,6 +265,10 @@ class AegisVpnService : VpnService(), Runnable {
                 HeadlessRestore.startIfNoUi(this)
             }
             ACTION_START -> {
+                // Turning protection on ends any pause, including one left
+                // behind by a process that was force-stopped mid-pause.
+                val wasPaused = isRunning && builtPaused
+                savePausedUntil(0L)
                 // Go foreground BEFORE building the tunnel. Android 12 kills a
                 // service that has not posted its notification within 5s of
                 // startForegroundService(), and MIUI reaps plain background
@@ -285,6 +289,10 @@ class AegisVpnService : VpnService(), Runnable {
                     loadIntercept()
                 }
                 saveIntercept(intercept)
+                if (wasPaused) {
+                    flushHistory()
+                    closeTunnel()
+                }
                 startVpn(bypassApps, intercept)
                 // The Quick Settings tile starts this way with the app closed.
                 HeadlessRestore.startIfNoUi(this)
