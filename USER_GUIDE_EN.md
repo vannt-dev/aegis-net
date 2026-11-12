@@ -36,6 +36,7 @@ If you need to access a website or service that is temporarily blocked:
   * **15m** (Pause for 15 minutes)
   * **1h** (Pause for 1 hour)
 * While paused, a countdown timer will display. Tap **`RESUME NOW`** to immediately re-enable protection.
+* On Android, protection comes back on time even if the app is closed during the pause; the notification says until when it is paused.
 
 ---
 
