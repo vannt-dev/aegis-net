@@ -6,6 +6,25 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.9.2] — 2026-11-13
+
+A pause now ends on time, even when Android has closed the app.
+
+### Fixed
+
+- **A pause ends on time with the app closed.** Pausing protection for 5 minutes,
+  15 minutes or an hour used to rely on the app to turn filtering back on. If
+  Android closed the app in the background during the pause, protection stayed
+  off until you switched it on by hand. On Android the protection service now
+  keeps the pause itself, shows "Protection paused until <time>" in its
+  notification and turns filtering back on at that time. Settings changed during
+  a pause apply when it ends.
+
+### Changed
+
+- Builds with Gradle 9.3.1 and Android Gradle Plugin 9.1.1, the versions the
+  current Flutter release requires; chart and build tool updates.
+
 ## [1.9.1] — 2026-11-04
 
 Always-on VPN works, and a tunnel started without opening the app now filters
