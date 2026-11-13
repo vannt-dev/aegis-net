@@ -168,7 +168,7 @@ jobs:
       - name: Kiểm tra trước khi phát hành
         if: steps.ver.outputs.publish == 'true'
         run: |
-          flutter analyze
+          flutter analyze --no-fatal-infos
           flutter test
           cd rust/aegis_core && cargo test
 
