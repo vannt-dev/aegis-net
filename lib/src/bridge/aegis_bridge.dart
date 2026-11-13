@@ -272,6 +272,38 @@ class AegisBridge {
     }
   }
 
+  /// Ask the running tunnel to stop filtering until [until] and to filter
+  /// again by itself then, even if the app has been closed meanwhile.
+  ///
+  /// False when the tunnel cannot: it is not up, or the platform has no such
+  /// call (iOS, desktop). The caller then stops the tunnel instead.
+  static Future<bool> pauseVpn(DateTime until) async {
+    try {
+      return await _vpnChannel.invokeMethod<bool>(
+              'pauseVpn', {'until': until.millisecondsSinceEpoch}) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// End a pause started with [pauseVpn] now, with these settings. False
+  /// when no tunnel is up to resume; the caller then starts one.
+  static Future<bool> resumeVpn({
+    List<String> bypassApps = const [],
+    bool interceptHardcodedDns = true,
+  }) async {
+    try {
+      return await _vpnChannel.invokeMethod<bool>('resumeVpn', {
+            'bypassApps': bypassApps,
+            'interceptHardcodedDns': interceptHardcodedDns,
+          }) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Where the desktop resolver ended up, or null when it is not running.
   /// Desktop has no VpnService equivalent, so this never means the machine is
   /// protected — only that queries sent here are filtered.

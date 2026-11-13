@@ -35,6 +35,7 @@ Khi cần truy cập các trang web hoặc dịch vụ tạm thời bị ảnh h
   * **15m** (Tạm dừng 15 phút)
   * **1h** (Tạm dừng 1 giờ)
 * Khi đang tạm dừng, ứng dụng sẽ có đồng hồ đếm ngược. Bạn có thể bấm **`RESUME NOW`** để bật lại bảo vệ ngay lập tức.
+* Trên Android, bảo vệ tự bật lại đúng giờ kể cả khi ứng dụng bị đóng trong lúc tạm dừng; thông báo cho biết tạm dừng đến mấy giờ.
 
 ---
 

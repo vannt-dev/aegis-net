@@ -122,6 +122,33 @@ class MainActivity: FlutterActivity() {
                     stopAegisVpnService()
                     result.success(true)
                 }
+                // The running tunnel holds a pause and ends it by itself, so
+                // it ends on time even when the app has been closed. False
+                // when no tunnel is up; Dart then falls back to stopping it.
+                "pauseVpn" -> {
+                    val until = call.argument<Number>("until")?.toLong() ?: 0L
+                    if (!AegisVpnService.isTunnelUp) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    result.success(sendToService(Intent(this, AegisVpnService::class.java).apply {
+                        action = AegisVpnService.ACTION_PAUSE
+                        putExtra(AegisVpnService.EXTRA_PAUSED_UNTIL, until)
+                    }))
+                }
+                "resumeVpn" -> {
+                    if (!AegisVpnService.isTunnelUp) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    val bypassApps = ArrayList(call.argument<List<String>>("bypassApps") ?: emptyList())
+                    val intercept = call.argument<Boolean>("interceptHardcodedDns") ?: true
+                    result.success(sendToService(Intent(this, AegisVpnService::class.java).apply {
+                        action = AegisVpnService.ACTION_RESUME
+                        putStringArrayListExtra("bypassApps", bypassApps)
+                        putExtra(AegisVpnService.EXTRA_INTERCEPT, intercept)
+                    }))
+                }
                 "isVpnPrepared" -> {
                     val intent = try {
                         VpnService.prepare(this)
@@ -253,6 +280,7 @@ class MainActivity: FlutterActivity() {
             "model" to Build.MODEL,
             "consentGranted" to consentGranted,
             "tunnelUp" to AegisVpnService.isTunnelUp,
+            "pausedUntil" to AegisVpnService.pausedUntilMs,
             "nativeEngineLoaded" to AegisVpnService.nativeAvailable,
             "notificationsAllowed" to notificationsAllowed(),
             "droppedUnderLoad" to AegisVpnService.droppedUnderLoad.get(),
@@ -288,6 +316,15 @@ class MainActivity: FlutterActivity() {
         } else {
             startService(intent)
         }
+    }
+
+    /// For a service that is already running in the foreground.
+    private fun sendToService(intent: Intent): Boolean = try {
+        startService(intent)
+        true
+    } catch (e: Exception) {
+        Log.e(TAG, "Could not reach the tunnel service", e)
+        false
     }
 
     private fun stopAegisVpnService() {
