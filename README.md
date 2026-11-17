@@ -3,7 +3,7 @@
 [![Downloads](https://img.shields.io/github/downloads/vannt-dev/aegis-net/total)](https://github.com/vannt-dev/aegis-net/releases)
 [![Official vannt-dev build](https://vannt-dev.github.io/badges/official.svg)](https://vannt-dev.github.io/official.html)
 
-**AegisNet** is a high-performance, cross-platform system-wide DNS Privacy Guard & Ad-Blocking Mobile Application for **Android & iOS**, built with **Flutter** and powered by a high-speed **Rust Core Engine**.
+**AegisNet** is a high-performance, cross-platform system-wide DNS Privacy Guard & Ad-Blocking Mobile Application for **Android** (iOS in progress), built with **Flutter** and powered by a high-speed **Rust Core Engine**.
 
 ---
 
@@ -45,6 +45,8 @@ flowchart LR
 - **🔒 Enforced SafeSearch**: Exact-host SafeSearch rewriting for Google & DuckDuckGo (unrelated subdomains such as `mail.google.com` are never touched).
 - **🌐 DNS-over-HTTPS, DNS-over-TLS & DNS-over-QUIC**: Encrypted upstream over DoH (RFC 8484, `application/dns-message`), DoT (RFC 7858, port 853) or DoQ (RFC 9250, UDP port 853). The built-in providers (Cloudflare, Google, AdGuard, Quad9) use DoH with IP-literal endpoints to avoid resolver bootstrap loops; a custom resolver can be an `https://` URL, a `tls://host[:port][#name]` target or a `quic://host[:port][#name]` target, where `#name` is the certificate name to verify when the host is an address.
 - **💻 Desktop (experimental)**: Windows, macOS and Linux builds include a local DNS resolver (`DesktopDnsProxy`) to point the operating system at. It needs an engine library built by hand; see the platform table.
+- **🔌 Always-on VPN & Quick Settings tile (Android)**: Choose AegisNet as Android's Always-on VPN to protect from boot, or switch protection from the Quick Settings tile. A tunnel started this way, with the app closed, filters with your lists and settings.
+- **⏸️ Pause protection**: Pause filtering for 5 minutes, 15 minutes or an hour. On Android it comes back on time even if the app has been closed, and the notification shows when.
 - **⏱️ DNS Latency Benchmark**: Interactive built-in benchmark tool to test and automatically select the fastest upstream DNS provider.
 - **📱 System-Wide Protection**: Intercepts OS-level DNS traffic via local split-tunnel VPN (`VpnService` on Android; the iOS `NEPacketTunnelProvider` is not finished) without routing web traffic to remote servers.
 - **📊 Real-time Dashboard & Analytics**: Interactive traffic graphs, query counters, ad-block stats, bandwidth savings, and detailed category analytics, plus a 30-day history of queries, blocks and the most-blocked domains that survives restarts (Android).
@@ -116,7 +118,7 @@ note that YouTube's terms forbid blocking its ads.
 | Platform | Native DNS filtering | Notes |
 |----------|:--------------------:|-------|
 | **Android** | ✅ **Working (verified on emulator)** | TUN → Rust → device pipeline, DNS-only routing, DoH upstream. `libaegis_core.so` is built by a Gradle `cargo-ndk` task, or fetched already built when the engine's source is absent. |
-| **iOS** | 🚧 **App shell builds in CI; filtering not wired up** | The Flutter shell compiles on a macOS runner on every PR. Extension provider, `NETunnelProviderManager` channel, entitlements, App Group state sharing and the Rust framework script are all in the repo, and the Rust core cross-compiles for iOS. Still missing: the `PacketTunnel` extension target is not checked into the Xcode project. `ios/add_packet_tunnel_target.rb` adds it on a Mac (and links the engine framework), but the extension has not yet been compiled in CI or run on a device. Final assembly needs macOS/Xcode + a paid Apple Developer account — see [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md). |
+| **iOS** | 🚧 **App shell builds in CI; filtering not wired up** | The Flutter shell compiles on a macOS runner when a PR changes the iOS project, the engine, the plugins or CI, and on every release PR into `main`. Extension provider, `NETunnelProviderManager` channel, entitlements, App Group state sharing and the Rust framework script are all in the repo, and the Rust core cross-compiles for iOS. Still missing: the `PacketTunnel` extension target is not checked into the Xcode project. `ios/add_packet_tunnel_target.rb` adds it on a Mac (and links the engine framework), but the extension has not yet been compiled in CI or run on a device. Final assembly needs macOS/Xcode + a paid Apple Developer account — see [`ios/IOS_SETUP.md`](ios/IOS_SETUP.md). |
 | **Desktop** | 🚧 **Local DNS proxy; engine not bundled (Windows/macOS/Linux)** | `DesktopDnsProxy` answers DNS on loopback (port 53, or 5300 without the rights for 53) through the engine, and the operating system has to be pointed at it by hand. The desktop builds do not build or bundle the engine library: put a hand-built `aegis_core.dll` / `libaegis_core.so` beside the app (on macOS, link it into the app). Without it the proxy cannot answer and the app runs the pure-Dart fallback. |
 | **Web** | ➖ **Fallback Engine / WASM Ready** | Runs the pure-Dart fallback engine (simulation) with WASM target scaffolding for browser testing. |
 
@@ -184,7 +186,7 @@ For detailed setup, building, testing, and deployment instructions, refer to the
 1. **Flutter SDK** (v3.0.0+ for Android/Web; **iOS needs 3.35+** — the iOS shell
    uses the UIScene lifecycle APIs `FlutterSceneDelegate` /
    `FlutterImplicitEngineDelegate`, which older SDKs do not have. CI builds on
-   stable 3.44.x, matching `.metadata`.)
+   the latest stable release; the version is not pinned.)
 2. **Rust Toolchain** (`rustup`, `cargo`)
 3. **Google Chrome / MS Edge** (for Web local testing) or **Android Studio** / **Visual Studio 2022** (for platform native builds)
 
@@ -315,8 +317,8 @@ cargo clippy -- -D warnings
 AegisNet uses GitHub Actions for CI/CD with parallel job execution, Cargo & Gradle caching, and automated verification:
 
 - **Git Hooks**: Pre-commit formatting & strict pre-push test gate (`.githooks/`).
-- **Build & Test** ([`build.yml`](.github/workflows/build.yml)): Rust `cargo check`/`test`, Flutter analyze/test/web build, and Android debug APK build. Runs on every push to `main`/`develop` and every PR.
-- **iOS Build Verification** ([`ios.yml`](.github/workflows/ios.yml)): cross-compiles the Rust core for iOS targets and builds the Flutter iOS shell (`flutter build ios --no-codesign`) on a macOS runner. Both jobs gate — a broken iOS shell fails the run. Same triggers as above (push to `main`/`develop`, every PR).
+- **Build & Test** ([`build.yml`](.github/workflows/build.yml)): Rust `cargo check`/`test`, Flutter analyze/test/web build, and Android debug APK build. Runs on every push to `develop`, every PR, and on a Monday/Thursday schedule that keeps the Gradle cache warm. A PR that only touches docs skips the jobs.
+- **iOS Build Verification** ([`ios.yml`](.github/workflows/ios.yml)): cross-compiles the Rust core for iOS targets and builds the Flutter iOS shell (`flutter build ios --no-codesign`) on a macOS runner. Both jobs gate — a broken iOS shell fails the run. It runs only when `build.yml` calls it: when the iOS project, the engine, the plugins or CI change, and on every release PR into `main`.
 - **Release** ([`release.yml`](.github/workflows/release.yml)): builds, signs and publishes the Android release APK (GitHub Release + Firebase App Distribution). Only runs on `main` — a PR into `main` builds a downloadable artifact without publishing, a push/merge to `main` publishes for real.
 
 ---
