@@ -332,7 +332,7 @@ class _PinPadState extends State<PinPad> {
             padding: EdgeInsets.zero,
           ),
           child: icon != null
-              ? Icon(icon, size: 20)
+              ? Icon(icon, size: 20, semanticLabel: label)
               : Text(label, style: const TextStyle(fontSize: 20)),
         ),
       ),
@@ -404,11 +404,12 @@ class _PinPadState extends State<PinPad> {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _key('', _back,
+            _key(AppStrings.get('lock_key_delete'), _back,
                 key: const ValueKey('pin_key_back'),
                 icon: Icons.backspace_outlined),
             _key('0', () => _add('0'), key: const ValueKey('pin_key_0')),
-            _key('', AppLockProvider.isValidPin(_digits) ? _ok : null,
+            _key(AppStrings.get('lock_key_ok'),
+                AppLockProvider.isValidPin(_digits) ? _ok : null,
                 key: const ValueKey('pin_key_ok'), icon: Icons.check_rounded),
           ],
         ),

@@ -108,6 +108,15 @@ void main() {
       lock.dispose();
     });
 
+    testWidgets('the delete and OK keys have spoken labels', (tester) async {
+      final lock = await pumpApp(tester);
+      expect(find.bySemanticsLabel(AppStrings.get('lock_key_delete')),
+          findsOneWidget);
+      expect(
+          find.bySemanticsLabel(AppStrings.get('lock_key_ok')), findsOneWidget);
+      lock.dispose();
+    });
+
     testWidgets('locks again after a long stay in the background',
         (tester) async {
       final lock = await pumpApp(tester);
