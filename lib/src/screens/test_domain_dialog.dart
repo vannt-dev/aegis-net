@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../i18n/app_strings.dart';
 import '../providers/block_reason.dart';
 import '../providers/vpn_provider.dart';
+import 'app_lock_screen.dart';
 
 /// Asks whether a domain would be blocked, and why, without looking it up.
 /// A blocked answer offers to allow the domain on the spot.
@@ -47,7 +48,8 @@ class _TestDomainDialogState extends State<TestDomainDialog> {
     });
   }
 
-  void _allow(String domain) {
+  Future<void> _allow(String domain) async {
+    if (!await requirePin(context) || !mounted) return;
     context.read<VpnProvider>().allowDomain(domain);
     _run();
   }

@@ -18,6 +18,8 @@
 6. [Chế Độ Ngoại Lệ Ứng Dụng (App Split-Tunneling)](#6-chế-độ-ngoại-lệ-ứng-dụng-app-split-tunneling)
 7. [Đo Tốc Độ DNS (Speed Test) & Chọn Chủ Đề Neon](#7-đo-tốc-độ-dns-speed-test--chọn-chủ-đề-neon)
 8. [Sao Lưu & Phục Hồi Cấu Hình (Export / Import JSON)](#8-sao-lưu--phục-hồi-cấu-hình-export--import-json)
+9. [Cài Đặt Bảo Vệ DNS Mã Hóa Cho iOS](#9-cài-đặt-bảo-vệ-dns-mã-hóa-cho-ios-không-cần-tài-khoản-trả-phí)
+10. [Khóa Ứng Dụng Bằng Mã PIN](#10-khóa-ứng-dụng-bằng-mã-pin)
 
 ---
 
@@ -95,3 +97,17 @@ Chuyển sang tab **Settings**:
 * Hệ thống sẽ tự động tạo cấu hình mã hóa DoH (`.mobileconfig`) và mở trình duyệt Safari.
 * Khi iOS hiển thị thông báo **"Profile Downloaded"**, mở ứng dụng **Cài đặt (Settings)** trên iPhone ➔ chọn **Profile Downloaded** (Đã tải về hồ sơ) ➔ bấm **Cài đặt (Install)**.
 * Toàn bộ truy vấn DNS trên iPhone của bạn sẽ được bảo vệ bằng DNS mã hóa bảo mật toàn hệ thống!
+
+---
+
+## 10. Khóa Ứng Dụng Bằng Mã PIN
+Để người khác cầm điện thoại không tắt được bảo vệ hay nới bộ lọc:
+* Trong tab **Settings**, bật **Khóa ứng dụng (PIN)**, chọn mã PIN 4-6 chữ số rồi nhập lại lần nữa.
+* Khi bật, AegisNet hỏi mã PIN lúc mở ứng dụng và khi quay lại sau hơn 30 giây ở nền.
+* Mã PIN cũng được hỏi trước mọi thao tác làm yếu bảo vệ: tắt hoặc tạm dừng, cho phép một tên miền, tắt một bộ lọc hay một tùy chọn chặn, cho ứng dụng đi ngoài VPN, khôi phục bản sao lưu. Mã vừa nhập trong vòng 1 phút thì không hỏi lại.
+* Sai 5 lần liên tiếp thì phải chờ 30 giây; mỗi lần sai tiếp theo thời gian chờ tăng gấp đôi, tối đa 15 phút.
+* Khi khóa đang bật, ô **Quick Settings** chỉ mở ứng dụng thay vì tắt bảo vệ.
+* **ĐỔI MÃ PIN** và tắt khóa đều cần mã PIN hiện tại.
+* Ứng dụng chỉ lưu mã băm (PBKDF2, có muối) của PIN, không lưu chính mã PIN.
+* Quên mã PIN: xóa dữ liệu ứng dụng trong cài đặt Android (các luật và danh sách cũng bị xóa).
+* Khóa không ngăn được việc ngắt VPN trong cài đặt VPN của Android, gỡ ứng dụng hay buộc dừng ứng dụng.

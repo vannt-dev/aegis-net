@@ -9,6 +9,7 @@ import '../services/dns_benchmark_service.dart';
 import '../services/config_sync_service.dart';
 import '../services/ios_doh_profile_service.dart';
 import '../i18n/app_strings.dart';
+import 'app_lock_screen.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
 const Color emeraldDarkColor = Color(0xFF065F46);
@@ -218,6 +219,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
     );
     if (picked == null) return;
+    if (!context.mounted || !await requirePin(context)) return;
 
     final minutes = picked.hour * 60 + picked.minute;
     await vpn.setSchedule(
@@ -391,7 +393,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
-                onPressed: () {
+                onPressed: () async {
+                  // An app outside the tunnel is not filtered at all.
+                  if (!await requirePin(context)) return;
                   vpn.addBypassApp(_bypassController.text);
                   _bypassController.clear();
                 },
@@ -465,7 +469,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       key: const Key('intercept_switch'),
                       value: vpn.interceptHardcodedDns,
                       activeThumbColor: Colors.cyanAccent,
-                      onChanged: (val) {
+                      onChanged: (val) async {
+                        if (!val && !await requirePin(context)) return;
+                        if (!context.mounted) return;
                         if (vpn.isVpnActive) {
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                             content: Text(AppStrings.get('settings_applying')),
@@ -519,7 +525,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       key: const Key('cname_switch'),
                       value: vpn.blockAliasTrackers,
                       activeThumbColor: Colors.cyanAccent,
-                      onChanged: vpn.setBlockAliasTrackers,
+                      onChanged: (val) async {
+                        if (!val && !await requirePin(context)) return;
+                        await vpn.setBlockAliasTrackers(val);
+                      },
                     ),
                   ],
                 ),
@@ -565,7 +574,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Switch(
                       value: vpn.scheduleEnabled,
                       activeThumbColor: Colors.amberAccent,
-                      onChanged: (val) => vpn.setSchedule(enabled: val),
+                      onChanged: (val) async {
+                        if (!val && !await requirePin(context)) return;
+                        await vpn.setSchedule(enabled: val);
+                      },
                     ),
                   ],
                 ),
@@ -619,6 +631,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
+
+          const SizedBox(height: 24),
+
+          const AppLockSettingsCard(),
 
           const SizedBox(height: 24),
 
@@ -707,6 +723,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           ElevatedButton(
                             onPressed: () async {
+                              // A backup can carry allow rules and switch
+                              // filters off.
+                              if (!await requirePin(ctx)) return;
                               final success =
                                   await ConfigSyncService.importConfigFromJson(
                                       controller.text);

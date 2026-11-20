@@ -19,6 +19,8 @@
 6. [App-by-App Split Tunneling](#6-app-by-app-split-tunneling)
 7. [DNS Speed Test & Cyberpunk Themes](#7-dns-speed-test--cyberpunk-themes)
 8. [Export & Import Configuration](#8-export--import-configuration)
+9. [iOS System-Wide Encrypted DNS (.mobileconfig) Profile Setup](#9-ios-system-wide-encrypted-dns-mobileconfig-profile-setup)
+10. [App Lock (PIN)](#10-app-lock-pin)
 
 ---
 
@@ -96,3 +98,17 @@ For iPhone & iPad users:
 * AegisNet will generate an Apple Encrypted DNS (`.mobileconfig`) payload and open Safari.
 * When iOS prompts **"Profile Downloaded"**, open the iPhone **Settings app** ➔ tap **Profile Downloaded** ➔ tap **Install**.
 * System-wide Encrypted DNS protection (DoH) will be active across Wi-Fi & Cellular networks without requiring a $99/yr Apple Developer Account!
+
+---
+
+## 10. App Lock (PIN)
+So that someone else holding the phone cannot turn protection off or loosen the filters:
+* In the **Settings** tab, turn on **App lock (PIN)**, choose a 4-6 digit PIN and enter it again.
+* While it is on, AegisNet asks for the PIN when it opens and when you come back after more than 30 seconds away.
+* The PIN is also asked before anything that weakens protection: turning it off or pausing it, allowing a domain, switching off a filter or a blocking option, letting an app skip the VPN, or restoring a backup. A PIN entered within the last minute is not asked again.
+* After 5 wrong tries in a row you wait 30 seconds; each further wrong try doubles the wait, up to 15 minutes.
+* With the lock on, the **Quick Settings** tile opens the app instead of turning protection off.
+* **CHANGE PIN** and turning the lock off both need the current PIN.
+* Only a salted PBKDF2 hash of the PIN is stored, never the PIN itself.
+* Forgot the PIN? Clear the app data in Android settings (this also erases your rules and lists).
+* The lock cannot stop someone from disconnecting the VPN in Android's VPN settings, uninstalling the app or force-stopping it.
