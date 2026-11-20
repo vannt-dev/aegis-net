@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'src/providers/app_lock_provider.dart';
 import 'src/providers/vpn_provider.dart';
 import 'src/providers/theme_provider.dart';
+import 'src/screens/app_lock_screen.dart';
 import 'src/screens/main_navigation_screen.dart';
 import 'src/services/headless_restore.dart';
 
@@ -14,6 +16,7 @@ void main() {
       providers: [
         ChangeNotifierProvider(create: (_) => VpnProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => AppLockProvider()),
       ],
       child: const AegisApp(),
     ),
@@ -53,6 +56,8 @@ class AegisApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const MainNavigationScreen(),
+      // Above the navigator, so the lock also covers dialogs and pushed pages.
+      builder: (context, child) => AppLockGate(child: child!),
     );
   }
 }

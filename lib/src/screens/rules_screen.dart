@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../i18n/app_strings.dart';
 import '../providers/vpn_provider.dart';
 import '../services/rule_downloader_service.dart';
+import 'app_lock_screen.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
 const Color emeraldDarkColor = Color(0xFF065F46);
@@ -250,7 +251,8 @@ class _RulesScreenState extends State<RulesScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 14),
                       ),
-                      onPressed: () {
+                      onPressed: () async {
+                        if (!await requirePin(context)) return;
                         vpn.addWhitelistDomain(_domainInputController.text);
                         _domainInputController.clear();
                       },
@@ -441,8 +443,11 @@ class _RulesScreenState extends State<RulesScreen>
                                 trailing: IconButton(
                                   icon: const Icon(Icons.delete,
                                       color: Colors.grey),
-                                  onPressed: () =>
-                                      vpn.removeCustomHost(entry.key),
+                                  onPressed: () async {
+                                    if (await requirePin(context)) {
+                                      vpn.removeCustomHost(entry.key);
+                                    }
+                                  },
                                 ),
                               ),
                             );
@@ -489,6 +494,7 @@ class _RulesScreenState extends State<RulesScreen>
           activeTrackColor: Colors.cyanAccent.withValues(alpha: 0.5),
           activeThumbColor: Colors.cyanAccent,
           onChanged: (val) async {
+            if (!val && !await requirePin(context)) return;
             await RuleDownloaderService.setSourceEnabled(id, val);
             if (mounted) setState(() {});
           },

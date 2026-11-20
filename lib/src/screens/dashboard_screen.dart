@@ -7,6 +7,7 @@ import '../services/desktop_dns_proxy.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 import '../i18n/app_strings.dart';
+import 'app_lock_screen.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
 const Color emeraldDarkColor = Color(0xFF065F46);
@@ -19,6 +20,10 @@ class DashboardScreen extends StatelessWidget {
   /// is exactly how the MIUI failure presented.
   static Future<void> _toggleAndReport(
       BuildContext context, VpnProvider vpn) async {
+    // Turning protection off needs the app-lock PIN; turning it on never does.
+    if ((vpn.isVpnActive || vpn.isPaused) && !await requirePin(context)) {
+      return;
+    }
     await vpn.toggleVpn();
 
     final error = vpn.lastError;
@@ -493,7 +498,9 @@ class DashboardScreen extends StatelessWidget {
   Widget _buildPauseChip(
       BuildContext context, VpnProvider vpn, String label, Duration duration) {
     return InkWell(
-      onTap: () => vpn.pauseProtection(duration),
+      onTap: () async {
+        if (await requirePin(context)) await vpn.pauseProtection(duration);
+      },
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

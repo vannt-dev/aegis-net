@@ -62,6 +62,24 @@ class AppStrings {
       'common_add': 'ADD',
       'common_restore': 'RESTORE',
 
+      // ----------------------------------------------------------- app lock
+      'lock_title': 'App lock (PIN)',
+      'lock_desc':
+          'Ask for a PIN when AegisNet opens or comes back after more than 30 seconds away, and before anything that weakens protection: turning it off or pausing it, allowing a domain, switching off a filter, letting an app skip the VPN, or restoring a backup.',
+      'lock_enter_pin': 'Enter your PIN',
+      'lock_new_pin': 'Choose a 4-6 digit PIN',
+      'lock_confirm_pin': 'Enter the same PIN again',
+      'lock_mismatch': 'The two PINs differ. Choose a PIN again.',
+      'lock_wrong': 'Wrong PIN',
+      'lock_wait': 'Too many wrong tries. Try again in %s s.',
+      'lock_change': 'CHANGE PIN',
+      'lock_enabled_msg': 'App lock is on.',
+      'lock_disabled_msg': 'App lock is off.',
+      'lock_changed_msg': 'PIN changed.',
+      'lock_locked_title': 'AegisNet is locked',
+      'lock_forgot':
+          'Forgot the PIN? Clearing the app data in Android settings removes it, along with your rules and lists.',
+
       // --------------------------------------------------------- navigation
       'nav_dashboard': 'Dashboard',
       'nav_rules': 'Rules',
@@ -305,6 +323,24 @@ class AppStrings {
       'common_add': 'THÊM',
       'common_restore': 'KHÔI PHỤC',
 
+      // ----------------------------------------------------------- app lock
+      'lock_title': 'Khóa ứng dụng (PIN)',
+      'lock_desc':
+          'Hỏi mã PIN khi mở AegisNet hoặc quay lại sau hơn 30 giây, và trước mọi thao tác làm yếu bảo vệ: tắt hoặc tạm dừng, cho phép một tên miền, tắt một bộ lọc, cho ứng dụng đi ngoài VPN, hay khôi phục bản sao lưu.',
+      'lock_enter_pin': 'Nhập mã PIN',
+      'lock_new_pin': 'Chọn mã PIN 4-6 chữ số',
+      'lock_confirm_pin': 'Nhập lại mã PIN đó',
+      'lock_mismatch': 'Hai mã PIN không khớp. Hãy chọn lại.',
+      'lock_wrong': 'Sai mã PIN',
+      'lock_wait': 'Sai quá nhiều lần. Thử lại sau %s giây.',
+      'lock_change': 'ĐỔI MÃ PIN',
+      'lock_enabled_msg': 'Đã bật khóa ứng dụng.',
+      'lock_disabled_msg': 'Đã tắt khóa ứng dụng.',
+      'lock_changed_msg': 'Đã đổi mã PIN.',
+      'lock_locked_title': 'AegisNet đang khóa',
+      'lock_forgot':
+          'Quên mã PIN? Xóa dữ liệu ứng dụng trong cài đặt Android sẽ gỡ mã, kèm theo các luật và danh sách của bạn.',
+
       // --------------------------------------------------------- navigation
       'nav_dashboard': 'Tổng quan',
       'nav_rules': 'Quy tắc',
@@ -545,6 +581,24 @@ class AppStrings {
       'common_add': '추가',
       'common_restore': '복원',
 
+      // ----------------------------------------------------------- app lock
+      'lock_title': '앱 잠금 (PIN)',
+      'lock_desc':
+          'AegisNet을 열 때나 30초 넘게 나갔다가 돌아올 때, 그리고 보호를 약하게 하는 작업(끄기·일시 중지, 도메인 허용, 필터 끄기, 앱의 VPN 우회, 백업 복원) 전에 PIN을 묻습니다.',
+      'lock_enter_pin': 'PIN을 입력하세요',
+      'lock_new_pin': '4~6자리 PIN을 정하세요',
+      'lock_confirm_pin': '같은 PIN을 한 번 더 입력하세요',
+      'lock_mismatch': '두 PIN이 다릅니다. 다시 정하세요.',
+      'lock_wrong': 'PIN이 틀렸습니다',
+      'lock_wait': '틀린 시도가 너무 많습니다. %s초 후에 다시 시도하세요.',
+      'lock_change': 'PIN 변경',
+      'lock_enabled_msg': '앱 잠금이 켜졌습니다.',
+      'lock_disabled_msg': '앱 잠금이 꺼졌습니다.',
+      'lock_changed_msg': 'PIN이 변경되었습니다.',
+      'lock_locked_title': 'AegisNet이 잠겨 있습니다',
+      'lock_forgot':
+          'PIN을 잊었나요? Android 설정에서 앱 데이터를 지우면 PIN이 사라지며, 규칙과 목록도 함께 지워집니다.',
+
       // --------------------------------------------------------- navigation
       'nav_dashboard': '대시보드',
       'nav_rules': '규칙',
@@ -771,6 +825,23 @@ class AppStrings {
       'common_close': '閉じる',
       'common_add': '追加',
       'common_restore': '復元',
+
+      // ----------------------------------------------------------- app lock
+      'lock_title': 'アプリロック（PIN）',
+      'lock_desc':
+          'AegisNetを開いたとき、30秒以上離れてから戻ったとき、そして保護を弱める操作（オフ・一時停止、ドメインの許可、フィルターのオフ、アプリのVPN除外、バックアップの復元）の前にPINを求めます。',
+      'lock_enter_pin': 'PINを入力',
+      'lock_new_pin': '4〜6桁のPINを決めてください',
+      'lock_confirm_pin': '同じPINをもう一度入力',
+      'lock_mismatch': '2つのPINが一致しません。もう一度決めてください。',
+      'lock_wrong': 'PINが違います',
+      'lock_wait': '間違いが多すぎます。%s秒後にもう一度お試しください。',
+      'lock_change': 'PINを変更',
+      'lock_enabled_msg': 'アプリロックをオンにしました。',
+      'lock_disabled_msg': 'アプリロックをオフにしました。',
+      'lock_changed_msg': 'PINを変更しました。',
+      'lock_locked_title': 'AegisNetはロック中です',
+      'lock_forgot': 'PINを忘れた場合は、Androidの設定でアプリのデータを消去すると解除されます（ルールとリストも消えます）。',
 
       // --------------------------------------------------------- navigation
       'nav_dashboard': 'ホーム',
