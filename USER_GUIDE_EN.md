@@ -21,6 +21,7 @@
 8. [Export & Import Configuration](#8-export--import-configuration)
 9. [iOS System-Wide Encrypted DNS (.mobileconfig) Profile Setup](#9-ios-system-wide-encrypted-dns-mobileconfig-profile-setup)
 10. [App Lock (PIN)](#10-app-lock-pin)
+11. [Home-Screen Widget (Android)](#11-home-screen-widget-android)
 
 ---
 
@@ -39,6 +40,7 @@ If you need to access a website or service that is temporarily blocked:
   * **1h** (Pause for 1 hour)
 * While paused, a countdown timer will display. Tap **`RESUME NOW`** to immediately re-enable protection.
 * On Android, protection comes back on time even if the app is closed during the pause; the notification says until when it is paused.
+* On Android you can also pause from the notification: pull down the shade and tap **Pause 5 min** under *AegisNet Shield*. The notification then counts down the time left and offers **Resume** to turn protection back on early. The pause ends on time even if the app is closed.
 
 ---
 
@@ -46,6 +48,7 @@ If you need to access a website or service that is temporarily blocked:
 Switch to the **Rules** tab on the bottom navigation bar:
 * **Preset Filter Lists**: Toggle standard ad-blocking filters (AdGuard Mobile, EasyList DNS, StevenBlack Hosts, NoCoin).
 * **Sync Button 🔄**: Tap the refresh icon in the app bar to download and update the latest active filter rules from the internet.
+* **Import a list from a file (Android)**: Tap **IMPORT FILE** and pick a hosts file (`0.0.0.0 ads.example.com`) or a text file with one domain per line. AegisNet checks every line, drops repeated names and lines that are not a domain to block (such as `localhost` or a hosts line pointing at a real address), and tells you how many domains it added. The list appears with the others and blocks right away. It is kept only on this phone: a sync never downloads it, and exporting your settings does not carry the file. Tap the bin icon next to it to remove it.
 * **Custom Whitelist & Blacklist**:
   * Type a domain (e.g. `mybank.com`) and tap **ALLOW** to whitelist it.
   * Type a domain (e.g. `bad-site.com`) and tap **BLOCK** to blacklist it.
@@ -107,8 +110,16 @@ So that someone else holding the phone cannot turn protection off or loosen the 
 * While it is on, AegisNet asks for the PIN when it opens and when you come back after more than 30 seconds away.
 * The PIN is also asked before anything that weakens protection: turning it off or pausing it, allowing a domain, switching off a filter or a blocking option, letting an app skip the VPN, or restoring a backup. A PIN entered within the last minute is not asked again.
 * After 5 wrong tries in a row you wait 30 seconds; each further wrong try doubles the wait, up to 15 minutes.
-* With the lock on, the **Quick Settings** tile opens the app instead of turning protection off.
+* With the lock on, the **Quick Settings** tile and the home-screen widget open the app instead of turning protection off, and the notification has no **Pause 5 min** button.
 * **CHANGE PIN** and turning the lock off both need the current PIN.
 * Only a salted PBKDF2 hash of the PIN is stored, never the PIN itself.
 * Forgot the PIN? Clear the app data in Android settings (this also erases your rules and lists).
 * The lock cannot stop someone from disconnecting the VPN in Android's VPN settings, uninstalling the app or force-stopping it.
+
+---
+
+## 11. Home-Screen Widget (Android)
+* Long-press an empty spot on the home screen, choose **Widgets**, find **AegisNet** and drag the **AegisNet Shield** widget onto the screen.
+* It shows whether protection is on, paused (and until when) or off, and how many lookups were blocked today.
+* Tap it to turn protection off, to end a pause, or to turn protection on. The first time, or after another VPN app took over, it opens AegisNet instead so you can approve the VPN.
+* The blocked count comes from the app: it updates while AegisNet is open (about every 30 seconds) and otherwise shows the number from the last time the app was open that day. On a new day it says to open the app until the app has counted again.

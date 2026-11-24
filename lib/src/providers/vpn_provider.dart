@@ -69,6 +69,10 @@ class VpnProvider extends ChangeNotifier {
 
   DateTime? _pausedUntil;
   Timer? _pauseTimer;
+
+  /// True while the running tunnel holds the pause and ends it by itself
+  /// (Android). False for the fallback that stops the tunnel for a pause.
+  bool _pauseHeldByTunnel = false;
   Timer? _autoSyncTimer;
 
   bool _blockAds = true;
@@ -371,6 +375,7 @@ class VpnProvider extends ChangeNotifier {
   Future<void> get pendingListSync => _pendingListSync ?? Future.value();
 
   VpnProvider({this.enableSimulation = true}) {
+    AegisBridge.listenForTunnelState(onTunnelState);
     _ready = _initialize();
     _startAutoSyncScheduler();
     _startScheduleWatcher();
@@ -388,6 +393,55 @@ class VpnProvider extends ChangeNotifier {
     refreshHistory();
   }
 
+  /// The tunnel changed state. When that was not this screen's doing (the
+  /// notification's Pause and Resume buttons, the home-screen widget, the
+  /// Quick Settings tile), follow it instead of showing what the screen last
+  /// did itself. The screen's own changes arrive here too, after it has
+  /// already recorded them, and leave nothing to do.
+  @visibleForTesting
+  Future<void> onTunnelState(Map<String, dynamic> diagnostics) async {
+    if (_disposed || _isConnecting) return;
+    final up = diagnostics['tunnelUp'] == true;
+    final untilMs = (diagnostics['pausedUntil'] as num?)?.toInt() ?? 0;
+    final pausedThere = up && untilMs > DateTime.now().millisecondsSinceEpoch;
+
+    if (!up) {
+      // A pause that stopped the tunnel on purpose is not a tunnel lost.
+      if (!_isVpnActive || (isPaused && !_pauseHeldByTunnel)) return;
+      _isVpnActive = false;
+      _pausedUntil = null;
+      _pauseHeldByTunnel = false;
+      _pauseTimer?.cancel();
+      _privateDnsBypass = false;
+      _stopSimulation();
+      notifyListeners();
+      return;
+    }
+
+    if (!_isVpnActive) {
+      _isVpnActive = true;
+      _lastError = null;
+      if (enableSimulation) _startSimulation();
+      unawaited(_refreshPrivateDnsState());
+    }
+    if (pausedThere) {
+      final until = DateTime.fromMillisecondsSinceEpoch(untilMs);
+      if (_pausedUntil != until) {
+        _pausedUntil = until;
+        _pauseHeldByTunnel = true;
+        _startPauseTimer();
+      }
+    } else if (isPaused) {
+      // Resumed from the notification or the widget, with the settings the
+      // tunnel already had. Hand it any changed during the pause.
+      _pauseTimer?.cancel();
+      await _restoreTunnelAfterPause();
+      _pausedUntil = null;
+      _pauseHeldByTunnel = false;
+    }
+    notifyListeners();
+  }
+
   List<DayStat> _dailyHistory = const [];
 
   /// Per-day totals kept across restarts, newest first.
@@ -400,7 +454,34 @@ class VpnProvider extends ChangeNotifier {
   void refreshHistory() {
     if (_disposed) return;
     _dailyHistory = AegisBridge.getDailyHistory();
+    _publishBlockedToday();
     notifyListeners();
+  }
+
+  int? _publishedDay;
+  int? _publishedBlocked;
+
+  /// Local days since 1970-01-01, the way the history and the widget count.
+  @visibleForTesting
+  static int localDayNumber(DateTime now) =>
+      DateTime.utc(now.year, now.month, now.day)
+          .difference(DateTime.utc(1970, 1, 1))
+          .inDays;
+
+  /// Hand the home-screen widget today's blocked count when it changed. The
+  /// widget cannot ask the engine itself, so it shows what the app last saw.
+  void _publishBlockedToday() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var blocked = 0;
+    for (final day in _dailyHistory) {
+      if (day.date == today) blocked = day.blocked;
+    }
+    final dayNumber = localDayNumber(now);
+    if (dayNumber == _publishedDay && blocked == _publishedBlocked) return;
+    _publishedDay = dayNumber;
+    _publishedBlocked = blocked;
+    unawaited(AegisBridge.updateWidget(day: dayNumber, blocked: blocked));
   }
 
   /// Ticks of the stats poll between history reads; the history moves
@@ -422,6 +503,7 @@ class VpnProvider extends ChangeNotifier {
     final pausedUntil = (diagnostics['pausedUntil'] as num?)?.toInt() ?? 0;
     if (pausedUntil > DateTime.now().millisecondsSinceEpoch) {
       _pausedUntil = DateTime.fromMillisecondsSinceEpoch(pausedUntil);
+      _pauseHeldByTunnel = true;
       _startPauseTimer();
     }
     await _refreshPrivateDnsState();
@@ -618,6 +700,7 @@ class VpnProvider extends ChangeNotifier {
   Future<void> toggleVpn() async {
     _isConnecting = true;
     _pausedUntil = null;
+    _pauseHeldByTunnel = false;
     _pauseTimer?.cancel();
     notifyListeners();
 
@@ -666,7 +749,9 @@ class VpnProvider extends ChangeNotifier {
     // Where the tunnel cannot do that, stop it, and only claim "paused" if it
     // really stopped — otherwise the UI would report paused while DNS is
     // still being filtered.
+    var heldByTunnel = _isVpnActive;
     if (_isVpnActive && !await AegisBridge.pauseVpn(until)) {
+      heldByTunnel = false;
       final stopped = await AegisBridge.stopVpn();
       if (!stopped) {
         notifyListeners();
@@ -675,6 +760,7 @@ class VpnProvider extends ChangeNotifier {
     }
 
     _pausedUntil = until;
+    _pauseHeldByTunnel = heldByTunnel;
     _startPauseTimer();
     notifyListeners();
   }
@@ -692,6 +778,7 @@ class VpnProvider extends ChangeNotifier {
       // "protected" during the gap where the tunnel is still down.
       await _restoreTunnelAfterPause();
       _pausedUntil = null;
+      _pauseHeldByTunnel = false;
       notifyListeners();
     });
   }
@@ -705,6 +792,7 @@ class VpnProvider extends ChangeNotifier {
       await _restoreTunnelAfterPause();
     }
     _pausedUntil = null;
+    _pauseHeldByTunnel = false;
     notifyListeners();
   }
 
@@ -1206,6 +1294,7 @@ class VpnProvider extends ChangeNotifier {
       if (++_ticksSinceHistory >= _historyEveryTicks) {
         _ticksSinceHistory = 0;
         _dailyHistory = AegisBridge.getDailyHistory();
+        _publishBlockedToday();
       }
       unawaited(_resolveNewApps());
       _updateQpsHistory();
@@ -1233,6 +1322,7 @@ class VpnProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    AegisBridge.stopListeningForTunnelState(onTunnelState);
     _simulationTimer?.cancel();
     _pauseTimer?.cancel();
     _autoSyncTimer?.cancel();

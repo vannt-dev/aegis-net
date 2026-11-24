@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../bridge/aegis_bridge.dart';
 import '../services/pin_hasher.dart';
 
 /// Result of checking a PIN.
@@ -131,6 +133,9 @@ class AppLockProvider extends ChangeNotifier {
     _locked = false;
     _confirmedAt = _now();
     notifyListeners();
+    // The notification's Pause button and the widget's Off tap go away
+    // while the lock is on; they cannot ask for the PIN.
+    unawaited(AegisBridge.refreshNativeUi());
   }
 
   /// Turns the lock off. The caller asks for the PIN first.
@@ -145,6 +150,7 @@ class AppLockProvider extends ChangeNotifier {
     _locked = false;
     _confirmedAt = null;
     notifyListeners();
+    unawaited(AegisBridge.refreshNativeUi());
   }
 
   /// Checks [pin] without changing whether the app is locked.
