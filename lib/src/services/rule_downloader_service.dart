@@ -386,7 +386,8 @@ class RuleDownloaderService {
     if (_cacheDir == null) throw StateError('lists are not kept here');
     await loadSources();
 
-    final parsed = BlocklistImport.parse(text);
+    // A big list takes a second or more to read; keep the screen responsive.
+    final parsed = await compute(BlocklistImport.parse, text);
     if (parsed.domains.isEmpty) {
       return ImportOutcome(status: ImportStatus.empty, parsed: parsed);
     }
