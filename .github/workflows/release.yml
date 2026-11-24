@@ -134,7 +134,7 @@ jobs:
           echo "Ghi chú: $(wc -c < RELEASE_NOTES.md) ký tự cho GitHub, $(wc -c < FIREBASE_NOTES.md) cho Firebase."
 
       # ------------------------------------------------------------- toolchains
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: '17'
@@ -151,7 +151,7 @@ jobs:
       # QUAN TRỌNG: thiếu cargo-ndk thì task Gradle buildRustEngine bị bỏ qua
       # trong im lặng (onlyIf + isIgnoreExitValue) và APK sẽ RA ĐỜI MÀ KHÔNG CÓ
       # engine DNS — app cài được nhưng không chặn gì cả.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 

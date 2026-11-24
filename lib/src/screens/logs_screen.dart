@@ -6,6 +6,7 @@ import '../providers/app_info.dart';
 import '../providers/vpn_provider.dart';
 import '../providers/theme_provider.dart';
 import '../i18n/app_strings.dart';
+import 'app_lock_screen.dart';
 import 'test_domain_dialog.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
@@ -377,7 +378,8 @@ class _LogsScreenState extends State<LogsScreen> {
                       allowed ? 'logs_action_unallow' : 'logs_action_allow'),
                   style: const TextStyle(color: Colors.white),
                 ),
-                onTap: () {
+                onTap: () async {
+                  if (!allowed && !await requirePin(context)) return;
                   if (allowed) {
                     vpn.removeWhitelistDomain(domain);
                     done('logs_rule_removed');
@@ -421,7 +423,8 @@ class _LogsScreenState extends State<LogsScreen> {
                         ActionChip(
                           key: ValueKey('log-action-allow-$key'),
                           label: Text(AppStrings.get(label)),
-                          onPressed: () {
+                          onPressed: () async {
+                            if (!await requirePin(context)) return;
                             vpn.allowDomainFor(domain, duration);
                             done('logs_timed_allow_added',
                                 until: vpn.temporaryAllowUntil(domain));
@@ -438,7 +441,8 @@ class _LogsScreenState extends State<LogsScreen> {
                       blocked ? 'logs_action_unblock' : 'logs_action_block'),
                   style: const TextStyle(color: Colors.white),
                 ),
-                onTap: () {
+                onTap: () async {
+                  if (blocked && !await requirePin(context)) return;
                   if (blocked) {
                     vpn.removeBlacklistDomain(domain);
                     done('logs_rule_removed');

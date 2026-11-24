@@ -5,6 +5,7 @@ import '../i18n/app_strings.dart';
 import '../providers/app_info.dart';
 import '../providers/theme_provider.dart';
 import '../providers/vpn_provider.dart';
+import 'app_lock_screen.dart';
 import 'daily_history_card.dart';
 
 class AnalyticsScreen extends StatelessWidget {
@@ -339,6 +340,7 @@ class AnalyticsScreen extends StatelessWidget {
                 ),
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
+                  if (blocked && !await requirePin(context)) return;
                   await vpn.setAppBlocked(info, !blocked);
                   messenger
                     ..hideCurrentSnackBar()

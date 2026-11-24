@@ -18,6 +18,9 @@
 6. [Chế Độ Ngoại Lệ Ứng Dụng (App Split-Tunneling)](#6-chế-độ-ngoại-lệ-ứng-dụng-app-split-tunneling)
 7. [Đo Tốc Độ DNS (Speed Test) & Chọn Chủ Đề Neon](#7-đo-tốc-độ-dns-speed-test--chọn-chủ-đề-neon)
 8. [Sao Lưu & Phục Hồi Cấu Hình (Export / Import JSON)](#8-sao-lưu--phục-hồi-cấu-hình-export--import-json)
+9. [Cài Đặt Bảo Vệ DNS Mã Hóa Cho iOS](#9-cài-đặt-bảo-vệ-dns-mã-hóa-cho-ios-không-cần-tài-khoản-trả-phí)
+10. [Khóa Ứng Dụng Bằng Mã PIN](#10-khóa-ứng-dụng-bằng-mã-pin)
+11. [Widget Màn Hình Chính (Android)](#11-widget-màn-hình-chính-android)
 
 ---
 
@@ -36,6 +39,7 @@ Khi cần truy cập các trang web hoặc dịch vụ tạm thời bị ảnh h
   * **1h** (Tạm dừng 1 giờ)
 * Khi đang tạm dừng, ứng dụng sẽ có đồng hồ đếm ngược. Bạn có thể bấm **`RESUME NOW`** để bật lại bảo vệ ngay lập tức.
 * Trên Android, bảo vệ tự bật lại đúng giờ kể cả khi ứng dụng bị đóng trong lúc tạm dừng; thông báo cho biết tạm dừng đến mấy giờ.
+* Trên Android cũng có thể tạm dừng ngay từ thông báo: kéo thanh thông báo xuống và bấm **Pause 5 min** dưới *AegisNet Shield*. Thông báo sẽ đếm ngược thời gian còn lại và có nút **Resume** để bật lại bảo vệ sớm. Tạm dừng vẫn kết thúc đúng giờ kể cả khi ứng dụng đã bị đóng.
 
 ---
 
@@ -43,6 +47,7 @@ Khi cần truy cập các trang web hoặc dịch vụ tạm thời bị ảnh h
 Chuyển sang tab **Rules** trên thanh điều hướng dưới:
 * **Preset Filter Lists**: Bật/tắt các danh sách lọc mặc định (AdGuard Mobile, EasyList DNS, StevenBlack Hosts, NoCoin).
 * **Nút Đồng bộ 🔄 (Sync Live Rules)**: Bấm biểu tượng xoay ở góc trên bên phải để tải và cập nhật quy tắc chặn ad mới nhất từ internet.
+* **Nhập danh sách từ tệp (Android)**: Bấm **NHẬP TỆP** rồi chọn một tệp hosts (`0.0.0.0 ads.example.com`) hoặc tệp văn bản mỗi dòng một tên miền. AegisNet kiểm tra từng dòng, bỏ tên miền trùng và những dòng không phải tên miền cần chặn (như `localhost` hay dòng hosts trỏ tới một địa chỉ thật), rồi cho biết đã thêm bao nhiêu tên miền. Danh sách hiện cùng các danh sách khác và chặn ngay. Danh sách chỉ được giữ trên điện thoại này: đồng bộ không tải lại nó, và bản sao lưu cấu hình không mang theo tệp. Bấm biểu tượng thùng rác bên cạnh để xóa.
 * **Custom Whitelist & Blacklist**:
   * Nhập tên miền (ví dụ: `mybank.com`) và bấm **ALLOW** để luôn cho phép truy cập.
   * Nhập tên miền (ví dụ: `bad-site.com`) và bấm **BLOCK** để luôn chặn.
@@ -95,3 +100,25 @@ Chuyển sang tab **Settings**:
 * Hệ thống sẽ tự động tạo cấu hình mã hóa DoH (`.mobileconfig`) và mở trình duyệt Safari.
 * Khi iOS hiển thị thông báo **"Profile Downloaded"**, mở ứng dụng **Cài đặt (Settings)** trên iPhone ➔ chọn **Profile Downloaded** (Đã tải về hồ sơ) ➔ bấm **Cài đặt (Install)**.
 * Toàn bộ truy vấn DNS trên iPhone của bạn sẽ được bảo vệ bằng DNS mã hóa bảo mật toàn hệ thống!
+
+---
+
+## 10. Khóa Ứng Dụng Bằng Mã PIN
+Để người khác cầm điện thoại không tắt được bảo vệ hay nới bộ lọc:
+* Trong tab **Settings**, bật **Khóa ứng dụng (PIN)**, chọn mã PIN 4-6 chữ số rồi nhập lại lần nữa.
+* Khi bật, AegisNet hỏi mã PIN lúc mở ứng dụng và khi quay lại sau hơn 30 giây ở nền.
+* Mã PIN cũng được hỏi trước mọi thao tác làm yếu bảo vệ: tắt hoặc tạm dừng, cho phép một tên miền, tắt một bộ lọc hay một tùy chọn chặn, cho ứng dụng đi ngoài VPN, khôi phục bản sao lưu. Mã vừa nhập trong vòng 1 phút thì không hỏi lại.
+* Sai 5 lần liên tiếp thì phải chờ 30 giây; mỗi lần sai tiếp theo thời gian chờ tăng gấp đôi, tối đa 15 phút.
+* Khi khóa đang bật, ô **Quick Settings** và widget màn hình chính chỉ mở ứng dụng thay vì tắt bảo vệ, và thông báo không có nút **Pause 5 min**.
+* **ĐỔI MÃ PIN** và tắt khóa đều cần mã PIN hiện tại.
+* Ứng dụng chỉ lưu mã băm (PBKDF2, có muối) của PIN, không lưu chính mã PIN.
+* Quên mã PIN: xóa dữ liệu ứng dụng trong cài đặt Android (các luật và danh sách cũng bị xóa).
+* Khóa không ngăn được việc ngắt VPN trong cài đặt VPN của Android, gỡ ứng dụng hay buộc dừng ứng dụng.
+
+---
+
+## 11. Widget Màn Hình Chính (Android)
+* Nhấn giữ một chỗ trống trên màn hình chính, chọn **Tiện ích (Widgets)**, tìm **AegisNet** rồi kéo widget **AegisNet Shield** ra màn hình.
+* Widget cho biết bảo vệ đang bật, đang tạm dừng (đến mấy giờ) hay đang tắt, và hôm nay đã chặn bao nhiêu truy vấn.
+* Chạm vào widget để tắt bảo vệ, kết thúc tạm dừng, hoặc bật bảo vệ. Lần đầu, hoặc sau khi một ứng dụng VPN khác chiếm quyền, widget sẽ mở AegisNet để bạn cho phép VPN.
+* Số đã chặn do ứng dụng cung cấp: số được cập nhật khi AegisNet đang mở (khoảng 30 giây một lần), còn không thì là số của lần cuối mở ứng dụng trong ngày. Sang ngày mới, widget nhắc mở ứng dụng cho tới khi ứng dụng đếm lại.

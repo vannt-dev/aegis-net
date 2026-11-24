@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_label">AegisNet Shield</string>
+    <string name="widget_description">Turn protection on or off and see how much was blocked today.</string>
+</resources>

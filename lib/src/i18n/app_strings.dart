@@ -62,6 +62,26 @@ class AppStrings {
       'common_add': 'ADD',
       'common_restore': 'RESTORE',
 
+      // ----------------------------------------------------------- app lock
+      'lock_title': 'App lock (PIN)',
+      'lock_desc':
+          'Ask for a PIN when AegisNet opens or comes back after more than 30 seconds away, and before anything that weakens protection: turning it off or pausing it, allowing a domain, switching off a filter, letting an app skip the VPN, or restoring a backup.',
+      'lock_enter_pin': 'Enter your PIN',
+      'lock_new_pin': 'Choose a 4-6 digit PIN',
+      'lock_confirm_pin': 'Enter the same PIN again',
+      'lock_mismatch': 'The two PINs differ. Choose a PIN again.',
+      'lock_wrong': 'Wrong PIN',
+      'lock_wait': 'Too many wrong tries. Try again in %s s.',
+      'lock_change': 'CHANGE PIN',
+      'lock_enabled_msg': 'App lock is on.',
+      'lock_key_delete': 'Delete digit',
+      'lock_key_ok': 'Confirm PIN',
+      'lock_disabled_msg': 'App lock is off.',
+      'lock_changed_msg': 'PIN changed.',
+      'lock_locked_title': 'AegisNet is locked',
+      'lock_forgot':
+          'Forgot the PIN? Clearing the app data in Android settings removes it, along with your rules and lists.',
+
       // --------------------------------------------------------- navigation
       'nav_dashboard': 'Dashboard',
       'nav_rules': 'Rules',
@@ -172,6 +192,17 @@ class AppStrings {
       'rules_tab_hosts': 'Local DNS Hosts',
       'rules_subscribe': 'Subscribe to Filter Lists',
       'rules_add_url': 'ADD URL',
+      'rules_import_file': 'IMPORT FILE',
+      'rules_import_desc': 'Imported from a file: %s domains',
+      'rules_import_default_name': 'Imported list',
+      'rules_import_added': 'Added %1 domains (%2 lines skipped or repeated)',
+      'rules_import_empty':
+          'No domains found. Pick a hosts file or a list with one domain per line.',
+      'rules_import_duplicate': 'That list is already imported',
+      'rules_import_failed': 'Could not import that file',
+      'rules_import_too_large':
+          'That file is too large to be a blocklist (over 32 MB)',
+      'rules_import_remove': 'Remove imported list',
       'rules_add_domain': 'Add Custom Domain Rule',
       'rules_domain_hint': 'e.g. example.com',
       'rules_allow': 'ALLOW',
@@ -305,6 +336,26 @@ class AppStrings {
       'common_add': 'THÊM',
       'common_restore': 'KHÔI PHỤC',
 
+      // ----------------------------------------------------------- app lock
+      'lock_title': 'Khóa ứng dụng (PIN)',
+      'lock_desc':
+          'Hỏi mã PIN khi mở AegisNet hoặc quay lại sau hơn 30 giây, và trước mọi thao tác làm yếu bảo vệ: tắt hoặc tạm dừng, cho phép một tên miền, tắt một bộ lọc, cho ứng dụng đi ngoài VPN, hay khôi phục bản sao lưu.',
+      'lock_enter_pin': 'Nhập mã PIN',
+      'lock_new_pin': 'Chọn mã PIN 4-6 chữ số',
+      'lock_confirm_pin': 'Nhập lại mã PIN đó',
+      'lock_mismatch': 'Hai mã PIN không khớp. Hãy chọn lại.',
+      'lock_wrong': 'Sai mã PIN',
+      'lock_wait': 'Sai quá nhiều lần. Thử lại sau %s giây.',
+      'lock_change': 'ĐỔI MÃ PIN',
+      'lock_enabled_msg': 'Đã bật khóa ứng dụng.',
+      'lock_key_delete': 'Xóa chữ số',
+      'lock_key_ok': 'Xác nhận PIN',
+      'lock_disabled_msg': 'Đã tắt khóa ứng dụng.',
+      'lock_changed_msg': 'Đã đổi mã PIN.',
+      'lock_locked_title': 'AegisNet đang khóa',
+      'lock_forgot':
+          'Quên mã PIN? Xóa dữ liệu ứng dụng trong cài đặt Android sẽ gỡ mã, kèm theo các luật và danh sách của bạn.',
+
       // --------------------------------------------------------- navigation
       'nav_dashboard': 'Tổng quan',
       'nav_rules': 'Quy tắc',
@@ -415,6 +466,17 @@ class AppStrings {
       'rules_tab_hosts': 'DNS nội bộ',
       'rules_subscribe': 'Đăng Ký Danh Sách Lọc',
       'rules_add_url': 'THÊM URL',
+      'rules_import_file': 'NHẬP TỆP',
+      'rules_import_desc': 'Nhập từ tệp: %s tên miền',
+      'rules_import_default_name': 'Danh sách đã nhập',
+      'rules_import_added':
+          'Đã thêm %1 tên miền (%2 dòng bị bỏ qua hoặc trùng)',
+      'rules_import_empty':
+          'Không tìm thấy tên miền nào. Hãy chọn tệp hosts hoặc danh sách mỗi dòng một tên miền.',
+      'rules_import_duplicate': 'Danh sách này đã được nhập',
+      'rules_import_failed': 'Không nhập được tệp này',
+      'rules_import_too_large': 'Tệp quá lớn để là danh sách chặn (trên 32 MB)',
+      'rules_import_remove': 'Xóa danh sách đã nhập',
       'rules_add_domain': 'Thêm Quy Tắc Tên Miền',
       'rules_domain_hint': 'vd: example.com',
       'rules_allow': 'CHO PHÉP',
@@ -545,6 +607,26 @@ class AppStrings {
       'common_add': '추가',
       'common_restore': '복원',
 
+      // ----------------------------------------------------------- app lock
+      'lock_title': '앱 잠금 (PIN)',
+      'lock_desc':
+          'AegisNet을 열 때나 30초 넘게 나갔다가 돌아올 때, 그리고 보호를 약하게 하는 작업(끄기·일시 중지, 도메인 허용, 필터 끄기, 앱의 VPN 우회, 백업 복원) 전에 PIN을 묻습니다.',
+      'lock_enter_pin': 'PIN을 입력하세요',
+      'lock_new_pin': '4~6자리 PIN을 정하세요',
+      'lock_confirm_pin': '같은 PIN을 한 번 더 입력하세요',
+      'lock_mismatch': '두 PIN이 다릅니다. 다시 정하세요.',
+      'lock_wrong': 'PIN이 틀렸습니다',
+      'lock_wait': '틀린 시도가 너무 많습니다. %s초 후에 다시 시도하세요.',
+      'lock_change': 'PIN 변경',
+      'lock_enabled_msg': '앱 잠금이 켜졌습니다.',
+      'lock_key_delete': '숫자 지우기',
+      'lock_key_ok': 'PIN 확인',
+      'lock_disabled_msg': '앱 잠금이 꺼졌습니다.',
+      'lock_changed_msg': 'PIN이 변경되었습니다.',
+      'lock_locked_title': 'AegisNet이 잠겨 있습니다',
+      'lock_forgot':
+          'PIN을 잊었나요? Android 설정에서 앱 데이터를 지우면 PIN이 사라지며, 규칙과 목록도 함께 지워집니다.',
+
       // --------------------------------------------------------- navigation
       'nav_dashboard': '대시보드',
       'nav_rules': '규칙',
@@ -649,6 +731,16 @@ class AppStrings {
       'rules_tab_hosts': '로컬 DNS 호스트',
       'rules_subscribe': '필터 목록 구독',
       'rules_add_url': 'URL 추가',
+      'rules_import_file': '파일 가져오기',
+      'rules_import_desc': '파일에서 가져옴: 도메인 %s개',
+      'rules_import_default_name': '가져온 목록',
+      'rules_import_added': '도메인 %1개 추가됨 (%2줄 건너뜀 또는 중복)',
+      'rules_import_empty':
+          '도메인을 찾지 못했습니다. hosts 파일이나 한 줄에 도메인 하나씩 적힌 목록을 선택하세요.',
+      'rules_import_duplicate': '이미 가져온 목록입니다',
+      'rules_import_failed': '이 파일을 가져올 수 없습니다',
+      'rules_import_too_large': '차단 목록으로 보기에는 파일이 너무 큽니다 (32MB 초과)',
+      'rules_import_remove': '가져온 목록 삭제',
       'rules_add_domain': '도메인 규칙 추가',
       'rules_domain_hint': '예: example.com',
       'rules_allow': '허용',
@@ -772,6 +864,25 @@ class AppStrings {
       'common_add': '追加',
       'common_restore': '復元',
 
+      // ----------------------------------------------------------- app lock
+      'lock_title': 'アプリロック（PIN）',
+      'lock_desc':
+          'AegisNetを開いたとき、30秒以上離れてから戻ったとき、そして保護を弱める操作（オフ・一時停止、ドメインの許可、フィルターのオフ、アプリのVPN除外、バックアップの復元）の前にPINを求めます。',
+      'lock_enter_pin': 'PINを入力',
+      'lock_new_pin': '4〜6桁のPINを決めてください',
+      'lock_confirm_pin': '同じPINをもう一度入力',
+      'lock_mismatch': '2つのPINが一致しません。もう一度決めてください。',
+      'lock_wrong': 'PINが違います',
+      'lock_wait': '間違いが多すぎます。%s秒後にもう一度お試しください。',
+      'lock_change': 'PINを変更',
+      'lock_enabled_msg': 'アプリロックをオンにしました。',
+      'lock_key_delete': '数字を削除',
+      'lock_key_ok': 'PINを確定',
+      'lock_disabled_msg': 'アプリロックをオフにしました。',
+      'lock_changed_msg': 'PINを変更しました。',
+      'lock_locked_title': 'AegisNetはロック中です',
+      'lock_forgot': 'PINを忘れた場合は、Androidの設定でアプリのデータを消去すると解除されます（ルールとリストも消えます）。',
+
       // --------------------------------------------------------- navigation
       'nav_dashboard': 'ホーム',
       'nav_rules': 'ルール',
@@ -875,6 +986,15 @@ class AppStrings {
       'rules_tab_hosts': 'ローカルDNSホスト',
       'rules_subscribe': 'フィルターリストを購読',
       'rules_add_url': 'URLを追加',
+      'rules_import_file': 'ファイルを読み込む',
+      'rules_import_desc': 'ファイルから読み込み: ドメイン%s件',
+      'rules_import_default_name': '読み込んだリスト',
+      'rules_import_added': '%1件のドメインを追加しました（%2行はスキップまたは重複）',
+      'rules_import_empty': 'ドメインが見つかりません。hostsファイルか、1行に1ドメインのリストを選んでください。',
+      'rules_import_duplicate': 'このリストは読み込み済みです',
+      'rules_import_failed': 'このファイルを読み込めませんでした',
+      'rules_import_too_large': 'ブロックリストとしては大きすぎるファイルです（32MB超）',
+      'rules_import_remove': '読み込んだリストを削除',
       'rules_add_domain': 'ドメインルールを追加',
       'rules_domain_hint': '例: example.com',
       'rules_allow': '許可',

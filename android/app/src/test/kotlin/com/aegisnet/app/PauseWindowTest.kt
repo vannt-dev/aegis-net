@@ -32,4 +32,21 @@ class PauseWindowTest {
         assertEquals(PauseWindow.CHECK_EVERY_MS, PauseWindow.nextCheckMs(now + 60 * 60_000L, now))
         assertEquals(0L, PauseWindow.nextCheckMs(now - 1, now))
     }
+
+    @Test
+    fun notificationPauseEndsFiveMinutesAfterTheTap() {
+        val end = PauseWindow.endAfter(PauseWindow.NOTIFICATION_PAUSE_MS, now)
+        assertEquals(now + 5 * 60_000L, end)
+        assertTrue(PauseWindow.isActive(end, now))
+        assertTrue(PauseWindow.isActive(end, now + 5 * 60_000L - 1))
+        assertFalse(PauseWindow.isActive(end, now + 5 * 60_000L))
+    }
+
+    @Test
+    fun lengthsTheAppDoesNotOfferStartNoPause() {
+        assertEquals(0L, PauseWindow.endAfter(0L, now))
+        assertEquals(0L, PauseWindow.endAfter(-1L, now))
+        assertEquals(0L, PauseWindow.endAfter(PauseWindow.LONGEST_OFFERED_MS + 1, now))
+        assertEquals(now + PauseWindow.LONGEST_OFFERED_MS, PauseWindow.endAfter(PauseWindow.LONGEST_OFFERED_MS, now))
+    }
 }

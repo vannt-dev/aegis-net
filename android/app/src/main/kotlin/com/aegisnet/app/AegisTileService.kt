@@ -47,7 +47,13 @@ class AegisTileService : TileService() {
         super.onClick()
 
         if (AegisVpnService.isTunnelUp) {
-            sendToService(AegisVpnService.ACTION_STOP, foreground = false)
+            if (AppLock.isOn(this)) {
+                // With the app lock on, turning protection off needs the PIN,
+                // which the tile cannot ask for. Open the app instead.
+                openApp()
+            } else {
+                sendToService(AegisVpnService.ACTION_STOP, foreground = false)
+            }
         } else {
             // Consent has to be granted from an Activity, which a tile cannot
             // show; bounce to the app and let it ask.
