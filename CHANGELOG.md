@@ -6,6 +6,40 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-11-24
+
+An optional PIN lock, a pause button in the notification, blocklists imported
+from a file and a home-screen widget.
+
+### Added
+
+- **App lock (PIN).** Settings > App lock lets you choose a 4-6 digit PIN. The
+  app then asks for it when it starts, when it comes back after more than 30
+  seconds in the background, and before anything that weakens protection:
+  turning it off or pausing it, allowing a domain, switching off a filter list,
+  unblocking an app, restoring a backup and similar. Actions that strengthen
+  protection never ask. After five wrong tries each wrong try adds a wait, up to
+  15 minutes. The PIN itself is never stored. If you forget it, clear the app's
+  data (your rules and lists go with it). With the lock on, the Quick Settings
+  tile opens the app instead of turning protection off.
+- **Pause 5 minutes from the notification.** The protection notification has a
+  *Pause 5 min* button. While paused it counts down the time left and offers
+  *Resume*; the pause ends on time even if the app is closed. The button is
+  hidden while the app lock is on.
+- **Import a blocklist from a file.** Rules > *IMPORT FILE* reads a hosts file
+  or a list with one domain per line from your phone. Comments, local
+  addresses, wildcards and invalid lines are skipped and counted. The imported
+  list blocks at once, is kept after a restart and can be removed. Android only.
+- **Home-screen widget.** Shows whether protection is on, paused (until when)
+  or off, and how many requests were blocked today. A tap turns protection off,
+  resumes it or turns it on, and opens the app when it needs your permission or
+  the PIN.
+
+### Changed
+
+- A pause, resume or switch made from the notification, the widget or the
+  Quick Settings tile now shows in the open app straight away.
+
 ## [1.9.2] — 2026-11-13
 
 A pause now ends on time, even when Android has closed the app.
