@@ -47,7 +47,7 @@ class AegisTileService : TileService() {
         super.onClick()
 
         if (AegisVpnService.isTunnelUp) {
-            if (appLockOn()) {
+            if (AppLock.isOn(this)) {
                 // With the app lock on, turning protection off needs the PIN,
                 // which the tile cannot ask for. Open the app instead.
                 openApp()
@@ -138,12 +138,6 @@ class AegisTileService : TileService() {
             startActivityAndCollapse(launchIntent)
         }
     }
-
-    /// The app lock is on when the Dart side has stored a PIN hash. Dart's
-    /// shared_preferences keeps its values in this file, keys prefixed "flutter.".
-    private fun appLockOn(): Boolean =
-        getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            .contains("flutter.app_lock_hash")
 
     private fun updateTileState() {
         val tile = qsTile ?: return

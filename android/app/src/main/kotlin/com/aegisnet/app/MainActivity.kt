@@ -5,10 +5,12 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
@@ -22,6 +24,17 @@ class MainActivity: FlutterActivity() {
         private const val CHANNEL = "com.aegisnet/vpn"
         private const val VPN_REQUEST_CODE = 0xAF1
         private const val NOTIFICATION_REQUEST_CODE = 0xAF2
+        private const val PICK_FILE_REQUEST_CODE = 0xAF3
+
+        /// Largest blocklist file the import reads. The biggest lists offered
+        /// in the app are a few megabytes; a file past this is not a list.
+        private const val MAX_IMPORT_BYTES = 32L * 1024 * 1024
+
+        /// Why a picked file could not be imported. The picker being closed
+        /// without a choice is not an error; it answers null.
+        private const val ERROR_FILE_TOO_LARGE = "file_too_large"
+        private const val ERROR_FILE_UNREADABLE = "file_unreadable"
+        private const val ERROR_PICKER_UNAVAILABLE = "picker_unavailable"
 
         /// The consent dialog was shown and the user said no.
         private const val ERROR_CONSENT_DENIED = "consent_denied"
@@ -56,6 +69,9 @@ class MainActivity: FlutterActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var startTimeout: Runnable? = null
 
+    /// Reply to a "pickBlocklistFile" call waiting on the system file picker.
+    private var pendingPickResult: MethodChannel.Result? = null
+
     /**
      * Answer the waiting Dart call exactly once. [error] non-null means the
      * tunnel is down and the UI has a reason to show; the old code could only
@@ -82,7 +98,19 @@ class MainActivity: FlutterActivity() {
         // From here this screen's Dart side fills the engine itself.
         HeadlessRestore.uiEngineAlive = true
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        // A pause or a toggle from the notification or the widget happens
+        // behind this screen's back; tell its Dart side what the tunnel did.
+        AegisVpnService.stateListener = {
+            mainHandler.post {
+                try {
+                    channel.invokeMethod("tunnelStateChanged", collectDiagnostics())
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not report the tunnel state", e)
+                }
+            }
+        }
+        channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "startVpn" -> {
                     val bypassAppsRaw = call.argument<List<String>>("bypassApps") ?: emptyList()
@@ -167,6 +195,28 @@ class MainActivity: FlutterActivity() {
                 // The engine keeps the per-day history there; the screen opens
                 // it too, so the history shows while the tunnel is off.
                 // Downloaded filter lists are kept under it between runs.
+                // Today's blocked count for the home-screen widget, which has
+                // no other way to know it.
+                "updateWidget" -> {
+                    val day = call.argument<Number>("day")?.toLong()
+                    val blocked = call.argument<Number>("blocked")?.toLong()
+                    if (day != null && blocked != null) AegisWidget.saveBlocked(this, day, blocked)
+                    result.success(day != null && blocked != null)
+                }
+                // Something the notification and the widget show changed in
+                // the app (the app lock); post them again.
+                "refreshNativeUi" -> {
+                    if (AegisVpnService.isTunnelUp) {
+                        sendToService(
+                            Intent(this, AegisVpnService::class.java)
+                                .setAction(AegisVpnService.ACTION_REFRESH),
+                        )
+                    } else {
+                        AegisWidget.refresh(this)
+                    }
+                    result.success(true)
+                }
+                "pickBlocklistFile" -> pickBlocklistFile(result)
                 "getFilesDir" -> result.success(filesDir.absolutePath)
                 "getHistoryPath" -> result.success(
                     AegisVpnService.historyFile(this).absolutePath,
@@ -334,8 +384,100 @@ class MainActivity: FlutterActivity() {
         startService(intent)
     }
 
+    /// Let the user choose a blocklist file with the system picker. Any type
+    /// is offered: a hosts file usually has no extension, and the Dart side
+    /// checks what is inside instead.
+    private fun pickBlocklistFile(result: MethodChannel.Result) {
+        pendingPickResult?.success(null)
+        pendingPickResult = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*")
+        try {
+            startActivityForResult(intent, PICK_FILE_REQUEST_CODE)
+        } catch (e: Exception) {
+            Log.e(TAG, "No file picker on this device", e)
+            pendingPickResult = null
+            result.error(ERROR_PICKER_UNAVAILABLE, e.message, null)
+        }
+    }
+
+    /// Read the picked file off the main thread and answer the waiting call
+    /// with its name and text.
+    private fun readPickedFile(uri: Uri) {
+        val result = pendingPickResult ?: return
+        pendingPickResult = null
+        Thread {
+            val reply: Pair<Map<String, Any?>?, String?> = try {
+                val name = displayName(uri)
+                val size = fileSize(uri)
+                if (size != null && size > MAX_IMPORT_BYTES) {
+                    null to ERROR_FILE_TOO_LARGE
+                } else {
+                    val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                        // The size a provider reports can be missing or wrong;
+                        // never read past the cap whatever it said.
+                        input.readNBytesCompat(MAX_IMPORT_BYTES + 1)
+                    }
+                    when {
+                        bytes == null -> null to ERROR_FILE_UNREADABLE
+                        bytes.size > MAX_IMPORT_BYTES -> null to ERROR_FILE_TOO_LARGE
+                        else -> mapOf("name" to name, "text" to String(bytes, Charsets.UTF_8)) to null
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not read the picked file", e)
+                null to ERROR_FILE_UNREADABLE
+            }
+            mainHandler.post {
+                val (value, error) = reply
+                if (error != null) result.error(error, null, null) else result.success(value)
+            }
+        }.start()
+    }
+
+    private fun displayName(uri: Uri): String? = try {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun fileSize(uri: Uri): Long? = try {
+        contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use {
+            if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /// InputStream.readNBytes is API 33; this reads at most [limit] bytes on
+    /// every version.
+    private fun java.io.InputStream.readNBytesCompat(limit: Long): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(64 * 1024)
+        var total = 0L
+        while (total < limit) {
+            val read = read(buffer, 0, minOf(buffer.size.toLong(), limit - total).toInt())
+            if (read < 0) break
+            out.write(buffer, 0, read)
+            total += read
+        }
+        return out.toByteArray()
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PICK_FILE_REQUEST_CODE) {
+            val uri = data?.data
+            if (resultCode == Activity.RESULT_OK && uri != null) {
+                readPickedFile(uri)
+            } else {
+                pendingPickResult?.success(null)
+                pendingPickResult = null
+            }
+            return
+        }
         if (requestCode != VPN_REQUEST_CODE) return
 
         if (resultCode == Activity.RESULT_OK) {
@@ -349,12 +491,15 @@ class MainActivity: FlutterActivity() {
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         HeadlessRestore.uiEngineAlive = false
+        AegisVpnService.stateListener = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
     override fun onDestroy() {
         // Never leave the Dart side awaiting a reply that can no longer arrive.
         settleVpnResult(false)
+        pendingPickResult?.success(null)
+        pendingPickResult = null
         mainHandler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }

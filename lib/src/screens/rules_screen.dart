@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../i18n/app_strings.dart';
+import '../bridge/aegis_bridge.dart';
 import '../providers/vpn_provider.dart';
 import '../services/rule_downloader_service.dart';
 import 'app_lock_screen.dart';
@@ -59,6 +61,51 @@ class _RulesScreenState extends State<RulesScreen>
         ),
       );
     }
+  }
+
+  bool _isImporting = false;
+
+  /// Pick a hosts file or domain list from the phone's storage and add it as
+  /// a list of its own.
+  Future<void> _importFromFile() async {
+    setState(() => _isImporting = true);
+    try {
+      final picked = await AegisBridge.pickBlocklistFile();
+      if (picked == null) return;
+      final outcome = await RuleDownloaderService.importFromFile(
+        fileName: picked.name ?? '',
+        text: picked.text,
+      );
+      if (!mounted) return;
+      final parsed = outcome.parsed;
+      switch (outcome.status) {
+        case ImportStatus.added:
+          setState(() {});
+          _showMessage(AppStrings.get('rules_import_added')
+              .replaceAll('%1', '${parsed.domains.length}')
+              .replaceAll('%2', '${parsed.duplicates + parsed.skipped}'));
+        case ImportStatus.empty:
+          _showMessage(AppStrings.get('rules_import_empty'));
+        case ImportStatus.duplicate:
+          _showMessage(AppStrings.get('rules_import_duplicate'));
+        case ImportStatus.failed:
+          _showMessage(AppStrings.get('rules_import_failed'));
+      }
+    } on PlatformException catch (e) {
+      _showMessage(e.code == 'file_too_large'
+          ? AppStrings.get('rules_import_too_large')
+          : AppStrings.get('rules_import_failed'));
+    } catch (e) {
+      _showMessage(AppStrings.get('rules_import_failed'));
+    } finally {
+      if (mounted) setState(() => _isImporting = false);
+    }
+  }
+
+  Future<void> _removeImported(FilterSource source) async {
+    if (!await requirePin(context)) return;
+    await RuleDownloaderService.removeImported(source.id);
+    if (mounted) setState(() {});
   }
 
   void _showAddCustomSourceDialog() {
@@ -177,8 +224,11 @@ class _RulesScreenState extends State<RulesScreen>
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   Text(
                     AppStrings.get('rules_subscribe'),
@@ -187,14 +237,39 @@ class _RulesScreenState extends State<RulesScreen>
                         fontSize: 15,
                         fontWeight: FontWeight.bold),
                   ),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.add_link, size: 16),
-                    label: Text(AppStrings.get('rules_add_url')),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.cyanAccent,
-                      side: const BorderSide(color: Colors.cyanAccent),
-                    ),
-                    onPressed: _showAddCustomSourceDialog,
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.add_link, size: 16),
+                        label: Text(AppStrings.get('rules_add_url')),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.cyanAccent,
+                          side: const BorderSide(color: Colors.cyanAccent),
+                        ),
+                        onPressed: _showAddCustomSourceDialog,
+                      ),
+                      // Imported lists live only in the copy kept on the
+                      // phone, which only Android keeps.
+                      if (RuleDownloaderService.keepsLists)
+                        OutlinedButton.icon(
+                          icon: _isImporting
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.cyanAccent),
+                                )
+                              : const Icon(Icons.file_open_outlined, size: 16),
+                          label: Text(AppStrings.get('rules_import_file')),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.cyanAccent,
+                            side: const BorderSide(color: Colors.cyanAccent),
+                          ),
+                          onPressed: _isImporting ? null : _importFromFile,
+                        ),
+                    ],
                   ),
                 ],
               ),
@@ -205,6 +280,8 @@ class _RulesScreenState extends State<RulesScreen>
                   title: source.localizedName,
                   description: source.localizedDescription,
                   enabled: source.isEnabled,
+                  onRemove:
+                      source.isLocal ? () => _removeImported(source) : null,
                 ),
               ),
             ],
@@ -474,6 +551,7 @@ class _RulesScreenState extends State<RulesScreen>
     required String title,
     required String description,
     required bool enabled,
+    VoidCallback? onRemove,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -490,6 +568,13 @@ class _RulesScreenState extends State<RulesScreen>
                   color: Colors.white, fontWeight: FontWeight.bold)),
           subtitle: Text(description,
               style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+          secondary: onRemove == null
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                  tooltip: AppStrings.get('rules_import_remove'),
+                  onPressed: onRemove,
+                ),
           value: enabled,
           activeTrackColor: Colors.cyanAccent.withValues(alpha: 0.5),
           activeThumbColor: Colors.cyanAccent,

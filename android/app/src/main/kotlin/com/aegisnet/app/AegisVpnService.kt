@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
+import android.graphics.drawable.Icon
 import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
@@ -35,7 +36,20 @@ class AegisVpnService : VpnService(), Runnable {
         const val ACTION_STOP = "com.aegisnet.app.STOP"
         const val ACTION_PAUSE = "com.aegisnet.app.PAUSE"
         const val ACTION_RESUME = "com.aegisnet.app.RESUME"
+
+        /// Post the notification and the widget again, for a change made in
+        /// the app that they show (the app lock being turned on or off).
+        const val ACTION_REFRESH = "com.aegisnet.app.REFRESH"
         const val EXTRA_PAUSED_UNTIL = "pausedUntil"
+
+        /// A pause given as a length, for a button whose intent is built long
+        /// before it is tapped; see [PauseWindow.endAfter].
+        const val EXTRA_PAUSE_FOR_MS = "pauseForMs"
+
+        /// Set on what the notification and the widget send. They cannot ask
+        /// for the app lock's PIN, so with the lock on they may not weaken
+        /// protection, even through a button posted before the lock was set.
+        const val EXTRA_FROM_SHORTCUT = "fromShortcut"
         private const val TAG = "AegisVpnService"
         const val UNKNOWN_UID = -1
 
@@ -109,6 +123,24 @@ class AegisVpnService : VpnService(), Runnable {
         /// wants to know.
         @Volatile
         var startListener: ((Boolean, String?) -> Unit)? = null
+
+        /// Set by MainActivity while its screen is alive. Called on the main
+        /// thread whenever the tunnel comes up, goes down, or starts or ends
+        /// a pause, so the screen follows a change made from the notification
+        /// or the widget instead of showing what it last did itself.
+        @Volatile
+        var stateListener: (() -> Unit)? = null
+
+        /// Tell everything that shows the tunnel's state that it changed.
+        fun publishState(context: Context) {
+            AegisTileService.requestTileRefresh(context)
+            AegisWidget.refresh(context)
+            try {
+                stateListener?.invoke()
+            } catch (e: Exception) {
+                Log.w(TAG, "State listener failed", e)
+            }
+        }
 
         fun publishStartResult(started: Boolean, error: String?) {
             isTunnelUp = started
@@ -297,8 +329,27 @@ class AegisVpnService : VpnService(), Runnable {
                 // The Quick Settings tile starts this way with the app closed.
                 HeadlessRestore.startIfNoUi(this)
             }
-            ACTION_STOP -> stopVpn()
-            ACTION_PAUSE -> pause(intent.getLongExtra(EXTRA_PAUSED_UNTIL, 0L))
+            ACTION_STOP -> {
+                if (lockedShortcut(intent)) return START_STICKY
+                stopVpn()
+            }
+            ACTION_PAUSE -> {
+                if (lockedShortcut(intent)) return START_STICKY
+                val until = if (intent.hasExtra(EXTRA_PAUSE_FOR_MS)) {
+                    PauseWindow.endAfter(
+                        intent.getLongExtra(EXTRA_PAUSE_FOR_MS, 0L),
+                        System.currentTimeMillis(),
+                    )
+                } else {
+                    intent.getLongExtra(EXTRA_PAUSED_UNTIL, 0L)
+                }
+                pause(until)
+            }
+            ACTION_REFRESH -> {
+                publishState(this)
+                // Only meant for a running tunnel; never leave a bare service.
+                if (isRunning) enterForeground() else stopSelf()
+            }
             ACTION_RESUME -> {
                 // The app holds back settings changed during a pause and
                 // sends them here.
@@ -315,11 +366,27 @@ class AegisVpnService : VpnService(), Runnable {
                 }
                 savePausedUntil(0L)
                 // The pause may have ended here already; no rebuild for nothing.
-                if (changed) rebuildTunnel()
+                if (changed) rebuildTunnel() else publishState(this)
+                // A widget drawn before the tunnel went away can still send
+                // this; it must not leave a service with no tunnel behind.
+                if (!isRunning) stopSelf()
             }
             else -> Log.w(TAG, "Ignoring unknown action ${intent.action}")
         }
         return START_STICKY
+    }
+
+    /// True for a button on the notification or the widget that would turn
+    /// protection off or pause it while the app lock is on. It is ignored, and
+    /// both are posted again without it.
+    private fun lockedShortcut(intent: Intent): Boolean {
+        if (!intent.getBooleanExtra(EXTRA_FROM_SHORTCUT, false) || !AppLock.isOn(this)) {
+            return false
+        }
+        Log.i(TAG, "App lock is on; ignoring ${intent.action} from a shortcut")
+        publishState(this)
+        if (isRunning) enterForeground() else stopSelf()
+        return true
     }
 
     /// Split-tunnel exclusions, remembered across a restart.
@@ -469,14 +536,15 @@ class AegisVpnService : VpnService(), Runnable {
             builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
         }
 
-        val text = if (pausedNow()) {
+        val paused = pausedNow()
+        val text = if (paused) {
             val end = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)
                 .format(java.util.Date(pausedUntilMs))
             "Protection paused until $end"
         } else {
             "DNS filtering is active"
         }
-        val notification = builder
+        builder
             .setContentTitle("AegisNet Shield")
             .setContentText(text)
             // Must be a white silhouette with real transparency: Android keeps
@@ -485,13 +553,55 @@ class AegisVpnService : VpnService(), Runnable {
             .setSmallIcon(R.drawable.ic_stat_aegis)
             .setOngoing(true)
             .also { b -> contentIntent?.let { b.setContentIntent(it) } }
-            .build()
+
+        if (paused) {
+            // The header counts down to the end of the pause by itself, so the
+            // time left stays right without posting the notification again.
+            builder
+                .setWhen(pausedUntilMs)
+                .setShowWhen(true)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(true)
+                .addAction(
+                    serviceAction("Resume", serviceIntent(ACTION_RESUME), pendingFlags),
+                )
+        } else if (!AppLock.isOn(this)) {
+            // With the app lock on, a pause needs the PIN, which a
+            // notification cannot ask for; the button is left out then.
+            builder.addAction(
+                serviceAction(
+                    "Pause 5 min",
+                    serviceIntent(ACTION_PAUSE)
+                        .putExtra(EXTRA_PAUSE_FOR_MS, PauseWindow.NOTIFICATION_PAUSE_MS)
+                        .putExtra(EXTRA_FROM_SHORTCUT, true),
+                    pendingFlags,
+                ),
+            )
+        }
+        val notification = builder.build()
 
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(NOTIFICATION_ID, notification, FGS_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+    }
+
+    private fun serviceIntent(action: String): Intent =
+        Intent(this, AegisVpnService::class.java).setAction(action)
+
+    /// A notification button that sends [intent] to this service. The service
+    /// is in the foreground while the notification shows, so a plain start
+    /// reaches it from the background too.
+    private fun serviceAction(label: String, intent: Intent, flags: Int): Notification.Action {
+        // One request code per action: PendingIntents that differ only in
+        // their extras are the same PendingIntent to the system.
+        val pending = PendingIntent.getService(this, intent.action.hashCode(), intent, flags)
+        return Notification.Action.Builder(
+            Icon.createWithResource(this, R.drawable.ic_stat_aegis),
+            label,
+            pending,
+        ).build()
     }
 
     private fun leaveForeground() {
@@ -611,7 +721,7 @@ class AegisVpnService : VpnService(), Runnable {
             vpnThread = Thread(this, "AegisVpnThread").also { it.start() }
             if (paused) checkPause()
             publishStartResult(true, null)
-            AegisTileService.requestTileRefresh(this)
+            publishState(this)
             Log.i(TAG, "Aegis Local VPN Started Successfully with Split Tunneling")
         } catch (e: SecurityException) {
             // Consent was never granted, or another app holds the VPN slot.
@@ -628,7 +738,7 @@ class AegisVpnService : VpnService(), Runnable {
     private fun failStart(reason: String) {
         isRunning = false
         publishStartResult(false, reason)
-        AegisTileService.requestTileRefresh(this)
+        publishState(this)
         leaveForeground()
         stopSelf()
     }
@@ -654,7 +764,7 @@ class AegisVpnService : VpnService(), Runnable {
         savePausedUntil(0L)
         flushHistory()
         markTunnelDown()
-        AegisTileService.requestTileRefresh(this)
+        publishState(this)
         try {
             closeTunnel()
             leaveForeground()

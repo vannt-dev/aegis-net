@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../bridge/aegis_bridge.dart';
 import '../i18n/app_strings.dart';
+import 'blocklist_import.dart';
 import 'download_roots.dart';
 
 class FilterSource {
@@ -34,6 +36,13 @@ class FilterSource {
   String get localizedDescription =>
       AppStrings.maybe('src_${id}_desc') ?? description;
 
+  /// Address given to a list imported from a file. There is nothing to
+  /// download; the list lives only in the copy kept on the phone.
+  static const String localScheme = 'local:';
+
+  /// True for a list imported from a file rather than subscribed to by URL.
+  bool get isLocal => url.startsWith(localScheme);
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
@@ -51,6 +60,39 @@ class FilterSource {
         categoryId: json['categoryId'] as int? ?? 0,
         isEnabled: json['isEnabled'] as bool? ?? true,
       );
+}
+
+/// How [RuleDownloaderService.importFromFile] went.
+enum ImportStatus {
+  /// Saved and loaded.
+  added,
+
+  /// The file held no name to block.
+  empty,
+
+  /// The same names are already imported.
+  duplicate,
+
+  /// The list could not be saved on the phone.
+  failed,
+}
+
+class ImportOutcome {
+  final ImportStatus status;
+  final BlocklistImport parsed;
+
+  /// The list as it now appears among the sources, when added.
+  final FilterSource? source;
+
+  /// What the engine reported loading; 0 without an engine.
+  final int loaded;
+
+  const ImportOutcome({
+    required this.status,
+    required this.parsed,
+    this.source,
+    this.loaded = 0,
+  });
 }
 
 class RuleDownloaderService {
@@ -275,7 +317,12 @@ class RuleDownloaderService {
     if (age > syncEvery || age.isNegative) return true;
     if (_cacheDir == null) return false;
     for (final source in allSources) {
-      if (source.isEnabled && await _readCache(source.id) == null) return true;
+      // An imported list has nothing to download, saved copy or not.
+      if (source.isEnabled &&
+          !source.isLocal &&
+          await _readCache(source.id) == null) {
+        return true;
+      }
     }
     return false;
   }
@@ -325,6 +372,79 @@ class RuleDownloaderService {
   static Future<bool> removeCustomSource(String id) async {
     _customSources.removeWhere((s) => s.id == id);
     return _saveCustomSources();
+  }
+
+  /// Add a list the user picked from a file. The names are checked and
+  /// de-duplicated, saved like a downloaded list (in hosts form) and loaded
+  /// into the engine at once; there is no address to sync it from later.
+  ///
+  /// Throws [StateError] where lists are not kept (see [keepsLists]).
+  static Future<ImportOutcome> importFromFile({
+    required String fileName,
+    required String text,
+  }) async {
+    if (_cacheDir == null) throw StateError('lists are not kept here');
+    await loadSources();
+
+    // A big list takes a second or more to read; keep the screen responsive.
+    final parsed = await compute(BlocklistImport.parse, text);
+    if (parsed.domains.isEmpty) {
+      return ImportOutcome(status: ImportStatus.empty, parsed: parsed);
+    }
+
+    final content = parsed.toHostsText(source: fileName);
+    // The address names the content, so the same list imported twice is
+    // caught the way a URL subscribed twice is.
+    final digest = sha256.convert(utf8.encode(parsed.domains.join('\n')));
+    final hash = digest.toString().substring(0, 16);
+    final source = FilterSource(
+      id: 'import_$hash',
+      name: _displayName(fileName),
+      url: '${FilterSource.localScheme}$hash',
+      description: AppStrings.get('rules_import_desc')
+          .replaceAll('%s', '${parsed.domains.length}'),
+    );
+    if (allSources.any((s) => s.url == source.url)) {
+      return ImportOutcome(status: ImportStatus.duplicate, parsed: parsed);
+    }
+
+    await _writeCache(source.id, content);
+    if (await _readCache(source.id) == null) {
+      return ImportOutcome(status: ImportStatus.failed, parsed: parsed);
+    }
+    if (!await addCustomSource(source)) {
+      return ImportOutcome(status: ImportStatus.failed, parsed: parsed);
+    }
+    final loaded = AegisBridge.loadRulesText(
+      content,
+      categoryId: source.categoryId,
+      listId: source.id,
+    );
+    return ImportOutcome(
+      status: ImportStatus.added,
+      parsed: parsed,
+      source: source,
+      loaded: loaded,
+    );
+  }
+
+  /// Remove an imported list and its saved copy, and take its rules out of
+  /// the engine by reloading the saved lists that remain.
+  static Future<void> removeImported(String id) async {
+    await removeCustomSource(id);
+    await _pruneCache();
+    // Cleared first: with no saved list left, reloading leaves the engine
+    // as it is, and the removed rules would stay until the next start.
+    AegisBridge.clearDownloadedRules();
+    await loadCachedFilters();
+  }
+
+  /// The file name without its folder or a text extension, as a list name.
+  static String _displayName(String fileName) {
+    var name = fileName.split(RegExp(r'[/\\]')).last.trim();
+    name = name.replaceFirst(
+        RegExp(r'\.(txt|hosts|list)$', caseSensitive: false), '');
+    return name.isEmpty ? AppStrings.get('rules_import_default_name') : name;
   }
 
   /// Turn a source on or off and remember it. Preset sources are held in a
@@ -425,7 +545,9 @@ class RuleDownloaderService {
     var downloaded = 0;
     for (final source in allSources) {
       if (source.isEnabled) {
-        var content = await fetcher(source.url);
+        // An imported list has no address to download from; its saved copy
+        // is the list.
+        var content = source.isLocal ? null : await fetcher(source.url);
         if (content != null && content.isNotEmpty) {
           downloaded++;
           await _writeCache(source.id, content);

@@ -326,6 +326,8 @@ class AegisBridge {
   /// as [setCategory] (0: Ads, 1: Trackers, 2: Malware, 3: Adult); defaults to
   /// Ads since that's what every current caller loads. [listId] is the filter
   /// list's id, so the log can say which list blocked a domain.
+  static final _hostsLine = RegExp(r'^(?:0\.0\.0\.0|127\.0\.0\.1)\s+(\S+)$');
+
   static int loadRulesText(String content,
       {int categoryId = 0, String? listId}) {
     if (_useNativeFfi) {
@@ -338,10 +340,14 @@ class AegisBridge {
     } else {
       int added = 0;
       for (final line in content.split('\n')) {
-        final trimmed = line.trim();
+        var trimmed = line.trim();
         if (trimmed.isNotEmpty &&
             !trimmed.startsWith('#') &&
             !trimmed.startsWith('!')) {
+          // A hosts line ("0.0.0.0 ads.example.com") blocks the name, as it
+          // does in the native engine; imported lists are saved this way.
+          final hosts = _hostsLine.firstMatch(trimmed);
+          if (hosts != null) trimmed = hosts.group(1)!;
           _loadedRules.add(trimmed.toLowerCase());
           added++;
         }
@@ -622,6 +628,58 @@ class AegisBridge {
   /// even before the tunnel has run in this process. Android only: the VPN
   /// service writes that file, and the screen reads the same one. Elsewhere
   /// the history covers this session only.
+  static void Function(Map<String, dynamic> diagnostics)? _tunnelListener;
+
+  /// Have [listener] called with the tunnel's diagnostics whenever the
+  /// tunnel comes up, goes down, or starts or ends a pause, including from
+  /// the notification or the home-screen widget (Android only).
+  static void listenForTunnelState(
+      void Function(Map<String, dynamic> diagnostics) listener) {
+    _tunnelListener = listener;
+    _vpnChannel.setMethodCallHandler((call) async {
+      if (call.method != 'tunnelStateChanged') return null;
+      final raw = call.arguments;
+      if (raw is Map) _tunnelListener?.call(raw.cast<String, dynamic>());
+      return null;
+    });
+  }
+
+  /// Stop calling [listener]; a listener set after it stays.
+  static void stopListeningForTunnelState(
+      void Function(Map<String, dynamic> diagnostics) listener) {
+    if (_tunnelListener == listener) _tunnelListener = null;
+  }
+
+  /// Hand the home-screen widget today's blocked count. [day] counts local
+  /// days since 1970-01-01, so the widget can tell a count from yesterday.
+  static Future<void> updateWidget(
+      {required int day, required int blocked}) async {
+    try {
+      await _vpnChannel
+          .invokeMethod('updateWidget', {'day': day, 'blocked': blocked});
+    } catch (_) {
+      // No widget outside Android.
+    }
+  }
+
+  /// Post the notification and the widget again after a change in the app
+  /// that they show (the app lock).
+  static Future<void> refreshNativeUi() async {
+    try {
+      await _vpnChannel.invokeMethod('refreshNativeUi');
+    } catch (_) {}
+  }
+
+  /// Let the user choose a blocklist file with the system picker. Null when
+  /// the picker was closed without a choice; a [PlatformException] whose code
+  /// says why when the file could not be read.
+  static Future<({String? name, String text})?> pickBlocklistFile() async {
+    final raw =
+        await _vpnChannel.invokeMapMethod<String, dynamic>('pickBlocklistFile');
+    if (raw == null) return null;
+    return (name: raw['name'] as String?, text: raw['text'] as String? ?? '');
+  }
+
   /// The app's private files directory on Android, where downloaded filter
   /// lists are kept between runs. Null on other platforms and in tests.
   static Future<String?> filesDirPath() async {

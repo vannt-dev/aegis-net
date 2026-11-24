@@ -22,6 +22,20 @@ object PauseWindow {
     fun isActive(untilMs: Long, nowMs: Long): Boolean =
         untilMs > nowMs && untilMs - nowMs <= LONGEST_MS
 
+    /// The pause the notification's button starts.
+    const val NOTIFICATION_PAUSE_MS = 5 * 60_000L
+
+    /// The longest pause the app offers, and so the longest a pause given as
+    /// a length (rather than an end) may run.
+    const val LONGEST_OFFERED_MS = 60 * 60_000L
+
+    /// When a pause of [durationMs] started at [nowMs] ends, or 0 for a
+    /// length that is not a pause the app offers. The end is worked out when
+    /// the tap arrives: one fixed when the notification was posted would
+    /// already be in the past by the time someone taps it.
+    fun endAfter(durationMs: Long, nowMs: Long): Long =
+        if (durationMs in 1..LONGEST_OFFERED_MS) nowMs + durationMs else 0L
+
     /// How long to wait before looking again.
     fun nextCheckMs(untilMs: Long, nowMs: Long): Long =
         (untilMs - nowMs).coerceIn(0L, CHECK_EVERY_MS)
