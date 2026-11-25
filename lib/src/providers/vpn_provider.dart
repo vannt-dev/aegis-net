@@ -521,6 +521,7 @@ class VpnProvider extends ChangeNotifier {
     // which would then run on its defaults whatever the user had saved.
     AegisBridge.setBlockDohHosts(_interceptHardcodedDns);
     AegisBridge.setAliasBlocking(_blockAliasTrackers);
+    AegisBridge.setBlockIdnDomains(_blockIdnDomains);
     await _applyBlockedApps();
     AegisBridge.setUpstreamDns(_dohTargetFrom(_upstreamDns));
     AegisBridge.setCategory(0, _blockAds);
@@ -565,6 +566,7 @@ class VpnProvider extends ChangeNotifier {
       _blockAdult = prefs.getBool('block_adult') ?? false;
       _interceptHardcodedDns = prefs.getBool('intercept_hardcoded_dns') ?? true;
       _blockAliasTrackers = prefs.getBool(_prefBlockAliasTrackers) ?? true;
+      _blockIdnDomains = prefs.getBool(_prefBlockIdnDomains) ?? false;
 
       _scheduleEnabled = prefs.getBool(_prefScheduleEnabled) ?? false;
       // The bounds were whole hours before; migrate them once so an existing
@@ -1033,6 +1035,27 @@ class VpnProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_prefBlockAliasTrackers, enabled);
+    } catch (_) {}
+  }
+
+  static const String _prefBlockIdnDomains = 'block_idn_domains';
+
+  bool _blockIdnDomains = false;
+
+  /// Block internationalized domain names (the `xn--` form of names written
+  /// with non-Latin letters), which look-alike phishing domains use. A domain
+  /// on the allow list still works. Off by default.
+  bool get blockIdnDomains => _blockIdnDomains;
+
+  Future<void> setBlockIdnDomains(bool enabled) async {
+    await _ready;
+    if (enabled == _blockIdnDomains) return;
+    _blockIdnDomains = enabled;
+    AegisBridge.setBlockIdnDomains(enabled);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefBlockIdnDomains, enabled);
     } catch (_) {}
   }
 

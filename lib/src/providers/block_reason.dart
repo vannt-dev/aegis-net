@@ -46,6 +46,7 @@ const Set<String> _knownReasons = {
   'allowlist',
   'exception',
   'alias',
+  'idn',
 };
 
 /// The name to show for a filter list id: its translated name for a preset,

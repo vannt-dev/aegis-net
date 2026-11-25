@@ -56,6 +56,7 @@ flowchart LR
 - **🚫 Block an app (Android 10+)**: Refuse every DNS lookup a chosen app makes, from the Top apps list in Analytics. It stops name lookups, not connections to fixed IP addresses.
 - **📱 Per-app statistics (Android 10+)**: See which apps make the most DNS queries and how many were blocked, and filter the live query log by app.
 - **🛡️ Bypass protection**: DNS sent straight to public resolvers is filtered too, and their encrypted DNS is refused so apps fall back to the filter.
+- **🔤 Look-alike domain protection (optional)**: Block every internationalized domain name (one with letters beyond plain a-z, accented ones included; `xn--` in its technical form), which phishing sites use to imitate real addresses with look-alike letters. Off by default; domains on your allow list still work.
 - **📜 Live Query Log & CSV Export**: Real-time query monitoring with status filter chips (`ALL LOGS`, `BLOCKED`, `ALLOWED`), instant domain search and CSV export. Tap an entry to see why it was blocked and to allow or block that domain on the spot, or to **allow it for a while** (15 min, 1 hour or 1 day): it is blocked again on time, even if the app is closed. **Test a domain** tells whether a domain would be blocked, and why, before anything asks for it.
 - **⚡ Custom Whitelist & Blacklist**: Flexible custom rule management with instant hot-reloading.
 - **🔄 Background Auto-Sync**: Automatic blocklist updates and background rule synchronization.

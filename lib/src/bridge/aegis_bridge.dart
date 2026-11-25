@@ -565,6 +565,22 @@ class AegisBridge {
   }
 
   @visibleForTesting
+  static void Function(bool enabled)? debugSetBlockIdnDomainsOverride;
+
+  /// Block internationalized (look-alike) domain names unless allowed.
+  static void setBlockIdnDomains(bool enabled) {
+    final override = debugSetBlockIdnDomainsOverride;
+    if (override != null) {
+      override(enabled);
+      return;
+    }
+    if (_useNativeFfi) {
+      AegisNativeBindings.setBlockIdnDomains(enabled);
+    }
+    publishSettings();
+  }
+
+  @visibleForTesting
   static void Function(int categoryId, bool enabled)? debugSetCategoryOverride;
 
   @visibleForTesting

@@ -6,6 +6,21 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.11.0] — 2026-11-25
+
+An optional switch that blocks look-alike international domain names.
+
+### Added
+
+- **Block look-alike international domains.** A new switch in Settings blocks
+  every domain name with letters beyond plain a-z, accented ones included (in
+  technical form, any name with a part starting `xn--`). Phishing sites use such
+  names to imitate a real address, for example with a Cyrillic "а" in place of a
+  Latin "a". Blocked names show up in the log and statistics like any other
+  block, with their own reason. Domains on your allow list still work, including
+  ones allowed for a while. Off by default, since it also blocks genuine sites
+  whose addresses use such letters; backups carry the setting.
+
 ## [1.10.0] — 2026-11-24
 
 An optional PIN lock, a pause button in the notification, blocklists imported
