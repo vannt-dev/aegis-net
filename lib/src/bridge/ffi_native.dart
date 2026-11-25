@@ -118,6 +118,7 @@ class AegisNativeBindings {
   static AegisLoadRulesFromListDart? _loadRulesFromList;
   static AegisExplainDart? _explainDomain;
   static AegisSetFlagDart? _setCnameUncloaking;
+  static AegisSetFlagDart? _setBlockIdnDomains;
   static AegisAddDomainUntilDart? _addWhitelistUntil;
   static AegisHistoryOpenDart? _historyOpen;
   static AegisHistoryFlushDart? _historyFlush;
@@ -220,6 +221,9 @@ class AegisNativeBindings {
         _setCnameUncloaking = _optional(() => _lib!
             .lookupFunction<AegisSetFlagC, AegisSetFlagDart>(
                 'aegis_set_cname_uncloaking'));
+        _setBlockIdnDomains = _optional(() => _lib!
+            .lookupFunction<AegisSetFlagC, AegisSetFlagDart>(
+                'aegis_set_block_idn_domains'));
         _addWhitelistUntil = _optional(() => _lib!
             .lookupFunction<AegisAddDomainUntilC, AegisAddDomainUntilDart>(
                 'aegis_add_whitelist_until'));
@@ -343,6 +347,13 @@ class AegisNativeBindings {
   static void setCnameUncloaking(bool enabled) {
     if (!_isLoaded || _setCnameUncloaking == null) return;
     _setCnameUncloaking!(enabled ? 1 : 0);
+  }
+
+  /// Whether internationalized (look-alike) domain names are blocked. A
+  /// no-op on an engine that predates the setting.
+  static void setBlockIdnDomains(bool enabled) {
+    if (!_isLoaded || _setBlockIdnDomains == null) return;
+    _setBlockIdnDomains!(enabled ? 1 : 0);
   }
 
   static void setBlockDohHosts(bool enabled) {
