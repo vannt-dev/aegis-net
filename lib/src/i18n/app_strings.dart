@@ -155,6 +155,11 @@ class AppStrings {
       'reason_blocked': 'Blocked by your filters',
       'reason_none': 'Not on any block list',
       'reason_alias': 'Blocked: alias of %s',
+      'reason_idn':
+          'Blocked: international domain name (could imitate another site)',
+      'settings_idn_title': 'Block look-alike international domains',
+      'settings_idn_desc':
+          'Phishing sites can use letters from other alphabets to imitate a real address, such as a Cyrillic "а" in place of a Latin "a". When this is on, AegisNet blocks every domain name written with such letters (in technical form, any name with a part starting "xn--"). Domains on your allow list still work. Leave it off if you visit sites whose addresses use non-Latin letters.',
       'settings_cname_title':
           'Block trackers hidden behind a site\'s own address',
       'settings_cname_desc':
@@ -428,6 +433,10 @@ class AppStrings {
       'reason_blocked': 'Bị chặn bởi bộ lọc của bạn',
       'reason_none': 'Không nằm trong danh sách chặn nào',
       'reason_alias': 'Bị chặn: bí danh của %s',
+      'reason_idn': 'Bị chặn: tên miền quốc tế (có thể giả mạo trang khác)',
+      'settings_idn_title': 'Chặn tên miền quốc tế dễ bị giả mạo',
+      'settings_idn_desc':
+          'Trang lừa đảo có thể dùng chữ cái của bảng chữ khác để giả một địa chỉ thật, ví dụ chữ "а" Kirin thay cho chữ "a" Latinh. Khi bật, AegisNet chặn mọi tên miền viết bằng những chữ như vậy (ở dạng kỹ thuật là mọi tên có một phần bắt đầu bằng "xn--"). Tên miền trong danh sách cho phép của bạn vẫn dùng được. Hãy để tắt nếu bạn hay vào các trang có địa chỉ dùng chữ không phải Latinh (kể cả chữ có dấu tiếng Việt).',
       'settings_cname_title':
           'Chặn trình theo dõi núp dưới địa chỉ của chính trang web',
       'settings_cname_desc':
@@ -696,6 +705,10 @@ class AppStrings {
       'reason_blocked': '필터로 차단됨',
       'reason_none': '어떤 차단 목록에도 없음',
       'reason_alias': '차단됨: %s의 별칭',
+      'reason_idn': '차단됨: 국제화 도메인 이름 (다른 사이트를 흉내 낼 수 있음)',
+      'settings_idn_title': '모양이 비슷한 국제화 도메인 차단',
+      'settings_idn_desc':
+          '피싱 사이트는 다른 문자 체계의 글자로 실제 주소를 흉내 낼 수 있습니다. 예를 들어 라틴 문자 "a" 대신 키릴 문자 "а"를 씁니다. 이 기능을 켜면 AegisNet은 이런 글자로 쓰인 모든 도메인 이름(기술적 형태로는 "xn--"로 시작하는 부분이 있는 이름)을 차단합니다. 허용 목록에 있는 도메인은 계속 작동합니다. 한글 도메인처럼 라틴 문자가 아닌 주소를 쓰는 사이트를 방문한다면 꺼 두세요.',
       'settings_cname_title': '사이트 자체 주소 뒤에 숨은 추적기 차단',
       'settings_cname_desc':
           '일부 사이트는 자체 도메인 이름 아래에서 추적 회사를 가리키는 추적기를 운영합니다. AegisNet은 이것도 차단합니다. 허용한 도메인은 이 방식으로 절대 차단되지 않습니다. 사이트가 작동하지 않으면 끄세요.',
@@ -951,6 +964,10 @@ class AppStrings {
       'reason_blocked': 'フィルターでブロック',
       'reason_none': 'どのブロックリストにも含まれていません',
       'reason_alias': 'ブロック: %s のエイリアス',
+      'reason_idn': 'ブロック: 国際化ドメイン名(別のサイトを装っている可能性)',
+      'settings_idn_title': '見た目が紛らわしい国際化ドメインをブロック',
+      'settings_idn_desc':
+          'フィッシングサイトは別の文字体系の文字で本物のアドレスを装うことがあります。たとえばラテン文字の「a」の代わりにキリル文字の「а」を使います。オンにすると、AegisNetはこうした文字で書かれたすべてのドメイン名(技術的な形式では「xn--」で始まる部分を含む名前)をブロックします。許可リストにあるドメインは引き続き使えます。日本語ドメインなど、ラテン文字以外のアドレスを使うサイトを見る場合はオフのままにしてください。',
       'settings_cname_title': 'サイト自身のアドレスに隠れたトラッカーをブロック',
       'settings_cname_desc':
           '一部のサイトは自社ドメイン名の下でトラッキング企業を指すトラッカーを運用しています。AegisNetはそれもブロックします。許可したドメインがこの方法でブロックされることはありません。サイトが動かなくなったらオフにしてください。',
