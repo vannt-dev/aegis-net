@@ -6,6 +6,27 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.12.0] — 2026-11-26
+
+Choose the networks protection applies on.
+
+### Added
+
+- **Networks to protect** (Android, Settings). Filter on all networks (the
+  default), on Wi-Fi only, or on mobile data only. On a network left out the
+  tunnel stays on but lets lookups through unfiltered, and filtering comes back
+  by itself when the device moves to a network that is in; the dashboard and
+  the notification say "Not filtering on this network". Telling Wi-Fi from
+  mobile data needs no extra permission.
+- **Skip these Wi-Fi networks** (optional). Protection does not apply on the
+  Wi-Fi networks you list, for example a home network that already filters.
+  Android shows Wi-Fi names only to apps with location access, so turning the
+  list on asks for it; AegisNet uses it only to read the name of the Wi-Fi
+  network you are on. With location allowed only while the app is in use, a
+  network's name is read when you open AegisNet on it; "Allow all the time"
+  lets the list work with the app closed. With an app PIN set, changes that
+  weaken protection ask for it. Backups carry the settings.
+
 ## [1.11.0] — 2026-11-25
 
 An optional switch that blocks look-alike international domain names.
