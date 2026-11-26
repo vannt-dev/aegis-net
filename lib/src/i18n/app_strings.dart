@@ -157,6 +157,31 @@ class AppStrings {
       'reason_alias': 'Blocked: alias of %s',
       'reason_idn':
           'Blocked: international domain name (could imitate another site)',
+      'settings_network_title': 'Networks to protect',
+      'settings_network_desc':
+          'Choose where filtering applies. On a network left out the tunnel stays on but lets DNS through unfiltered, and filtering comes back by itself on a network that is in. Telling Wi-Fi from mobile data needs no extra permission.',
+      'network_scope_all': 'All networks',
+      'network_scope_wifi': 'Wi-Fi only',
+      'network_scope_mobile': 'Mobile data only',
+      'settings_ssid_title': 'Skip these Wi-Fi networks',
+      'settings_ssid_desc':
+          'Protection does not apply on the Wi-Fi networks listed here, for example a home network that already filters. Android shows Wi-Fi names only to apps with location access, so turning this on asks for it. AegisNet uses it only to read the name of the Wi-Fi network you are on, never your location.',
+      'ssid_hint': 'Wi-Fi name (exact, case matters)',
+      'ssid_add_current': 'ADD CURRENT WI-FI',
+      'ssid_current_unknown':
+          'Could not read the name of the current Wi-Fi network.',
+      'ssid_invalid': 'Not a valid Wi-Fi name, or it is already listed.',
+      'ssid_denied':
+          'Precise location access was not given, so Wi-Fi names cannot be read. The list is not used; the network choice above still applies.',
+      'ssid_grant': 'ALLOW LOCATION',
+      'ssid_background_note':
+          'Location is allowed only while the app is in use, so a network\'s name is read when you open AegisNet on it; until then it counts as any Wi-Fi network. Choose "Allow all the time" for the list to work with the app closed.',
+      'ssid_background_action': 'ALLOW ALL THE TIME',
+      'ssid_location_off':
+          'Location is turned off on this device, so Wi-Fi names cannot be read. The list is not used until it is turned on.',
+      'network_idle_title': 'Not filtering on this network',
+      'network_idle_body':
+          'You chose not to protect this network (Settings > Networks to protect). AegisNet filters again by itself on a network that is in.',
       'settings_idn_title': 'Block look-alike international domains',
       'settings_idn_desc':
           'Phishing sites can use letters from other alphabets to imitate a real address, such as a Cyrillic "а" in place of a Latin "a". When this is on, AegisNet blocks every domain name with letters beyond plain a-z, accented letters included (in technical form, any name with a part starting "xn--"). Domains on your allow list still work. Leave it off if you visit sites whose addresses use such letters.',
@@ -434,6 +459,30 @@ class AppStrings {
       'reason_none': 'Không nằm trong danh sách chặn nào',
       'reason_alias': 'Bị chặn: bí danh của %s',
       'reason_idn': 'Bị chặn: tên miền quốc tế (có thể giả mạo trang khác)',
+      'settings_network_title': 'Mạng được bảo vệ',
+      'settings_network_desc':
+          'Chọn nơi bộ lọc hoạt động. Trên mạng bị loại ra, đường hầm vẫn bật nhưng cho DNS đi qua không lọc, và tự lọc lại khi sang mạng được chọn. Phân biệt Wi-Fi với dữ liệu di động không cần thêm quyền nào.',
+      'network_scope_all': 'Mọi mạng',
+      'network_scope_wifi': 'Chỉ Wi-Fi',
+      'network_scope_mobile': 'Chỉ dữ liệu di động',
+      'settings_ssid_title': 'Bỏ qua các mạng Wi-Fi này',
+      'settings_ssid_desc':
+          'Không bảo vệ trên các mạng Wi-Fi có trong danh sách, ví dụ mạng ở nhà đã tự lọc. Android chỉ cho ứng dụng có quyền vị trí đọc tên Wi-Fi, nên bật mục này sẽ xin quyền đó. AegisNet chỉ dùng nó để đọc tên mạng Wi-Fi bạn đang dùng, không bao giờ đọc vị trí của bạn.',
+      'ssid_hint': 'Tên Wi-Fi (chính xác, phân biệt hoa thường)',
+      'ssid_add_current': 'THÊM WI-FI HIỆN TẠI',
+      'ssid_current_unknown': 'Không đọc được tên mạng Wi-Fi hiện tại.',
+      'ssid_invalid': 'Tên Wi-Fi không hợp lệ hoặc đã có trong danh sách.',
+      'ssid_denied':
+          'Chưa được cấp quyền vị trí chính xác nên không đọc được tên Wi-Fi. Danh sách không được dùng; lựa chọn mạng ở trên vẫn áp dụng.',
+      'ssid_grant': 'CHO PHÉP VỊ TRÍ',
+      'ssid_background_note':
+          'Vị trí chỉ được phép khi đang dùng ứng dụng, nên tên mạng được đọc khi bạn mở AegisNet trên mạng đó; trước lúc ấy nó được coi như mọi mạng Wi-Fi khác. Chọn "Luôn cho phép" để danh sách hoạt động cả khi ứng dụng đã đóng.',
+      'ssid_background_action': 'LUÔN CHO PHÉP',
+      'ssid_location_off':
+          'Vị trí đang tắt trên thiết bị nên không đọc được tên Wi-Fi. Danh sách không được dùng cho đến khi bật lại.',
+      'network_idle_title': 'Không lọc trên mạng này',
+      'network_idle_body':
+          'Bạn đã chọn không bảo vệ mạng này (Cài đặt > Mạng được bảo vệ). AegisNet tự lọc lại khi sang mạng được chọn.',
       'settings_idn_title': 'Chặn tên miền quốc tế dễ bị giả mạo',
       'settings_idn_desc':
           'Trang lừa đảo có thể dùng chữ cái của bảng chữ khác để giả một địa chỉ thật, ví dụ chữ "а" Kirin thay cho chữ "a" Latinh. Khi bật, AegisNet chặn mọi tên miền có chữ ngoài a-z thông thường, kể cả chữ có dấu (ở dạng kỹ thuật là mọi tên có một phần bắt đầu bằng "xn--"). Tên miền trong danh sách cho phép của bạn vẫn dùng được. Hãy để tắt nếu bạn hay vào các trang có địa chỉ dùng những chữ như vậy (kể cả tên miền tiếng Việt có dấu).',
@@ -706,6 +755,30 @@ class AppStrings {
       'reason_none': '어떤 차단 목록에도 없음',
       'reason_alias': '차단됨: %s의 별칭',
       'reason_idn': '차단됨: 국제화 도메인 이름 (다른 사이트를 흉내 낼 수 있음)',
+      'settings_network_title': '보호할 네트워크',
+      'settings_network_desc':
+          '필터링을 적용할 네트워크를 고릅니다. 제외된 네트워크에서는 터널이 켜진 채로 DNS를 필터링 없이 통과시키고, 포함된 네트워크로 바뀌면 자동으로 다시 필터링합니다. Wi-Fi와 모바일 데이터 구분에는 추가 권한이 필요 없습니다.',
+      'network_scope_all': '모든 네트워크',
+      'network_scope_wifi': 'Wi-Fi만',
+      'network_scope_mobile': '모바일 데이터만',
+      'settings_ssid_title': '이 Wi-Fi 네트워크는 제외',
+      'settings_ssid_desc':
+          '여기 적힌 Wi-Fi 네트워크에서는 보호가 적용되지 않습니다. 예를 들어 이미 필터링하는 집 네트워크가 있습니다. Android는 위치 권한이 있는 앱에만 Wi-Fi 이름을 보여 주므로, 이 기능을 켜면 그 권한을 요청합니다. AegisNet은 연결된 Wi-Fi의 이름을 읽는 데만 쓰며 위치는 절대 읽지 않습니다.',
+      'ssid_hint': 'Wi-Fi 이름 (정확히, 대소문자 구분)',
+      'ssid_add_current': '현재 Wi-Fi 추가',
+      'ssid_current_unknown': '현재 Wi-Fi 네트워크의 이름을 읽을 수 없습니다.',
+      'ssid_invalid': '올바른 Wi-Fi 이름이 아니거나 이미 목록에 있습니다.',
+      'ssid_denied':
+          '정확한 위치 권한이 없어 Wi-Fi 이름을 읽을 수 없습니다. 목록은 사용되지 않으며 위의 네트워크 선택은 그대로 적용됩니다.',
+      'ssid_grant': '위치 허용',
+      'ssid_background_note':
+          '위치가 앱 사용 중에만 허용되어 있어, 네트워크 이름은 그 네트워크에서 AegisNet을 열 때 읽힙니다. 그전까지는 일반 Wi-Fi 네트워크로 취급됩니다. 앱이 닫혀 있어도 목록이 작동하게 하려면 "항상 허용"을 선택하세요.',
+      'ssid_background_action': '항상 허용',
+      'ssid_location_off':
+          '이 기기에서 위치가 꺼져 있어 Wi-Fi 이름을 읽을 수 없습니다. 켜기 전까지 목록은 사용되지 않습니다.',
+      'network_idle_title': '이 네트워크에서는 필터링하지 않음',
+      'network_idle_body':
+          '이 네트워크는 보호하지 않도록 선택했습니다 (설정 > 보호할 네트워크). 포함된 네트워크로 바뀌면 AegisNet이 자동으로 다시 필터링합니다.',
       'settings_idn_title': '모양이 비슷한 국제화 도메인 차단',
       'settings_idn_desc':
           '피싱 사이트는 다른 문자 체계의 글자로 실제 주소를 흉내 낼 수 있습니다. 예를 들어 라틴 문자 "a" 대신 키릴 문자 "а"를 씁니다. 이 기능을 켜면 AegisNet은 악센트 문자를 포함해 기본 a-z 이외의 글자가 들어간 모든 도메인 이름(기술적 형태로는 "xn--"로 시작하는 부분이 있는 이름)을 차단합니다. 허용 목록에 있는 도메인은 계속 작동합니다. 한글 도메인처럼 이런 글자를 쓰는 주소의 사이트를 방문한다면 꺼 두세요.',
@@ -965,6 +1038,29 @@ class AppStrings {
       'reason_none': 'どのブロックリストにも含まれていません',
       'reason_alias': 'ブロック: %s のエイリアス',
       'reason_idn': 'ブロック: 国際化ドメイン名(別のサイトを装っている可能性)',
+      'settings_network_title': '保護するネットワーク',
+      'settings_network_desc':
+          'フィルタリングを行うネットワークを選びます。対象外のネットワークではトンネルはオンのまま DNS をフィルタリングせずに通し、対象のネットワークに移ると自動でフィルタリングを再開します。Wi-Fi とモバイルデータの区別に追加の権限は不要です。',
+      'network_scope_all': 'すべてのネットワーク',
+      'network_scope_wifi': 'Wi-Fi のみ',
+      'network_scope_mobile': 'モバイルデータのみ',
+      'settings_ssid_title': 'これらの Wi-Fi ネットワークを除外',
+      'settings_ssid_desc':
+          'ここに登録した Wi-Fi ネットワークでは保護を行いません(例: すでにフィルタリングしている自宅のネットワーク)。Android は位置情報の権限を持つアプリにしか Wi-Fi 名を見せないため、オンにするとその権限を求めます。AegisNet は接続中の Wi-Fi の名前を読むためだけに使い、位置情報は読みません。',
+      'ssid_hint': 'Wi-Fi 名(正確に、大文字と小文字を区別)',
+      'ssid_add_current': '現在の WI-FI を追加',
+      'ssid_current_unknown': '現在の Wi-Fi ネットワークの名前を読み取れませんでした。',
+      'ssid_invalid': '有効な Wi-Fi 名ではないか、すでに登録されています。',
+      'ssid_denied':
+          '正確な位置情報の権限がないため Wi-Fi 名を読み取れません。リストは使われず、上のネットワークの選択はそのまま適用されます。',
+      'ssid_grant': '位置情報を許可',
+      'ssid_background_note':
+          '位置情報はアプリの使用中のみ許可されているため、ネットワーク名はそのネットワークで AegisNet を開いたときに読み取られます。それまでは通常の Wi-Fi として扱われます。アプリを閉じていてもリストを使うには「常に許可」を選んでください。',
+      'ssid_background_action': '常に許可',
+      'ssid_location_off': 'この端末で位置情報がオフのため Wi-Fi 名を読み取れません。オンにするまでリストは使われません。',
+      'network_idle_title': 'このネットワークではフィルタリングしていません',
+      'network_idle_body':
+          'このネットワークは保護しないよう選択されています(設定 > 保護するネットワーク)。対象のネットワークに移ると AegisNet が自動でフィルタリングを再開します。',
       'settings_idn_title': '見た目が紛らわしい国際化ドメインをブロック',
       'settings_idn_desc':
           'フィッシングサイトは別の文字体系の文字で本物のアドレスを装うことがあります。たとえばラテン文字の「a」の代わりにキリル文字の「а」を使います。オンにすると、AegisNetはアクセント付き文字を含め、基本のa-z以外の文字を含むすべてのドメイン名(技術的な形式では「xn--」で始まる部分を含む名前)をブロックします。許可リストにあるドメインは引き続き使えます。日本語ドメインなど、こうした文字を使うアドレスのサイトを見る場合はオフのままにしてください。',
