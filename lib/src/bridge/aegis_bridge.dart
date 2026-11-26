@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../providers/app_info.dart';
 import '../providers/block_reason.dart';
 import '../providers/daily_history.dart';
+import '../providers/network_rule.dart';
 import '../services/desktop_dns_proxy.dart';
 import 'ffi_bindings.dart';
 
@@ -178,6 +179,49 @@ class AegisBridge {
     try {
       await _vpnChannel.invokeMethod('openPrivateDnsSettings');
     } catch (_) {}
+  }
+
+  /// Tell the running tunnel that the networks protection applies on
+  /// changed, so it looks at the network in use again (Android only).
+  static Future<void> applyNetworkRule() async {
+    try {
+      await _vpnChannel.invokeMethod('applyNetworkRule');
+    } catch (_) {}
+  }
+
+  /// What the app may do with location, which reading the name of the Wi-Fi
+  /// network takes. Empty where there is no native handler.
+  static Future<LocationAccess> getLocationAccess() async {
+    try {
+      final raw = await _vpnChannel
+          .invokeMapMethod<String, dynamic>('getLocationAccess');
+      return LocationAccess.fromMap(raw ?? const {});
+    } catch (_) {
+      return LocationAccess.unknown;
+    }
+  }
+
+  /// Ask for location access, while the app is in use or, with
+  /// [background], all the time. Answers with the access the user left.
+  static Future<LocationAccess> requestLocationAccess(
+      {bool background = false}) async {
+    try {
+      final raw = await _vpnChannel.invokeMapMethod<String, dynamic>(
+          'requestLocationAccess', {'background': background});
+      return LocationAccess.fromMap(raw ?? const {});
+    } catch (_) {
+      return LocationAccess.unknown;
+    }
+  }
+
+  /// The name of the Wi-Fi network in use, or null when there is none or it
+  /// cannot be read.
+  static Future<String?> currentWifiSsid() async {
+    try {
+      return await _vpnChannel.invokeMethod<String>('currentWifiSsid');
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Everything the native side can observe about why filtering may not be

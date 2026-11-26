@@ -5,8 +5,10 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.Uri
 import android.net.VpnService
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -25,6 +27,7 @@ class MainActivity: FlutterActivity() {
         private const val VPN_REQUEST_CODE = 0xAF1
         private const val NOTIFICATION_REQUEST_CODE = 0xAF2
         private const val PICK_FILE_REQUEST_CODE = 0xAF3
+        private const val LOCATION_REQUEST_CODE = 0xAF4
 
         /// Largest blocklist file the import reads. The biggest lists offered
         /// in the app are a few megabytes; a file past this is not a list.
@@ -71,6 +74,9 @@ class MainActivity: FlutterActivity() {
 
     /// Reply to a "pickBlocklistFile" call waiting on the system file picker.
     private var pendingPickResult: MethodChannel.Result? = null
+
+    /// Reply to a "requestLocationAccess" call waiting on the system prompt.
+    private var pendingLocationResult: MethodChannel.Result? = null
 
     /**
      * Answer the waiting Dart call exactly once. [error] non-null means the
@@ -216,6 +222,23 @@ class MainActivity: FlutterActivity() {
                     }
                     result.success(true)
                 }
+                // The networks protection applies on were changed; the running
+                // tunnel looks at the network again.
+                "applyNetworkRule" -> {
+                    if (AegisVpnService.isTunnelUp) {
+                        sendToService(
+                            Intent(this, AegisVpnService::class.java)
+                                .setAction(AegisVpnService.ACTION_NETWORK_RULE),
+                        )
+                    }
+                    result.success(true)
+                }
+                // Wi-Fi names can only be read with location access. Asked
+                // for only when the user turns on the Wi-Fi network list.
+                "getLocationAccess" -> result.success(locationAccess())
+                "requestLocationAccess" ->
+                    requestLocationAccess(call.argument<Boolean>("background") ?: false, result)
+                "currentWifiSsid" -> result.success(currentWifiSsid())
                 "pickBlocklistFile" -> pickBlocklistFile(result)
                 "getFilesDir" -> result.success(filesDir.absolutePath)
                 "getHistoryPath" -> result.success(
@@ -260,6 +283,128 @@ class MainActivity: FlutterActivity() {
             )
         } catch (e: Exception) {
             Log.w(TAG, "Could not request POST_NOTIFICATIONS", e)
+        }
+    }
+
+    private fun declared(permission: String): Boolean = try {
+        @Suppress("DEPRECATION")
+        packageManager.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+            .requestedPermissions?.contains(permission) == true
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun granted(permission: String): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+
+    /// What the app may do with location, which is what reading the name of
+    /// the Wi-Fi network takes. "background" is the "Allow all the time"
+    /// choice, which Android 10+ needs before a closed app may read it.
+    private fun locationAccess(): Map<String, Any?> {
+        val fine = granted(Manifest.permission.ACCESS_FINE_LOCATION)
+        val background = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        } else {
+            fine
+        }
+        // A build without "all the time" in its manifest cannot ask for it;
+        // the screen then does not offer it.
+        val backgroundAvailable = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            declared(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        val locationOn = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                getSystemService(LocationManager::class.java)?.isLocationEnabled
+            } else {
+                @Suppress("DEPRECATION")
+                Settings.Secure.getInt(contentResolver, Settings.Secure.LOCATION_MODE) !=
+                    Settings.Secure.LOCATION_MODE_OFF
+            }
+        } catch (e: Exception) {
+            null
+        }
+        return mapOf(
+            "sdkInt" to Build.VERSION.SDK_INT,
+            "fine" to fine,
+            "background" to background,
+            "backgroundAvailable" to backgroundAvailable,
+            "locationOn" to locationOn,
+        )
+    }
+
+    /// Ask for location access: first while the app is in use, then, on
+    /// Android 10+ and only when [background] is set, all the time (Android
+    /// 11+ shows the app's permission page for that). Answers with
+    /// [locationAccess] once the user has chosen.
+    private fun requestLocationAccess(background: Boolean, result: MethodChannel.Result) {
+        pendingLocationResult?.success(locationAccess())
+        pendingLocationResult = null
+        val permissions = if (background && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        } else {
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            )
+        }
+        if (permissions.all { granted(it) } || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            result.success(locationAccess())
+            return
+        }
+        pendingLocationResult = result
+        try {
+            requestPermissions(permissions, LOCATION_REQUEST_CODE)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not request location access", e)
+            pendingLocationResult = null
+            result.success(locationAccess())
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != LOCATION_REQUEST_CODE) return
+        val result = pendingLocationResult ?: return
+        pendingLocationResult = null
+        result.success(locationAccess())
+        // A tunnel already watching the network may read the name now.
+        if (AegisVpnService.isTunnelUp) {
+            sendToService(
+                Intent(this, AegisVpnService::class.java)
+                    .setAction(AegisVpnService.ACTION_NETWORK_RULE),
+            )
+        }
+    }
+
+    /// The name of the Wi-Fi network in use, or null when there is none or
+    /// it cannot be read (no location access, or location turned off).
+    private fun currentWifiSsid(): String? = try {
+        @Suppress("DEPRECATION")
+        val ssid = applicationContext.getSystemService(WifiManager::class.java)?.connectionInfo?.ssid
+        NetworkRule.normalizeSsid(ssid)
+    } catch (e: Exception) {
+        null
+    }
+
+    /// With the Wi-Fi network list on, the tunnel reads the network's name
+    /// while the app is open: without "Allow all the time" Android hides it
+    /// from the app in the background, and one read lasts the connection.
+    override fun onResume() {
+        super.onResume()
+        try {
+            val rule = NetworkRule.load(this)
+            if (AegisVpnService.isTunnelUp && rule.active && rule.exceptionsOn) {
+                sendToService(
+                    Intent(this, AegisVpnService::class.java)
+                        .setAction(AegisVpnService.ACTION_NETWORK_RULE),
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not hand the tunnel the network", e)
         }
     }
 
@@ -331,6 +476,7 @@ class MainActivity: FlutterActivity() {
             "consentGranted" to consentGranted,
             "tunnelUp" to AegisVpnService.isTunnelUp,
             "pausedUntil" to AegisVpnService.pausedUntilMs,
+            "networkIdle" to AegisVpnService.networkIdle,
             "nativeEngineLoaded" to AegisVpnService.nativeAvailable,
             "notificationsAllowed" to notificationsAllowed(),
             "droppedUnderLoad" to AegisVpnService.droppedUnderLoad.get(),
@@ -500,6 +646,8 @@ class MainActivity: FlutterActivity() {
         settleVpnResult(false)
         pendingPickResult?.success(null)
         pendingPickResult = null
+        pendingLocationResult?.success(locationAccess())
+        pendingLocationResult = null
         mainHandler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }

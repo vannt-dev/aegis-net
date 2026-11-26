@@ -10,6 +10,7 @@ import '../services/config_sync_service.dart';
 import '../services/ios_doh_profile_service.dart';
 import '../i18n/app_strings.dart';
 import 'app_lock_screen.dart';
+import 'network_rule_card.dart';
 
 const Color emeraldColor = Color(0xFF10B981);
 const Color emeraldDarkColor = Color(0xFF065F46);
@@ -589,6 +590,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           const SizedBox(height: 24),
+
+          // Which networks protection applies on (the Android tunnel only).
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+            const NetworkRuleCard(),
+            const SizedBox(height: 24),
+          ],
 
           // Scheduled Parental Controls Section
           Container(

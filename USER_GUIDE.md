@@ -21,6 +21,7 @@
 9. [Cài Đặt Bảo Vệ DNS Mã Hóa Cho iOS](#9-cài-đặt-bảo-vệ-dns-mã-hóa-cho-ios-không-cần-tài-khoản-trả-phí)
 10. [Khóa Ứng Dụng Bằng Mã PIN](#10-khóa-ứng-dụng-bằng-mã-pin)
 11. [Widget Màn Hình Chính (Android)](#11-widget-màn-hình-chính-android)
+12. [Mạng Được Bảo Vệ (Android)](#12-mạng-được-bảo-vệ-android)
 
 ---
 
@@ -122,3 +123,13 @@ Chuyển sang tab **Settings**:
 * Widget cho biết bảo vệ đang bật, đang tạm dừng (đến mấy giờ) hay đang tắt, và hôm nay đã chặn bao nhiêu truy vấn.
 * Chạm vào widget để tắt bảo vệ, kết thúc tạm dừng, hoặc bật bảo vệ. Lần đầu, hoặc sau khi một ứng dụng VPN khác chiếm quyền, widget sẽ mở AegisNet để bạn cho phép VPN.
 * Số đã chặn do ứng dụng cung cấp: số được cập nhật khi AegisNet đang mở (khoảng 30 giây một lần), còn không thì là số của lần cuối mở ứng dụng trong ngày. Sang ngày mới, widget nhắc mở ứng dụng cho tới khi ứng dụng đếm lại.
+
+---
+
+## 12. Mạng Được Bảo Vệ (Android)
+* Trong **Cài đặt**, mục **Mạng được bảo vệ**, chọn **Mọi mạng** (mặc định), **Chỉ Wi-Fi** hoặc **Chỉ dữ liệu di động**.
+* Trên mạng bị loại ra, AegisNet vẫn bật nhưng không lọc, và Bảng điều khiển ghi *Không lọc trên mạng này*. Khi điện thoại sang mạng được chọn, bộ lọc tự bật lại, kể cả khi ứng dụng đã đóng.
+* Bật **Bỏ qua các mạng Wi-Fi này** để liệt kê các mạng Wi-Fi không cần bảo vệ, ví dụ mạng ở nhà đã tự lọc. Gõ đúng tên (phân biệt hoa thường) hoặc chạm **THÊM WI-FI HIỆN TẠI**.
+* Android chỉ cho ứng dụng có quyền vị trí đọc tên Wi-Fi, nên bật danh sách sẽ xin quyền đó. AegisNet chỉ dùng nó để đọc tên mạng Wi-Fi bạn đang dùng. Không có quyền này, danh sách không được dùng và lựa chọn Wi-Fi / dữ liệu di động vẫn áp dụng.
+* Nếu vị trí chỉ được phép khi đang dùng ứng dụng, tên mạng được đọc khi bạn mở AegisNet trên mạng đó. Chọn **Luôn cho phép** để danh sách hoạt động cả khi ứng dụng đã đóng. Vị trí cũng phải được bật trong cài đặt điện thoại.
+* Khi bật khóa ứng dụng, việc loại một mạng ra sẽ hỏi mã PIN.
