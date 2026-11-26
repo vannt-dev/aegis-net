@@ -286,6 +286,14 @@ class MainActivity: FlutterActivity() {
         }
     }
 
+    private fun declared(permission: String): Boolean = try {
+        @Suppress("DEPRECATION")
+        packageManager.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+            .requestedPermissions?.contains(permission) == true
+    } catch (e: Exception) {
+        false
+    }
+
     private fun granted(permission: String): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
             checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
@@ -300,6 +308,10 @@ class MainActivity: FlutterActivity() {
         } else {
             fine
         }
+        // A build without "all the time" in its manifest cannot ask for it;
+        // the screen then does not offer it.
+        val backgroundAvailable = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            declared(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
         val locationOn = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 getSystemService(LocationManager::class.java)?.isLocationEnabled
@@ -315,6 +327,7 @@ class MainActivity: FlutterActivity() {
             "sdkInt" to Build.VERSION.SDK_INT,
             "fine" to fine,
             "background" to background,
+            "backgroundAvailable" to backgroundAvailable,
             "locationOn" to locationOn,
         )
     }

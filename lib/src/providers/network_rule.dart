@@ -68,6 +68,9 @@ class LocationAccess {
   /// "Allow all the time": the name can be read with the app closed.
   final bool background;
 
+  /// Whether this build can ask for "all the time" at all.
+  final bool backgroundAvailable;
+
   /// The device's location switch; null when unknown.
   final bool? locationOn;
 
@@ -77,6 +80,7 @@ class LocationAccess {
   const LocationAccess({
     required this.granted,
     required this.background,
+    this.backgroundAvailable = true,
     required this.locationOn,
     required this.sdkInt,
   });
@@ -87,10 +91,12 @@ class LocationAccess {
   factory LocationAccess.fromMap(Map<String, dynamic> map) => LocationAccess(
         granted: map['fine'] == true,
         background: map['background'] == true,
+        backgroundAvailable: map['backgroundAvailable'] != false,
         locationOn: map['locationOn'] as bool?,
         sdkInt: (map['sdkInt'] as num?)?.toInt() ?? 0,
       );
 
   /// Android 10+ hides the name from a closed app without "all the time".
-  bool get needsBackground => granted && !background && sdkInt >= 29;
+  bool get needsBackground =>
+      granted && !background && backgroundAvailable && sdkInt >= 29;
 }

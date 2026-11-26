@@ -187,6 +187,15 @@ void main() {
     expect(at(34, background: true).needsBackground, isFalse);
     expect(at(34, fine: false).needsBackground, isFalse);
     expect(at(28).needsBackground, isFalse);
+    // A build whose manifest leaves "all the time" out never offers it.
+    expect(
+        LocationAccess.fromMap({
+          'sdkInt': 34,
+          'fine': true,
+          'background': false,
+          'backgroundAvailable': false,
+        }).needsBackground,
+        isFalse);
   });
 
   test('Wi-Fi names are checked, kept one per line, and removed', () async {
