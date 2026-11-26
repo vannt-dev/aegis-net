@@ -5,6 +5,7 @@ import '../bridge/aegis_bridge.dart';
 import 'app_info.dart';
 import 'block_reason.dart';
 import 'daily_history.dart';
+import 'network_rule.dart';
 import '../services/rule_downloader_service.dart';
 
 class DnsLogItem {
@@ -194,6 +195,7 @@ class VpnProvider extends ChangeNotifier {
       _androidSdkInt = sdk;
       notifyListeners();
     }
+    _followNetworkIdle(diagnostics);
     final mode = diagnostics['privateDnsMode'] as String?;
     final bypassed = mode == 'hostname';
     if (bypassed == _privateDnsBypass) return;
@@ -409,6 +411,7 @@ class VpnProvider extends ChangeNotifier {
       // A pause that stopped the tunnel on purpose is not a tunnel lost.
       if (!_isVpnActive || (isPaused && !_pauseHeldByTunnel)) return;
       _isVpnActive = false;
+      _networkIdle = false;
       _pausedUntil = null;
       _pauseHeldByTunnel = false;
       _pauseTimer?.cancel();
@@ -424,6 +427,7 @@ class VpnProvider extends ChangeNotifier {
       if (enableSimulation) _startSimulation();
       unawaited(_refreshPrivateDnsState());
     }
+    _followNetworkIdle(diagnostics);
     if (pausedThere) {
       final until = DateTime.fromMillisecondsSinceEpoch(untilMs);
       if (_pausedUntil != until) {
@@ -552,6 +556,8 @@ class VpnProvider extends ChangeNotifier {
   Future<void> reloadFromPreferences() async {
     await _initPreferences();
     await _bootstrapEngine();
+    // The networks protection applies on may have changed with it.
+    await AegisBridge.applyNetworkRule();
     notifyListeners();
   }
 
@@ -567,6 +573,12 @@ class VpnProvider extends ChangeNotifier {
       _interceptHardcodedDns = prefs.getBool('intercept_hardcoded_dns') ?? true;
       _blockAliasTrackers = prefs.getBool(_prefBlockAliasTrackers) ?? true;
       _blockIdnDomains = prefs.getBool(_prefBlockIdnDomains) ?? false;
+      _networkScope =
+          NetworkScope.fromStored(prefs.getString(prefNetworkScope));
+      _ssidExceptionsOn = prefs.getBool(prefSsidExceptionsOn) ?? false;
+      _ssidExceptions
+        ..clear()
+        ..addAll(decodeSsids(prefs.getString(prefSsidExceptions)));
 
       _scheduleEnabled = prefs.getBool(_prefScheduleEnabled) ?? false;
       // The bounds were whole hours before; migrate them once so an existing
@@ -715,6 +727,7 @@ class VpnProvider extends ChangeNotifier {
       if (await AegisBridge.stopVpn()) {
         _isVpnActive = false;
         _privateDnsBypass = false;
+        _networkIdle = false;
         _stopSimulation();
       }
     } else {
@@ -1058,6 +1071,126 @@ class VpnProvider extends ChangeNotifier {
       await prefs.setBool(_prefBlockIdnDomains, enabled);
     } catch (_) {}
   }
+
+  NetworkScope _networkScope = NetworkScope.all;
+  bool _ssidExceptionsOn = false;
+  final List<String> _ssidExceptions = [];
+  bool _networkIdle = false;
+
+  /// Which networks protection applies on (Android). Every network unless
+  /// the user chose otherwise.
+  NetworkScope get networkScope => _networkScope;
+
+  /// Whether the Wi-Fi networks in [ssidExceptions] are left out.
+  bool get ssidExceptionsOn => _ssidExceptionsOn;
+
+  /// Wi-Fi networks, by name, where protection does not apply.
+  List<String> get ssidExceptions => List.unmodifiable(_ssidExceptions);
+
+  /// True while the tunnel is up but does not filter, because the network in
+  /// use is one the user left out.
+  bool get networkIdle => _isVpnActive && _networkIdle;
+
+  void _followNetworkIdle(Map<String, dynamic> diagnostics) {
+    final idle = diagnostics['networkIdle'] == true;
+    if (idle == _networkIdle) return;
+    _networkIdle = idle;
+    notifyListeners();
+  }
+
+  Future<void> setNetworkScope(NetworkScope scope) async {
+    await _ready;
+    if (scope == _networkScope) return;
+    _networkScope = scope;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(prefNetworkScope, scope.stored);
+    } catch (_) {}
+    await AegisBridge.applyNetworkRule();
+  }
+
+  /// Turn the Wi-Fi network list on or off. Turning it on asks for location
+  /// access, which reading a Wi-Fi name takes; the list stays on when it is
+  /// refused, and is simply not used until access is given.
+  Future<LocationAccess> setSsidExceptionsOn(bool enabled) async {
+    await _ready;
+    var access = _locationAccess;
+    if (enabled) {
+      access = await AegisBridge.getLocationAccess();
+      if (!access.granted) access = await AegisBridge.requestLocationAccess();
+      _locationAccess = access;
+    }
+    if (enabled != _ssidExceptionsOn) {
+      _ssidExceptionsOn = enabled;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(prefSsidExceptionsOn, enabled);
+      } catch (_) {}
+      await AegisBridge.applyNetworkRule();
+    }
+    notifyListeners();
+    return access;
+  }
+
+  /// Add a Wi-Fi network to the list. [exact] keeps a name read from the
+  /// device as it is; a typed one is trimmed. False when it is not a name a
+  /// Wi-Fi network can have, or is already listed.
+  Future<bool> addSsidException(String name, {bool exact = false}) async {
+    await _ready;
+    final clean = cleanSsid(name, exact: exact);
+    if (clean == null || _ssidExceptions.contains(clean)) return false;
+    _ssidExceptions.add(clean);
+    await _saveSsidExceptions();
+    return true;
+  }
+
+  Future<void> removeSsidException(String name) async {
+    await _ready;
+    if (!_ssidExceptions.remove(name)) return;
+    await _saveSsidExceptions();
+  }
+
+  Future<void> _saveSsidExceptions() async {
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(prefSsidExceptions, encodeSsids(_ssidExceptions));
+    } catch (_) {}
+    await AegisBridge.applyNetworkRule();
+  }
+
+  LocationAccess _locationAccess = LocationAccess.unknown;
+
+  /// The location access last seen; see [refreshLocationAccess].
+  LocationAccess get locationAccess => _locationAccess;
+
+  Future<LocationAccess> refreshLocationAccess() async {
+    final access = await AegisBridge.getLocationAccess();
+    _locationAccess = access;
+    if (!_disposed) notifyListeners();
+    return access;
+  }
+
+  /// Ask for "Allow all the time", so a Wi-Fi name can be read while the
+  /// app is closed (Android 10+).
+  Future<LocationAccess> requestBackgroundLocation() async {
+    final access = await AegisBridge.requestLocationAccess(background: true);
+    _locationAccess = access;
+    if (!_disposed) notifyListeners();
+    return access;
+  }
+
+  /// Ask for location access again, after it was refused.
+  Future<LocationAccess> requestLocationAccess() async {
+    final access = await AegisBridge.requestLocationAccess();
+    _locationAccess = access;
+    if (!_disposed) notifyListeners();
+    return access;
+  }
+
+  /// The name of the Wi-Fi network in use, or null when it cannot be read.
+  Future<String?> currentWifiSsid() => AegisBridge.currentWifiSsid();
 
   Future<void> _tunnelRebuild = Future.value();
 

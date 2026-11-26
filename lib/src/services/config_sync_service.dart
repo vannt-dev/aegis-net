@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../providers/network_rule.dart';
 
 /// Export and restore the user's configuration as JSON.
 ///
@@ -25,6 +26,10 @@ class ConfigSyncService {
       'schedule_enabled': prefs.getBool('schedule_enabled') ?? false,
       'block_cname_trackers': prefs.getBool('block_cname_trackers') ?? true,
       'block_idn_domains': prefs.getBool('block_idn_domains') ?? false,
+      prefNetworkScope:
+          prefs.getString(prefNetworkScope) ?? NetworkScope.all.stored,
+      prefSsidExceptionsOn: prefs.getBool(prefSsidExceptionsOn) ?? false,
+      prefSsidExceptions: decodeSsids(prefs.getString(prefSsidExceptions)),
       // Minutes since midnight, matching what VpnProvider stores. Whole hours
       // could not express a schedule that starts at 22:30.
       'quiet_hours_start_minutes':
@@ -67,6 +72,25 @@ class ConfigSyncService {
       if (data['block_idn_domains'] is bool) {
         await prefs.setBool(
             'block_idn_domains', data['block_idn_domains'] as bool);
+      }
+      final scope = data[prefNetworkScope];
+      if (scope is String &&
+          NetworkScope.values.any((s) => s.stored == scope)) {
+        await prefs.setString(prefNetworkScope, scope);
+      }
+      if (data[prefSsidExceptionsOn] is bool) {
+        await prefs.setBool(
+            prefSsidExceptionsOn, data[prefSsidExceptionsOn] as bool);
+      }
+      final ssids = data[prefSsidExceptions];
+      if (ssids is List) {
+        await prefs.setString(
+            prefSsidExceptions,
+            encodeSsids(ssids
+                .whereType<String>()
+                .map((n) => cleanSsid(n, exact: true))
+                .whereType<String>()
+                .toSet()));
       }
       if (data['schedule_enabled'] is bool) {
         await prefs.setBool(

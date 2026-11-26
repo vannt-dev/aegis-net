@@ -22,6 +22,7 @@
 9. [iOS System-Wide Encrypted DNS (.mobileconfig) Profile Setup](#9-ios-system-wide-encrypted-dns-mobileconfig-profile-setup)
 10. [App Lock (PIN)](#10-app-lock-pin)
 11. [Home-Screen Widget (Android)](#11-home-screen-widget-android)
+12. [Networks to Protect (Android)](#12-networks-to-protect-android)
 
 ---
 
@@ -123,3 +124,13 @@ So that someone else holding the phone cannot turn protection off or loosen the 
 * It shows whether protection is on, paused (and until when) or off, and how many lookups were blocked today.
 * Tap it to turn protection off, to end a pause, or to turn protection on. The first time, or after another VPN app took over, it opens AegisNet instead so you can approve the VPN.
 * The blocked count comes from the app: it updates while AegisNet is open (about every 30 seconds) and otherwise shows the number from the last time the app was open that day. On a new day it says to open the app until the app has counted again.
+
+---
+
+## 12. Networks to Protect (Android)
+* In **Settings**, under **Networks to protect**, choose **All networks** (the default), **Wi-Fi only** or **Mobile data only**.
+* On a network left out, AegisNet stays on but does not filter, and the Dashboard says *Not filtering on this network*. Filtering comes back by itself when the phone moves to a network that is in, even with the app closed.
+* Turn on **Skip these Wi-Fi networks** to name Wi-Fi networks where protection does not apply, for example a home network that already filters. Type a name exactly (case matters) or tap **ADD CURRENT WI-FI**.
+* Android shows Wi-Fi names only to apps with location access, so turning the list on asks for it. AegisNet uses it only to read the name of the Wi-Fi network you are on. Without it the list is not used and the Wi-Fi / mobile data choice still applies.
+* With location allowed only while the app is in use, a network's name is read when you open AegisNet on it. Choose **Allow all the time** for the list to work with the app closed. Location must also be turned on in the phone's settings.
+* With the app lock on, leaving a network out asks for the PIN.

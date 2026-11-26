@@ -201,6 +201,46 @@ class DashboardScreen extends StatelessWidget {
               // Strict Private DNS silently routes around the tunnel: the
               // shield reads PROTECTED while nothing is being filtered. Say so
               // rather than letting the user conclude the app does not work.
+              // The user left this network out: the shield is on, but
+              // nothing is filtered until the device is on a network that is in.
+              if (vpn.networkIdle && !vpn.isPaused)
+                Container(
+                  key: const Key('network_idle_banner'),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF12303B),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.cyanAccent, width: 1),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.wifi_off_rounded,
+                              color: Colors.cyanAccent, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              AppStrings.get('network_idle_title'),
+                              style: const TextStyle(
+                                  color: Colors.cyanAccent,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        AppStrings.get('network_idle_body'),
+                        style: TextStyle(
+                            color: Colors.grey.shade300, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
               if (vpn.isVpnActive && vpn.privateDnsBypass)
                 Container(
                   margin: const EdgeInsets.only(bottom: 16),

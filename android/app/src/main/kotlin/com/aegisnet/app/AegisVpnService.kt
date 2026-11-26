@@ -9,7 +9,11 @@ import android.content.Intent
 import android.database.ContentObserver
 import android.graphics.drawable.Icon
 import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.VpnService
+import android.net.wifi.WifiInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -40,6 +44,10 @@ class AegisVpnService : VpnService(), Runnable {
         /// Post the notification and the widget again, for a change made in
         /// the app that they show (the app lock being turned on or off).
         const val ACTION_REFRESH = "com.aegisnet.app.REFRESH"
+
+        /// The networks protection applies on changed in the app, or the app
+        /// came to the front and may now read the Wi-Fi name; see [NetworkRule].
+        const val ACTION_NETWORK_RULE = "com.aegisnet.app.NETWORK_RULE"
         const val EXTRA_PAUSED_UNTIL = "pausedUntil"
 
         /// A pause given as a length, for a button whose intent is built long
@@ -108,6 +116,17 @@ class AegisVpnService : VpnService(), Runnable {
         var isTunnelUp: Boolean = false
             private set
 
+        /// True while the running tunnel does not filter because the network
+        /// in use is one the user left out; see [NetworkRule].
+        @Volatile
+        var networkIdle: Boolean = false
+            private set
+
+        /// How long the network has to stay as it is before the tunnel is
+        /// rebuilt for it. Switching networks reports several changes in a
+        /// row, and each rebuild drops the lookups in flight.
+        private const val NETWORK_SETTLE_MS = 1_500L
+
         /// When the running pause of protection ends (wall-clock ms), or 0.
         @Volatile
         var pausedUntilMs: Long = 0L
@@ -164,6 +183,7 @@ class AegisVpnService : VpnService(), Runnable {
 
         fun markTunnelDown(error: String? = null) {
             isTunnelUp = false
+            networkIdle = false
             if (error != null) lastError = error
         }
 
@@ -234,6 +254,28 @@ class AegisVpnService : VpnService(), Runnable {
     private var builtPaused = false
 
     private val pauseChecker = Runnable { checkPause() }
+
+    /// Whether the network in use let the running tunnel filter; see
+    /// [NetworkRule].
+    private var builtNetworkFilter = true
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var watchedRule: NetworkRule.Settings? = null
+    private val networkChecker = Runnable { checkNetwork() }
+
+    /// The last Wi-Fi name read and the connection it was read on. Android
+    /// hides the name from an app in the background unless it may use
+    /// location all the time; one read while the app was open then still
+    /// counts for as long as that connection lasts.
+    private var namedNetwork: Network? = null
+    private var namedSsid: String? = null
+
+    private val wifiManager by lazy {
+        try {
+            applicationContext.getSystemService(WifiManager::class.java)
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     /// The tunnel is built differently under strict Private DNS, and the mode
     /// can change while it is up. Left alone, switching to a fixed provider
@@ -349,6 +391,15 @@ class AegisVpnService : VpnService(), Runnable {
                 publishState(this)
                 // Only meant for a running tunnel; never leave a bare service.
                 if (isRunning) enterForeground() else stopSelf()
+            }
+            ACTION_NETWORK_RULE -> {
+                if (isRunning) {
+                    watchNetwork(force = true)
+                    historyHandler.removeCallbacks(networkChecker)
+                    checkNetwork()
+                } else {
+                    stopSelf()
+                }
             }
             ACTION_RESUME -> {
                 // The app holds back settings changed during a pause and
@@ -485,6 +536,135 @@ class AegisVpnService : VpnService(), Runnable {
         rebuildTunnel()
     }
 
+    /// Watch the network while the rule can leave one out, so the tunnel
+    /// stops or starts filtering when the device moves between networks.
+    private fun watchNetwork(force: Boolean = false) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val rule = NetworkRule.load(this)
+        if (!force && networkCallback != null && rule == watchedRule) return
+        unwatchNetwork()
+        if (!rule.active) return
+        val cm = connectivity ?: return
+        // From Android 12 a callback only sees the Wi-Fi name when it asks.
+        val callback = if (rule.exceptionsOn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            NetworkWatcher(ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO)
+        } else {
+            NetworkWatcher()
+        }
+        try {
+            cm.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+            watchedRule = rule
+        } catch (e: Exception) {
+            Log.w(TAG, "Cannot watch the network", e)
+        }
+    }
+
+    private fun unwatchNetwork() {
+        historyHandler.removeCallbacks(networkChecker)
+        val callback = networkCallback ?: return
+        networkCallback = null
+        watchedRule = null
+        try {
+            connectivity?.unregisterNetworkCallback(callback)
+        } catch (e: Exception) {
+            Log.w(TAG, "Cannot stop watching the network", e)
+        }
+    }
+
+    /// This app is kept out of its own tunnel, so its default network is the
+    /// real one (Wi-Fi or mobile data), never the tunnel.
+    private inner class NetworkWatcher : ConnectivityManager.NetworkCallback {
+        constructor() : super()
+        constructor(flags: Int) : super(flags)
+
+        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+            val ssid = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (caps.transportInfo as? WifiInfo)?.let { NetworkRule.normalizeSsid(it.ssid) }
+            } else {
+                null
+            }
+            historyHandler.post {
+                if (ssid != null) rememberSsid(network, ssid)
+                scheduleNetworkCheck()
+            }
+        }
+
+        override fun onLost(network: Network) {
+            historyHandler.post { scheduleNetworkCheck() }
+        }
+    }
+
+    private fun rememberSsid(network: Network?, ssid: String) {
+        namedNetwork = network
+        namedSsid = ssid
+    }
+
+    private fun scheduleNetworkCheck() {
+        historyHandler.removeCallbacks(networkChecker)
+        if (isRunning) historyHandler.postDelayed(networkChecker, NETWORK_SETTLE_MS)
+    }
+
+    /// Rebuild the tunnel when the network in use now calls for the other
+    /// kind. A paused tunnel looks again when the pause ends.
+    private fun checkNetwork() {
+        if (!isRunning || builtPaused) return
+        val wanted = networkAllowsFiltering(builtNetworkFilter)
+        if (wanted == builtNetworkFilter) return
+        Log.i(TAG, if (wanted) "Filtering on this network" else "Not filtering on this network")
+        rebuildTunnel()
+    }
+
+    /// Whether the user's network rule lets the tunnel filter on the network
+    /// in use now. [current] is what the tunnel does now.
+    private fun networkAllowsFiltering(current: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return true
+        val rule = NetworkRule.load(this)
+        if (!rule.active) return true
+        val (transport, network) = currentNetwork()
+        val ssid = if (transport == NetworkRule.Transport.WIFI && rule.exceptionsOn) {
+            wifiName(network)
+        } else {
+            null
+        }
+        return NetworkRule.shouldFilter(rule, transport, ssid, current)
+    }
+
+    private fun currentNetwork(): Pair<NetworkRule.Transport, Network?> {
+        val cm = connectivity ?: return NetworkRule.Transport.OTHER to null
+        return try {
+            val network = cm.activeNetwork ?: return NetworkRule.Transport.NONE to null
+            val caps = cm.getNetworkCapabilities(network)
+                ?: return NetworkRule.Transport.NONE to null
+            val transport = when {
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkRule.Transport.WIFI
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ->
+                    NetworkRule.Transport.CELLULAR
+                else -> NetworkRule.Transport.OTHER
+            }
+            transport to network
+        } catch (e: Exception) {
+            // Filtering is the safe answer to a network that cannot be told.
+            NetworkRule.Transport.OTHER to null
+        }
+    }
+
+    /// The name of the Wi-Fi network in use, or null when Android does not
+    /// let this app read it (no location access, or location turned off).
+    private fun wifiName(network: Network?): String? {
+        val read = try {
+            @Suppress("DEPRECATION")
+            NetworkRule.normalizeSsid(wifiManager?.connectionInfo?.ssid)
+        } catch (e: Exception) {
+            null
+        }
+        if (read != null) {
+            rememberSsid(network, read)
+            return read
+        }
+        return if (network != null && network == namedNetwork) namedSsid else null
+    }
+
     /// Private DNS set to a fixed provider ("hostname" mode).
     private fun strictPrivateDns(): Boolean = try {
         Settings.Global.getString(contentResolver, "private_dns_mode") == "hostname"
@@ -541,6 +721,8 @@ class AegisVpnService : VpnService(), Runnable {
             val end = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)
                 .format(java.util.Date(pausedUntilMs))
             "Protection paused until $end"
+        } else if (networkIdle) {
+            "Not filtering on this network"
         } else {
             "DNS filtering is active"
         }
@@ -657,12 +839,19 @@ class AegisVpnService : VpnService(), Runnable {
             // that ends the pause, stays up.
             val paused = pausedNow()
             builtPaused = paused
-            val filtering = !strictPrivateDns && !paused
+            // A network the user left out is handled like a pause: the tunnel
+            // stays up unfiltered and filters again on a network that is in.
+            val wasNetworkIdle = networkIdle
+            val networkAllows = networkAllowsFiltering(builtNetworkFilter)
+            builtNetworkFilter = networkAllows
+            val filtering = !strictPrivateDns && !paused && networkAllows
             if (filtering) {
                 builder.addDnsServer(TUN_DNS_SERVER)
                 builder.addDnsServer(TUN_DNS_SERVER_V6)
             } else if (paused) {
                 Log.i(TAG, "Protection paused; the tunnel will not filter")
+            } else if (!networkAllows) {
+                Log.i(TAG, "Network left out by the user; the tunnel will not filter")
             } else {
                 Log.w(TAG, "Strict Private DNS is on; the tunnel will not filter")
             }
@@ -720,7 +909,17 @@ class AegisVpnService : VpnService(), Runnable {
             openHistory()
             vpnThread = Thread(this, "AegisVpnThread").also { it.start() }
             if (paused) checkPause()
+            networkIdle = !networkAllows
+            watchNetwork()
             publishStartResult(true, null)
+            // The notification was posted before the tunnel knew the network.
+            if (networkIdle || wasNetworkIdle) {
+                try {
+                    enterForeground()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not update the notification", e)
+                }
+            }
             publishState(this)
             Log.i(TAG, "Aegis Local VPN Started Successfully with Split Tunneling")
         } catch (e: SecurityException) {
@@ -760,6 +959,8 @@ class AegisVpnService : VpnService(), Runnable {
         isRunning = false
         historyHandler.removeCallbacks(historyFlusher)
         historyHandler.removeCallbacks(pauseChecker)
+        unwatchNetwork()
+        builtNetworkFilter = true
         // Turning protection off ends a pause; the next start filters.
         savePausedUntil(0L)
         flushHistory()
