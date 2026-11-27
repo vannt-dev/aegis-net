@@ -6,6 +6,15 @@ verified native pipeline on Android.
 
 ## [Unreleased]
 
+## [1.12.1] — 2026-11-27
+
+Maintenance release.
+
+### Changed
+
+- Updated the libraries the app is built with to their latest compatible
+  versions (minor and patch releases only). No change in behaviour.
+
 ## [1.12.0] — 2026-11-26
 
 Choose the networks protection applies on.
